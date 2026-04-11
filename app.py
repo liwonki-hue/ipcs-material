@@ -14,5 +14,5 @@ def index():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5100))
-    # Binding to default localhost to avoid proxy issues
-    app.run(port=port)
+    # Use 0.0.0.0 for external access in Render performance environment
+    app.run(host='0.0.0.0', port=port)

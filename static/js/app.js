@@ -102,16 +102,16 @@ async function syncFromSupabase() {
             receiving: recvRaw.length
         });
 
-        if (matMasterRaw.length > 0) { 
+        if (matMasterRaw.length > 0) {
             db.matCodeMaster = matMasterRaw.map(m => ({
                 matCode: (m.mat_code || '').trim().toUpperCase(),
-                origDesc: m.orig_desc || m.description || '-',
-                item: m.item || '-',
-                matl: m.matl || '-',
-                size: m.size || '-',
-                classDetails: m.class_details || '-',
-                endType: m.end_type || '-',
-                source: 'Supabase DB'
+                category: m.category || '-',
+                itemDesc: m.item_desc || '-',
+                matlDesc: m.matl_desc || '-',
+                size1: m.size1 || '-',
+                size2: m.size2 || '-',
+                classDesc: m.class_desc || '-',
+                etDesc: m.et_desc || '-'
             }));
         }
         
@@ -383,17 +383,13 @@ function renderStockTable() {
         }
     });
 
-    // Map description
-    const descMap = {};
-    db.matCodeMaster.forEach(m => { descMap[m.matCode] = m.desc; });
-
     // Build unique list of MatCodes that have stock activity (received or issued)
     const activeCodes = [...new Set([...Object.keys(recMap), ...Object.keys(issMap)])].sort();
 
     // Max 1000 rendering to prevent freeze
-    let displayList = activeCodes.slice(0, 1000); 
+    let displayList = activeCodes.slice(0, 1000);
 
-    // Pre-build a map for easy lookup of item/size/cat
+    // Pre-build a map for easy lookup from matCodeMaster
     const masterMap = {};
     db.matCodeMaster.forEach(m => { masterMap[m.matCode] = m; });
     const bomLookup = {};
@@ -405,25 +401,20 @@ function renderStockTable() {
         let rec = recMap[matCode] || 0;
         let iss = issMap[matCode] || 0;
         let stock = Math.max(0, rec - iss);
-        
-        let mData = masterMap[matCode] || { desc: 'Unknown', item: '-', size: '-' };
-        let desc = mData.desc;
-        let cat = window.getCategory(desc, matCode);
-        let item = mData.item;
-        // Smart size extraction from MatCode as requested
-        let size = window.extractSizeFromMatCode(matCode);
-        if (size === '-') size = mData.size; // fallback to original size if pattern not found
-        
-        let shortDesc = desc.length > 40 ? desc.substring(0, 37) + '...' : desc;
-        let badge = stock > 0 ? '<span class="status-badge ok">In Stock</span>' : '<span class="status-badge err">Out of Stock</span>';
 
+        let mData = masterMap[matCode] || { category: '-', itemDesc: '-', size1: '-', size2: '-' };
+        let cat = mData.category !== '-' ? mData.category : window.getCategory(mData.itemDesc, matCode);
+        let item = mData.itemDesc;
+        let size = mData.size1 !== '-' ? mData.size1 : window.extractSizeFromMatCode(matCode);
+
+        let badge = stock > 0 ? '<span class="status-badge ok">In Stock</span>' : '<span class="status-badge err">Out of Stock</span>';
         let unitStr = bomLookup[matCode] ? bomLookup[matCode].unit : 'EA';
+
         let tr = `<tr>
             <td style="font-weight:600; color:var(--color-primary);">${matCode}</td>
             <td><strong>${cat}</strong></td>
             <td>${item}</td>
             <td>${size}</td>
-            <td title="${desc.replace(/"/g, '&quot;')}">${shortDesc}</td>
             <td>${unitStr}</td>
             <td>${rec.toFixed(2)}</td>
             <td>${iss.toFixed(2)}</td>
@@ -442,24 +433,21 @@ function renderStockTable() {
 function renderMatCodeMaster() {
     let tbody = document.querySelector('#matCodeTable tbody');
     tbody.innerHTML = '';
-    let displayList = db.matCodeMaster.slice(0, 500);
     if(db.matCodeMaster.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="3">No Master Data available.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8">No Master Data available.</td></tr>';
         return;
     }
-    displayList.forEach(m => {
-        let safeOrigDesc = m.origDesc.replace(/"/g, '&quot;');
-        let shortOrigDesc = safeOrigDesc.length > 30 ? safeOrigDesc.substring(0, 30) + '...' : safeOrigDesc;
-        
+    db.matCodeMaster.forEach(m => {
+        let catBadge = {Pipe:'info', Fitting:'ok', Valve:'warn', Speciality:'warn', Other:'err'}[m.category] || 'ok';
         let tr = `<tr>
-            <td title="${safeOrigDesc}"><strong>${shortOrigDesc}</strong></td>
-            <td>${m.item}</td>
-            <td>${m.matl}</td>
-            <td>${m.size}</td>
-            <td>${m.classDetails}</td>
-            <td>${m.endType}</td>
             <td><strong><span class="status-badge ok">${m.matCode}</span></strong></td>
-            <td>${m.source}</td>
+            <td><span class="status-badge ${catBadge}">${m.category}</span></td>
+            <td>${m.itemDesc}</td>
+            <td>${m.matlDesc}</td>
+            <td>${m.size1}</td>
+            <td>${m.size2}</td>
+            <td>${m.classDesc}</td>
+            <td>${m.etDesc}</td>
         </tr>`;
         tbody.innerHTML += tr;
     });
@@ -917,16 +905,43 @@ function attachEventListeners() {
              // 1. Invoke browser print
              window.print();
 
-             // 2. Confirm Issue: translate MR contents into Issued tracker
-             db.mrTable.forEach(mrItem => {
-                 db.issued.push({
-                     id: Date.now() + Math.random(),
-                     iso: mrItem.iso,
-                     matCode: mrItem.matCode,
-                     qty: mrItem.reqQty,
-                     date: new Date().toISOString()
+             // 2. Confirm Issue: translate MR contents into Issued tracker and persist to Supabase
+             const issuedToInsert = db.mrTable.map(mrItem => ({
+                 iso: mrItem.iso,
+                 mat_code: mrItem.matCode,
+                 qty: mrItem.reqQty,
+                 mr_no: mrItem.mrNo,
+                 issue_date: new Date().toISOString()
+             }));
+
+             if (supabaseClient) {
+                supabaseClient.from('issued').insert(issuedToInsert).then(({ error }) => {
+                    if (error) console.error("❌ Supabase Persist Error:", error);
+                    else {
+                        console.log("✅ Material Issue persisted to Supabase.");
+                        // Update local DB to reflect new items immediately
+                        issuedToInsert.forEach(item => {
+                            db.issued.push({
+                                matCode: item.mat_code,
+                                qty: item.qty,
+                                iso: item.iso
+                            });
+                        });
+                        updateDashboard();
+                    }
+                });
+             } else {
+                 // Fallback to local only if no client
+                 db.mrTable.forEach(mrItem => {
+                     db.issued.push({
+                         id: Date.now() + Math.random(),
+                         iso: mrItem.iso,
+                         matCode: mrItem.matCode,
+                         qty: mrItem.reqQty,
+                         date: new Date().toISOString()
+                     });
                  });
-             });
+             }
 
              // 3. Cleanup & Success feedback
              alert("Material Issue Slip Printed and Stock updated successfully!");
