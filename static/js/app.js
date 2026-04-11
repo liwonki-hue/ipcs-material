@@ -128,15 +128,16 @@ async function syncFromSupabase() {
             })).filter(b => b.qty > 0 && b.matCode);
         }
         
-        if (recvRaw.length > 0) { 
+        if (recvRaw.length > 0) {
             db.receiving = recvRaw.map(r => ({
-                docNo: r.doc_no || '-',
-                plNo: r.pl_no || '-',
                 matCode: (r.mat_code || '').trim().toUpperCase(),
-                desc: r.vendor_desc || r.description || '-',
+                category: r.category || '-',
+                docNo: r.doc_no || '-',
+                plNo: r.pkg_no || '-',
+                desc: r.full_description || '-',
                 unit: r.unit || 'EA',
                 qty: parseFloat(r.qty) || 0
-            })).filter(r => r.qty > 0 && r.matCode); // Filter out zero/empty
+            })).filter(r => r.qty > 0 && r.matCode);
         }
         
         if (issuedRaw.length > 0) { 
@@ -567,29 +568,18 @@ function renderReceivingTable() {
     let slicedPl = data.slice(currentPlPage * PAGE_SIZE, (currentPlPage + 1) * PAGE_SIZE); 
     
     slicedPl.forEach((r, i) => {
-        let isMatched = r.matCode && !r.matCode.includes('NEW-MAT');
-        let isAuto = r.matCode && r.matCode.includes('NEW-MAT');
-        let badge = isMatched ? '<span class="status-badge ok">Matched</span>' : (isAuto ? '<span class="status-badge warn">Auto New</span>' : '<span class="status-badge err">Unmatched</span>');
-        let shortDesc = r.desc.length > 50 ? r.desc.substring(0, 47) + '...' : r.desc;
-
-        // Extraction Logic for Packing List
-        let cat = window.getCategory(r.desc, r.matCode);
-        let itemPart = r.desc.split('-')[0].trim();
-        // ... (existing spec logic remains same internally if needed, simplifying for brevity)
-        
-        let size = window.extractSizeFromMatCode(r.matCode);
+        let catBadge = {Pipe:'info', Fitting:'ok', Valve:'warn', Speciality:'warn', Other:'err'}[r.category] || 'ok';
+        let shortDesc = r.desc.length > 60 ? r.desc.substring(0, 57) + '...' : r.desc;
 
         let tr = `<tr>
             <td>${r.docNo}</td>
             <td>${r.plNo}</td>
-            <td><strong>${cat}</strong></td>
-            <td>${itemPart}</td>
-            <td>${size}</td>
+            <td><span class="status-badge ok">${r.matCode}</span></td>
+            <td><span class="status-badge ${catBadge}">${r.category}</span></td>
             <td title="${r.desc}">${shortDesc}</td>
             <td>${r.unit || 'EA'}</td>
             <td>${r.qty.toFixed(2)}</td>
-            <td><strong>${r.matCode}</strong> ${badge}</td>
-            <td><button class="btn-small btn-outline">Review</button></td>
+            <td><button class="btn-small btn-outline">Detail</button></td>
         </tr>`;
         tbody.innerHTML += tr;
     });
