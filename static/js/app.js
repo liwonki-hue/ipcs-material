@@ -115,16 +115,17 @@ async function syncFromSupabase() {
             }));
         }
         
-        if (bomRaw.length > 0) { 
+        if (bomRaw.length > 0) {
             db.bom = bomRaw.map(b => ({
-                system: b.system || '-',
-                area: b.area || 'General',
-                iso: b.iso || '-',
                 matCode: (b.mat_code || '').trim().toUpperCase(),
-                desc: b.description || '-',
-                unit: b.unit || 'EA',
+                category: b.category || '-',
+                system: b.system || '-',
+                iso: b.iso_dwg_no || '-',
+                lineNo: b.line_no || '-',
+                desc: b.full_description || '-',
+                uom: b.uom || 'EA',
                 qty: parseFloat(b.qty) || 0
-            })).filter(b => b.qty > 0 && b.matCode); // Filter out zero/empty
+            })).filter(b => b.qty > 0 && b.matCode);
         }
         
         if (recvRaw.length > 0) { 
@@ -393,7 +394,7 @@ function renderStockTable() {
     const masterMap = {};
     db.matCodeMaster.forEach(m => { masterMap[m.matCode] = m; });
     const bomLookup = {};
-    db.bom.forEach(b => { bomLookup[b.matCode] = { unit: b.unit, area: b.area, system: b.system }; });
+    db.bom.forEach(b => { bomLookup[b.matCode] = { unit: b.uom, system: b.system }; });
 
     displayList.forEach(matCode => {
         if(matCode.includes('None') && recMap[matCode] === undefined) return;
@@ -538,7 +539,7 @@ function renderBomTable() {
             <td><strong>${cat}</strong></td>
             <td><span class="status-badge ${badgeClass}">${b.matCode}</span></td>
             <td>${b.desc}</td>
-            <td>${b.unit}</td>
+            <td>${b.uom}</td>
             <td>${b.qty.toFixed(2)}</td>
             <td><button class="btn-small btn-outline-danger">Del</button></td>
         </tr>`;
@@ -793,13 +794,13 @@ function attachEventListeners() {
                     <td>${b.iso}</td>
                     <td>${mat}</td>
                     <td title="${safeDesc}">${safeDesc.length > 40 ? safeDesc.substring(0,40)+'...' : safeDesc}</td>
-                    <td>${b.unit || 'EA'}</td>
+                    <td>${b.uom || 'EA'}</td>
                     <td>${b.qty.toFixed(2)}</td>
                     <td>${totalRec.toFixed(2)}</td>
                     <td><strong>${stockQty.toFixed(2)}</strong></td>
                     <td>
-                        <input type="number" class="form-control" style="width:80px;" min="0" max="${maxReq}" value="${Math.max(0, defaultReq)}" 
-                        data-matcode="${mat}" data-iso="${b.iso}" data-size="${b.size||'-'}" data-unit="${b.unit||'EA'}" data-desc="${safeDesc}">
+                        <input type="number" class="form-control" style="width:80px;" min="0" max="${maxReq}" value="${Math.max(0, defaultReq)}"
+                        data-matcode="${mat}" data-iso="${b.iso}" data-size="-" data-unit="${b.uom||'EA'}" data-desc="${safeDesc}">
                     </td>
                 </tr>`;
             });
