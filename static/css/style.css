@@ -118,6 +118,10 @@ ul { list-style: none; }
 .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; display: inline-block; }
 .status-badge.ok { background-color: rgba(46, 125, 50, 0.1); color: var(--color-success); }
 .status-badge.err { background-color: rgba(198, 40, 40, 0.1); color: var(--color-danger); }
+.status-badge.info { background-color: rgba(2, 136, 209, 0.1); color: var(--color-info); }
+.status-badge.warn { background-color: rgba(245, 127, 23, 0.1); color: var(--color-warning); }
+.btn-outline-danger { background-color: transparent; border: 1px solid var(--color-danger); color: var(--color-danger); border-radius: 4px; cursor: pointer; font-size: 11px; padding: 4px 10px; }
+.btn-outline-danger:hover { background-color: rgba(198, 40, 40, 0.08); }
 
 /* DataTables Global Adjusts */
 .dataTables_wrapper .dataTables_filter input { border: 1px solid var(--border-color); border-radius: 4px; padding: 4px 8px; outline: none; margin-bottom:10px; }

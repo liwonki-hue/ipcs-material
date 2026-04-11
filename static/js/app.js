@@ -465,16 +465,13 @@ let filteredPlData = [];
 function initFilterOptions() {
     // BOM Filters
     const bomSys = document.getElementById('bomSystemFilter');
-    const bomArea = document.getElementById('bomAreaFilter');
     const bomIsoData = document.getElementById('bomIsoDatalist');
-    
-    if(bomSys && bomArea && bomIsoData) {
-        const systems = [...new Set(db.bom.map(b => b.system))].sort();
-        const areas = [...new Set(db.bom.map(b => b.area))].sort();
-        const isos = [...new Set(db.bom.map(b => b.iso))].sort();
-        
+
+    if(bomSys && bomIsoData) {
+        const systems = [...new Set(db.bom.map(b => b.system).filter(Boolean))].sort();
+        const isos = [...new Set(db.bom.map(b => b.iso).filter(Boolean))].sort();
+
         bomSys.innerHTML = '<option value="All">All Systems</option>' + systems.map(s => `<option value="${s}">${s}</option>`).join('');
-        bomArea.innerHTML = '<option value="All">All Areas</option>' + areas.map(a => `<option value="${a}">${a}</option>`).join('');
         bomIsoData.innerHTML = isos.map(i => `<option value="${i}">`).join('');
     }
 
@@ -530,7 +527,7 @@ function renderBomTable() {
     
     let slicedBom = data.slice(currentBomPage * PAGE_SIZE, (currentBomPage + 1) * PAGE_SIZE);
     
-    slicedBom.forEach((b, i) => {
+    slicedBom.forEach(b => {
         let isAuto = b.matCode.includes('NEW-MAT');
         let badgeClass = isAuto ? 'warn' : 'ok';
         let cat = window.getCategory(b.desc, b.matCode);
@@ -567,7 +564,7 @@ function renderReceivingTable() {
     
     let slicedPl = data.slice(currentPlPage * PAGE_SIZE, (currentPlPage + 1) * PAGE_SIZE); 
     
-    slicedPl.forEach((r, i) => {
+    slicedPl.forEach(r => {
         let catBadge = {Pipe:'info', Fitting:'ok', Valve:'warn', Speciality:'warn', Other:'err'}[r.category] || 'ok';
         let shortDesc = r.desc.length > 60 ? r.desc.substring(0, 57) + '...' : r.desc;
 
@@ -616,46 +613,21 @@ function renderIssueOptions() {
 }
 
 window.updateAreaDropdown = function() {
-    const sysSelect = document.getElementById('issueSystemFilter');
-    const areaSelect = document.getElementById('issueAreaFilter');
-    if(!sysSelect || !areaSelect) return;
-
-    let sys = sysSelect.value;
-    const areasMap = {};
-    db.bom.forEach(b => {
-        if(sys === 'All' || b.system === sys) {
-            let area = b.area || 'General Area'; 
-            areasMap[area] = true;
-        }
-    });
-
-    const areas = Object.keys(areasMap).sort();
-    let areaHtml = '<option value="All">All Areas</option>';
-    areas.forEach(a => areaHtml += `<option value="${a.replace(/"/g, '&quot;')}">${a}</option>`);
-    areaSelect.innerHTML = areaHtml;
-    
-    // We update the datalist to show suggested ISOs for that system/area
     updateIsoDropdown();
 }
 
 window.updateIsoDropdown = function() {
     const sysSelect = document.getElementById('issueSystemFilter');
-    const areaSelect = document.getElementById('issueAreaFilter');
     const isoDatalist = document.getElementById('isoDatalist');
-    const isoSearchInput = document.getElementById('issueIsoSearch');
-    if (!isoDatalist || !isoSearchInput) return;
-    
+    if (!isoDatalist) return;
+
     let sys = sysSelect ? sysSelect.value : 'All';
-    let area = areaSelect ? areaSelect.value : 'All';
 
     const isosMap = {};
     db.bom.forEach(b => {
         let bSys = b.system ? b.system.trim() : 'Unassigned';
-        let bArea = b.area || 'General Area';
         let matchSys = (sys === 'All' || bSys === sys);
-        let matchArea = (area === 'All' || bArea === area);
-
-        if (matchSys && matchArea) {
+        if (matchSys) {
             let iso = (b.iso && b.iso !== 'Unassigned') ? b.iso.trim() : null;
             if (iso) isosMap[iso] = true;
         }
@@ -663,12 +635,9 @@ window.updateIsoDropdown = function() {
 
     const isos = Object.keys(isosMap).sort();
     let datalistHtml = '<option value="All">';
-    
-    isos.forEach(i => {
-        let escaped = i.replace(/"/g, '&quot;');
-        datalistHtml += `<option value="${escaped}">`;
+    isos.forEach(iso => {
+        datalistHtml += `<option value="${iso.replace(/"/g, '&quot;')}">`;
     });
-    
     isoDatalist.innerHTML = datalistHtml;
 }
 
@@ -680,13 +649,11 @@ function attachEventListeners() {
         btnFilterBom.addEventListener('click', () => {
             const iso = document.getElementById('bomIsoSearch').value.trim().toUpperCase();
             const sys = document.getElementById('bomSystemFilter').value;
-            const area = document.getElementById('bomAreaFilter').value;
-            
+
             filteredBomData = db.bom.filter(b => {
                 const matchIso = !iso || b.iso.toUpperCase().includes(iso);
                 const matchSys = sys === 'All' || b.system === sys;
-                const matchArea = area === 'All' || b.area === area;
-                return matchIso && matchSys && matchArea;
+                return matchIso && matchSys;
             });
             currentBomPage = 0;
             renderBomTable();
@@ -715,10 +682,6 @@ function attachEventListeners() {
     if (sysSelect) {
         sysSelect.addEventListener('change', window.updateAreaDropdown);
     }
-    const areaSelect = document.getElementById('issueAreaFilter');
-    if (areaSelect) {
-        areaSelect.addEventListener('change', window.updateIsoDropdown);
-    }
     
     const isoSearchInput = document.getElementById('issueIsoSearch');
     if (isoSearchInput) {
@@ -731,18 +694,14 @@ function attachEventListeners() {
     if (btnFilterIssue) {
         btnFilterIssue.addEventListener('click', () => {
             let sys = document.getElementById('issueSystemFilter') ? document.getElementById('issueSystemFilter').value : 'All';
-            let area = document.getElementById('issueAreaFilter') ? document.getElementById('issueAreaFilter').value : 'All';
             let iso = document.getElementById('issueIsoSearch').value || 'All';
 
             let filteredBom = db.bom.filter(b => {
                 let bSys = b.system ? b.system.trim() : 'Unassigned';
-                let bArea = b.area || 'General Area';
                 let bIso = b.iso ? b.iso.trim() : 'Unassigned';
-                
                 let matchSys = (sys === 'All') || (bSys === sys);
-                let matchArea = (area === 'All') || (bArea === area);
                 let matchIso = (iso === 'All') || (bIso === iso);
-                return matchSys && matchArea && matchIso;
+                return matchSys && matchIso;
             });
 
             let tbody = document.querySelector('#issueTable tbody');
@@ -978,7 +937,7 @@ function renderMrTable() {
         return;
     }
 
-    db.mrTable.forEach((m, idx) => {
+    db.mrTable.forEach(m => {
         let tr = `<tr>
             <td><strong>${m.mrNo}</strong></td>
             <td>${m.iso}</td>
