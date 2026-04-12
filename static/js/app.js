@@ -642,6 +642,314 @@ window.updateIsoDropdown = function() {
     isoDatalist.innerHTML = datalistHtml;
 }
 
+// ==========================================
+// PL Upload & Auto-Matching Feature
+// ==========================================
+let plReviewData = [];
+
+function extractDocNo(pkgNo) {
+    return String(pkgNo).split('-').slice(0, 3).join('-');
+}
+
+function matchMatCodeFromDesc(desc) {
+    const d = desc.toUpperCase();
+
+    // Item type patterns (order: most specific first)
+    const itemPatterns = [
+        ['STUD BOLT', 'BOLT'],
+        ['NIPPLE'],
+        ['PIPE'],
+        ['FLANGE', 'FLN'],
+        ['ELBOW', 'ELB'],
+        ['TEE'],
+        ['REDUCER'],
+        ['CAP'],
+        ['COUPLING'],
+        ['UNION'],
+        ['WELDOLET'],
+        ['SOCKOLET'],
+        ['THREADOLET'],
+        ['OLET'],
+        ['GASKET'],
+        ['NUT'],
+        ['VALVE', 'VLV'],
+        ['STRAINER'],
+        ['BLIND'],
+        ['SIGHT GLASS'],
+    ];
+
+    let foundItemKey = null;
+    for (const patterns of itemPatterns) {
+        if (patterns.some(p => d.includes(p))) {
+            foundItemKey = patterns[0];
+            break;
+        }
+    }
+
+    // Extract primary DN size
+    const dnMatch = d.match(/DN\s*(\d+)/);
+    const dnValue = dnMatch ? dnMatch[1].padStart(3, '0') : null;
+
+    // Filter master by item type
+    let candidates = db.matCodeMaster.filter(m => {
+        if (!foundItemKey) return false;
+        return m.itemDesc.toUpperCase().includes(foundItemKey);
+    });
+
+    // Narrow by DN size
+    if (dnValue && candidates.length > 0) {
+        const sizeFiltered = candidates.filter(m => {
+            const s2 = (m.size2 || '').replace(/\s/g, '').toUpperCase();
+            return s2.includes('DN' + dnValue) || s2.includes('DN' + parseInt(dnValue));
+        });
+        if (sizeFiltered.length > 0) candidates = sizeFiltered;
+    }
+
+    if (candidates.length === 0) {
+        return { status: 'new', matCode: null, category: null, candidates: [] };
+    } else if (candidates.length === 1) {
+        return { status: 'matched', matCode: candidates[0].matCode, category: candidates[0].category, candidates };
+    } else {
+        return { status: 'suggest', matCode: null, category: null, candidates };
+    }
+}
+
+async function parsePLFile(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const wb = XLSX.read(data, { type: 'array' });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+                // Find header row
+                let headerIdx = 0;
+                for (let i = 0; i < Math.min(rows.length, 10); i++) {
+                    const row = rows[i] || [];
+                    if (row.some(c => String(c || '').toUpperCase().includes('PKG'))) {
+                        headerIdx = i;
+                        break;
+                    }
+                }
+
+                const headers = (rows[headerIdx] || []).map(h => String(h || '').trim().toUpperCase());
+                const pkgIdx = headers.findIndex(h => h.includes('PKG'));
+                const descIdx = headers.findIndex(h => h.includes('DESC') || h.includes('DESCRIPTION'));
+                const unitIdx = headers.findIndex(h => h.includes('UNIT'));
+                const qtyIdx = headers.findIndex(h => h.includes('QTY') || h.includes('QUANTITY'));
+
+                if (pkgIdx === -1) {
+                    alert('PKG_NO 컬럼을 찾을 수 없습니다. 파일 형식을 확인해주세요.');
+                    resolve(); return;
+                }
+
+                const dataRows = rows.slice(headerIdx + 1).filter(r => r && r[pkgIdx]);
+
+                plReviewData = dataRows.map(row => {
+                    const pkgNo = String(row[pkgIdx] || '').trim();
+                    const desc = String(row[descIdx] !== undefined ? row[descIdx] : '').trim();
+                    const unit = String(row[unitIdx] !== undefined ? row[unitIdx] : 'EA').trim() || 'EA';
+                    const qty = parseFloat(row[qtyIdx]) || 0;
+                    const docNo = extractDocNo(pkgNo);
+                    const matchResult = matchMatCodeFromDesc(desc);
+                    return { pkgNo, docNo, desc, unit, qty, ...matchResult };
+                }).filter(r => r.qty > 0 && r.pkgNo);
+
+                renderPLReview();
+                resolve();
+            } catch (err) {
+                console.error('PL parse error:', err);
+                alert('파일 파싱 오류: ' + err.message);
+                reject(err);
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    });
+}
+
+function renderPLReview() {
+    const panel = document.getElementById('plReviewPanel');
+    if (!panel) return;
+    panel.style.display = 'block';
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    updatePLReviewSummary();
+
+    const tbody = document.getElementById('plReviewTbody');
+    tbody.innerHTML = '';
+
+    plReviewData.forEach((row, idx) => {
+        let statusBadge, matcodeCell;
+        const catColors = { Pipe: 'info', Fitting: 'ok', Valve: 'warn', Speciality: 'warn', Other: 'err' };
+
+        if (row.status === 'matched') {
+            statusBadge = '<span class="status-badge ok">Matched</span>';
+            matcodeCell = `<span class="status-badge ok" style="font-size:11px;">${row.matCode}</span>`;
+        } else if (row.status === 'suggest') {
+            statusBadge = '<span class="status-badge warn">Select</span>';
+            const opts = row.candidates.map(c =>
+                `<option value="${c.matCode}|${c.category}">${c.matCode} (${c.size2 || c.size1})</option>`
+            ).join('');
+            matcodeCell = `<select class="form-control" style="font-size:11px; padding:2px 6px; height:28px;"
+                onchange="assignPLMatCode(${idx}, this.value)">
+                <option value="">-- Select --</option>${opts}
+            </select>`;
+        } else {
+            statusBadge = '<span class="status-badge err">New Code</span>';
+            matcodeCell = `<button class="btn-small btn-outline" onclick="openNewMatCodeModal(${idx})" style="font-size:11px; padding:3px 8px;">
+                <i class="fas fa-plus"></i> Create Code
+            </button>`;
+        }
+
+        const catBadge = catColors[row.category] || '';
+        const catCell = row.category
+            ? `<span class="status-badge ${catBadge}">${row.category}</span>`
+            : '<span style="color:#999;">-</span>';
+
+        const shortDesc = row.desc.length > 55 ? row.desc.substring(0, 52) + '...' : row.desc;
+
+        tbody.innerHTML += `<tr id="plrow_${idx}">
+            <td style="font-size:12px;">${row.docNo}</td>
+            <td style="font-size:12px;">${row.pkgNo}</td>
+            <td title="${row.desc}" style="font-size:12px;">${shortDesc}</td>
+            <td style="font-size:12px;">${row.unit}</td>
+            <td style="font-size:12px; font-weight:600;">${row.qty}</td>
+            <td>${statusBadge}</td>
+            <td id="plrow_matcode_${idx}">${matcodeCell}</td>
+            <td id="plrow_cat_${idx}">${catCell}</td>
+        </tr>`;
+    });
+}
+
+window.assignPLMatCode = function(idx, value) {
+    if (!value) return;
+    const [matCode, category] = value.split('|');
+    plReviewData[idx].matCode = matCode;
+    plReviewData[idx].category = category;
+    plReviewData[idx].status = 'matched';
+    const catBadge = { Pipe: 'info', Fitting: 'ok', Valve: 'warn', Speciality: 'warn', Other: 'err' }[category] || 'ok';
+    document.getElementById('plrow_matcode_' + idx).innerHTML = `<span class="status-badge ok" style="font-size:11px;">${matCode}</span>`;
+    document.getElementById('plrow_cat_' + idx).innerHTML = `<span class="status-badge ${catBadge}">${category}</span>`;
+    updatePLReviewSummary();
+};
+
+window.openNewMatCodeModal = function(idx) {
+    window._pendingPLRowIdx = idx;
+    const row = plReviewData[idx];
+    document.getElementById('newMatPLDesc').textContent = row.desc;
+    document.getElementById('newMatSearch').value = '';
+    document.getElementById('newMatSearchResults').style.display = 'none';
+    document.getElementById('newMatCodeInput').value = '';
+    document.getElementById('newMatCategory').value = '';
+    document.getElementById('newMatSaveToMaster').checked = false;
+    document.getElementById('newMatCodeModal').style.display = 'flex';
+};
+
+window.searchExistingMatCode = function(query) {
+    const resultsBox = document.getElementById('newMatSearchResults');
+    const tbody = document.getElementById('newMatSearchTbody');
+    if (!query || query.length < 2) {
+        resultsBox.style.display = 'none';
+        return;
+    }
+    const q = query.toUpperCase();
+    const matches = db.matCodeMaster.filter(m =>
+        m.matCode.includes(q) ||
+        m.itemDesc.toUpperCase().includes(q) ||
+        m.matlDesc.toUpperCase().includes(q)
+    ).slice(0, 20);
+
+    if (matches.length === 0) {
+        resultsBox.style.display = 'none';
+        return;
+    }
+
+    tbody.innerHTML = matches.map(m => `
+        <tr style="cursor:pointer;" onclick="selectExistingForPL('${m.matCode}', '${m.category}')">
+            <td style="font-size:11px;"><span class="status-badge ok">${m.matCode}</span></td>
+            <td style="font-size:11px;">${m.itemDesc}</td>
+            <td style="font-size:11px;">${m.size1} / ${m.size2}</td>
+            <td style="font-size:11px;">${m.category}</td>
+        </tr>
+    `).join('');
+    resultsBox.style.display = 'block';
+};
+
+window.selectExistingForPL = function(matCode, category) {
+    const idx = window._pendingPLRowIdx;
+    plReviewData[idx].matCode = matCode;
+    plReviewData[idx].category = category;
+    plReviewData[idx].status = 'matched';
+
+    const catBadge = { Pipe: 'info', Fitting: 'ok', Valve: 'warn', Speciality: 'warn', Other: 'err' }[category] || 'ok';
+    document.getElementById('plrow_matcode_' + idx).innerHTML = `<span class="status-badge ok" style="font-size:11px;">${matCode}</span>`;
+    document.getElementById('plrow_cat_' + idx).innerHTML = `<span class="status-badge ${catBadge}">${category}</span>`;
+
+    document.getElementById('newMatCodeModal').style.display = 'none';
+    updatePLReviewSummary();
+};
+
+function updatePLReviewSummary() {
+    const matched = plReviewData.filter(r => r.status === 'matched').length;
+    const suggest = plReviewData.filter(r => r.status === 'suggest').length;
+    const newCode = plReviewData.filter(r => r.status === 'new').length;
+    const total = plReviewData.length;
+
+    const el = document.getElementById('plReviewSummary');
+    if (el) el.innerHTML = `
+        Total <strong>${total}</strong> &nbsp;|&nbsp;
+        ✅ Matched: <strong>${matched}</strong> &nbsp;
+        ⚠️ Select: <strong>${suggest}</strong> &nbsp;
+        ❌ New: <strong>${newCode}</strong>
+    `;
+
+    const btn = document.getElementById('btnSavePLReview');
+    if (btn) {
+        const allDone = plReviewData.length > 0 && (suggest + newCode) === 0;
+        btn.disabled = !allDone;
+        btn.style.opacity = allDone ? '1' : '0.5';
+    }
+}
+
+async function savePLReview() {
+    const unresolved = plReviewData.filter(r => r.status !== 'matched');
+    if (unresolved.length > 0) {
+        alert(`아직 ${unresolved.length}건의 MatCode가 미지정입니다. 모두 지정 후 저장해주세요.`);
+        return;
+    }
+
+    if (!confirm(`총 ${plReviewData.length}건을 Receiving에 저장하시겠습니까?`)) return;
+
+    const toInsert = plReviewData.map(r => ({
+        mat_code: r.matCode,
+        category: r.category,
+        doc_no: r.docNo,
+        pkg_no: r.pkgNo,
+        full_description: r.desc,
+        unit: r.unit,
+        qty: r.qty
+    }));
+
+    showLoading(true);
+    try {
+        for (let i = 0; i < toInsert.length; i += 100) {
+            const batch = toInsert.slice(i, i + 100);
+            const { error } = await supabaseClient.from('receiving').insert(batch);
+            if (error) throw error;
+        }
+        alert(`✅ ${toInsert.length}건이 Receiving에 저장되었습니다!`);
+        document.getElementById('plReviewPanel').style.display = 'none';
+        plReviewData = [];
+        await syncFromSupabase();
+    } catch (err) {
+        alert('저장 오류: ' + err.message);
+        console.error(err);
+    } finally {
+        showLoading(false);
+    }
+}
+
 // The action of clicking Search ISO BOM
 function attachEventListeners() {
     // BOM Filter Button
@@ -924,6 +1232,80 @@ function attachEventListeners() {
     if(btnResetData) {
         btnResetData.addEventListener('click', () => location.reload());
     }
+
+    // --- PL Upload ---
+    const btnUploadPL = document.getElementById('btnUploadPL');
+    if(btnUploadPL) {
+        btnUploadPL.addEventListener('click', () => document.getElementById('plFileInput').click());
+    }
+
+    const plFileInput = document.getElementById('plFileInput');
+    if(plFileInput) {
+        plFileInput.addEventListener('change', async function(e) {
+            const file = e.target.files[0];
+            if(!file) return;
+            this.value = ''; // allow re-select same file
+            showLoading(true);
+            try { await parsePLFile(file); }
+            finally { showLoading(false); }
+        });
+    }
+
+    const btnSavePLReview = document.getElementById('btnSavePLReview');
+    if(btnSavePLReview) btnSavePLReview.addEventListener('click', savePLReview);
+
+    const btnCancelPLReview = document.getElementById('btnCancelPLReview');
+    if(btnCancelPLReview) btnCancelPLReview.addEventListener('click', () => {
+        document.getElementById('plReviewPanel').style.display = 'none';
+        plReviewData = [];
+    });
+
+    // --- New MatCode Modal ---
+    const btnConfirmNewMatCode = document.getElementById('btnConfirmNewMatCode');
+    if(btnConfirmNewMatCode) {
+        btnConfirmNewMatCode.addEventListener('click', async () => {
+            const matCode = document.getElementById('newMatCodeInput').value.trim().toUpperCase();
+            const category = document.getElementById('newMatCategory').value;
+            const saveToMaster = document.getElementById('newMatSaveToMaster').checked;
+
+            if(!matCode || !category) {
+                alert('MatCode와 Category를 모두 입력해주세요.');
+                return;
+            }
+
+            const idx = window._pendingPLRowIdx;
+            if(idx === undefined || idx === null) return;
+
+            plReviewData[idx].matCode = matCode;
+            plReviewData[idx].category = category;
+            plReviewData[idx].status = 'matched';
+
+            if(saveToMaster && supabaseClient) {
+                const { error } = await supabaseClient.from('matcode_master').insert({
+                    mat_code: matCode, category,
+                    item_desc: '-', matl_desc: '-', size1: '-', size2: '-', class_desc: '-', et_desc: '-'
+                });
+                if(!error) {
+                    db.matCodeMaster.push({ matCode, category, itemDesc: '-', matlDesc: '-', size1: '-', size2: '-', classDesc: '-', etDesc: '-' });
+                    console.log('Saved new MatCode to master:', matCode);
+                }
+            }
+
+            const catBadge = {Pipe:'info',Fitting:'ok',Valve:'warn',Speciality:'warn',Other:'err'}[category]||'ok';
+            document.getElementById('plrow_matcode_'+idx).innerHTML = `<span class="status-badge ok" style="font-size:11px;">${matCode}</span>`;
+            document.getElementById('plrow_cat_'+idx).innerHTML = `<span class="status-badge ${catBadge}">${category}</span>`;
+
+            document.getElementById('newMatCodeModal').style.display = 'none';
+            updatePLReviewSummary();
+        });
+    }
+
+    ['btnCloseNewMatCode', 'btnCancelNewMatCode'].forEach(id => {
+        const el = document.getElementById(id);
+        if(el) el.addEventListener('click', () => {
+            document.getElementById('newMatCodeModal').style.display = 'none';
+        });
+    });
 }
 
 // Function to render the MR Table

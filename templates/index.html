@@ -290,6 +290,7 @@
                      </div>
                      <div class="actions">
                          <button class="btn btn-outline" id="btnUploadPL"><i class="fas fa-file-excel"></i> Upload Packing List</button>
+                         <input type="file" id="plFileInput" accept=".xlsx,.xls" style="display:none;">
                      </div>
                  </div>
                  
@@ -348,24 +349,35 @@
                          </div>
                      </div>
                  </div>
-                 <!-- Modal for new MatCode generation from PL -->
-                 <div class="panel" id="plMatchPanel" style="display: none; margin-top:20px;">
-                    <h3>Assign/Generate MatCode for PL Item</h3>
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label>Packing List Item Desc</label>
-                            <input type="text" id="plItemDesc" class="form-control" readonly>
-                        </div>
-                        <div class="form-group">
-                            <label>Select BOM MatCode (Or Generate New)</label>
-                            <select id="plTargetMatCode" class="form-control">
-                                <!-- Options populated dynamically -->
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-actions" style="margin-top: 15px;">
-                        <button class="btn btn-primary" id="btnSavePLMatch">Confirm Match & Save Receiving</button>
-                    </div>
+                 <!-- PL Import Review Panel -->
+                 <div id="plReviewPanel" style="display:none; margin-top:20px;">
+                     <div class="panel data-panel">
+                         <div class="panel-header" style="background:var(--color-primary); color:white; padding:12px 16px; margin-bottom:0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                             <h3 style="margin:0; font-size:14px; font-weight:600; color:white;"><i class="fas fa-file-import"></i> Packing List Import Review</h3>
+                             <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                                 <span id="plReviewSummary" style="font-size:12px; color:rgba(255,255,255,0.9);"></span>
+                                 <button id="btnSavePLReview" disabled style="background:white; color:var(--color-primary); border:none; border-radius:4px; padding:6px 14px; font-weight:600; cursor:pointer; font-size:12px;"><i class="fas fa-save"></i> Save to Receiving</button>
+                                 <button id="btnCancelPLReview" style="background:transparent; color:white; border:1px solid rgba(255,255,255,0.5); border-radius:4px; padding:6px 14px; cursor:pointer; font-size:12px;">Cancel</button>
+                             </div>
+                         </div>
+                         <div class="table-responsive" style="max-height:480px; overflow-y:auto;">
+                             <table class="data-table" id="plReviewTable">
+                                 <thead>
+                                     <tr>
+                                         <th>DOC NO</th>
+                                         <th>PKG NO</th>
+                                         <th style="min-width:260px;">Full Description</th>
+                                         <th>Unit</th>
+                                         <th>QTY</th>
+                                         <th>Status</th>
+                                         <th style="min-width:180px;">MatCode</th>
+                                         <th>Category</th>
+                                     </tr>
+                                 </thead>
+                                 <tbody id="plReviewTbody"></tbody>
+                             </table>
+                         </div>
+                     </div>
                  </div>
             </section>
 
@@ -529,6 +541,62 @@
             <div class="modal-footer">
                 <button class="btn btn-outline" id="btnCancelPrint">Cancel</button>
                 <button class="btn btn-primary highlight-btn" id="btnConfirmPrint"><i class="fas fa-print"></i> Confirm Print & Process Issue</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- New MatCode Assignment Modal -->
+    <div id="newMatCodeModal" class="modal-overlay">
+        <div class="modal-content" style="width:640px;">
+            <div class="modal-header">
+                <h2><i class="fas fa-plus-circle"></i> Assign / Create MatCode</h2>
+                <button class="btn btn-outline" id="btnCloseNewMatCode" style="border:none; font-size:18px;"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+                <div style="background:#fff8e1; border-left:4px solid #ffc107; padding:12px 14px; border-radius:4px; margin-bottom:16px;">
+                    <div style="font-size:11px; color:#888; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.5px;">PL Description (Unmatched)</div>
+                    <div id="newMatPLDesc" style="font-size:13px; font-weight:600; color:#333;"></div>
+                </div>
+                <!-- Search existing MatCode -->
+                <div class="form-group" style="margin-bottom:12px;">
+                    <label style="font-size:12px; font-weight:600; color:var(--color-primary);">① Search Existing MatCode Master</label>
+                    <input type="text" id="newMatSearch" class="form-control" placeholder="Type MatCode or description to search..." oninput="searchExistingMatCode(this.value)">
+                </div>
+                <div id="newMatSearchResults" style="max-height:160px; overflow-y:auto; border:1px solid var(--border-color); border-radius:4px; margin-bottom:16px; display:none;">
+                    <table class="data-table" style="margin:0;">
+                        <tbody id="newMatSearchTbody"></tbody>
+                    </table>
+                </div>
+                <div style="border-top:1px solid var(--border-color); padding-top:12px; margin-bottom:12px;">
+                    <label style="font-size:12px; font-weight:600; color:var(--color-primary);">② OR Create New MatCode</label>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                    <div class="form-group">
+                        <label>Category <span style="color:red;">*</span></label>
+                        <select id="newMatCategory" class="form-control">
+                            <option value="">-- Select --</option>
+                            <option value="Pipe">Pipe</option>
+                            <option value="Fitting">Fitting</option>
+                            <option value="Valve">Valve</option>
+                            <option value="Speciality">Speciality</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>MatCode <span style="color:red;">*</span></label>
+                        <input type="text" id="newMatCodeInput" class="form-control" placeholder="e.g. NIP-AS91-D010-S80" oninput="this.value=this.value.toUpperCase()">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:normal;">
+                        <input type="checkbox" id="newMatSaveToMaster" style="width:15px; height:15px;">
+                        <span style="font-size:13px;">Save this MatCode to MatCode Master</span>
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" id="btnCancelNewMatCode">Cancel</button>
+                <button class="btn btn-primary" id="btnConfirmNewMatCode"><i class="fas fa-check"></i> Apply to PL Row</button>
             </div>
         </div>
     </div>
