@@ -4,9 +4,7 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 let supabaseClient = null;
 try {
     if (typeof window.supabase !== 'undefined' && SUPABASE_URL) {
-        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-            db: { schema: 'material' }
-        });
+        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
     }
 } catch (e) {
     console.error("Supabase initialization failed:", e);
