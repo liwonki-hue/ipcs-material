@@ -30,7 +30,9 @@ window.getCategory = function(desc, matCode) {
     if (d.includes('VALVE') || d.includes('VLV')) return 'Valve';
     if (d.includes('SUPPORT') || d.includes('SHOE') || d.includes('GUIDE') || d.includes('U-BOLT') || d.includes('UBOLT')) return 'Support';
     if (d.includes('TRAP') || d.includes('STRAINER') || d.includes('SIGHT') || d.includes('HOSE') || d.includes('SPECIALTY')) return 'Speciality';
-    if (d.includes('ELBOW') || d.includes('TEE') || d.includes('REDUCER') || d.includes('CAP') || d.includes('OLET') || d.includes('FLANGE') || d.includes('NIPPLE') || d.includes('COUPLING') || d.includes('UNION') || d.includes('GASKET') || d.includes('BOLT') || d.includes('NUT') || d.includes('BLIND') || d.includes('FLN') || d.includes('EL9') || d.includes('EL4')) return 'Fitting';
+    // Fasteners (Stud Bolt, Bolt, Nut) → Others. U-BOLT/UBOLT은 위에서 Support 처리됨
+    if ((d.includes('BOLT') && !d.includes('U-BOLT') && !d.includes('UBOLT')) || /\bNUT\b/.test(d) || d.includes('STB-')) return 'Others';
+    if (d.includes('ELBOW') || d.includes('TEE') || d.includes('REDUCER') || d.includes('CAP') || d.includes('OLET') || d.includes('FLANGE') || d.includes('NIPPLE') || d.includes('COUPLING') || d.includes('UNION') || d.includes('GASKET') || d.includes('BLIND') || d.includes('FLN') || d.includes('EL9') || d.includes('EL4')) return 'Fitting';
     return 'Others';
 };
 
@@ -190,7 +192,9 @@ window.getCategory = function(desc, matCode) {
     if (d.includes('VALVE') || d.includes('VLV')) return 'Valve';
     if (d.includes('SUPPORT') || d.includes('SHOE') || d.includes('GUIDE') || d.includes('U-BOLT') || d.includes('UBOLT')) return 'Support';
     if (d.includes('TRAP') || d.includes('STRAINER') || d.includes('SIGHT') || d.includes('HOSE') || d.includes('SPECIALTY')) return 'Speciality';
-    if (d.includes('ELBOW') || d.includes('TEE') || d.includes('REDUCER') || d.includes('CAP') || d.includes('OLET') || d.includes('FLANGE') || d.includes('NIPPLE') || d.includes('COUPLING') || d.includes('UNION') || d.includes('GASKET') || d.includes('BOLT') || d.includes('NUT') || d.includes('BLIND') || d.includes('FLN') || d.includes('EL9') || d.includes('EL4')) return 'Fitting';
+    // Fasteners (Stud Bolt, Bolt, Nut) → Others. U-BOLT/UBOLT은 위에서 Support 처리됨
+    if ((d.includes('BOLT') && !d.includes('U-BOLT') && !d.includes('UBOLT')) || /\bNUT\b/.test(d) || d.includes('STB-')) return 'Others';
+    if (d.includes('ELBOW') || d.includes('TEE') || d.includes('REDUCER') || d.includes('CAP') || d.includes('OLET') || d.includes('FLANGE') || d.includes('NIPPLE') || d.includes('COUPLING') || d.includes('UNION') || d.includes('GASKET') || d.includes('BLIND') || d.includes('FLN') || d.includes('EL9') || d.includes('EL4')) return 'Fitting';
     return 'Others';
 };
 
@@ -526,7 +530,8 @@ async function renderBomTable() {
     const iso = (document.getElementById('bomIsoSearch')?.value || '').trim();
     const sys = document.getElementById('bomSystemFilter')?.value || 'All';
 
-    let query = supabaseClient.from('bom')
+    // bom_detail: ISO 내 동일 MatCode SUM 집계 뷰
+    let query = supabaseClient.from('bom_detail')
         .select('mat_code, category, system, iso_dwg_no, full_description, uom, qty', { count: 'exact' })
         .range(currentBomPage * PAGE_SIZE, (currentBomPage + 1) * PAGE_SIZE - 1)
         .order('iso_dwg_no');
