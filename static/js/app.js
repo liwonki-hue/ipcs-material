@@ -15,10 +15,11 @@ try {
 
 let db = {
     matCodeMaster: [],
-    bom: [],
+    bom: [],        // bom_agg: aggregated by matCode+category+system
+    bomIsoList: [], // bom_iso_list: distinct system+iso_dwg_no pairs for dropdowns
     receiving: [],
     mrTable: [],
-    issued: [] 
+    issued: []
 };
 
 // --- Helper Functions (Globally Available) ---
@@ -91,9 +92,13 @@ async function syncFromSupabase() {
     try {
         console.log("🚀 Starting Full Supabase Sync (Batching)...");
         
-        const [matMasterRaw, bomRaw, recvRaw, issuedRaw] = await Promise.all([
+        // bom_agg: aggregated view (~수천 행, 1 API 호출)
+        // bom_iso_list: distinct ISO 목록 (~수백 행, 1 API 호출)
+        // 기존 fetchAllRows('bom') → 73,397행 74회 API 호출 제거
+        const [matMasterRaw, bomRaw, bomIsoRaw, recvRaw, issuedRaw] = await Promise.all([
             fetchAllRows('matcode_master'),
-            fetchAllRows('bom'),
+            supabaseClient.from('bom_agg').select('*').then(r => r.data || []),
+            supabaseClient.from('bom_iso_list').select('*').then(r => r.data || []),
             fetchAllRows('receiving'),
             fetchAllRows('issued')
         ]);
@@ -122,13 +127,14 @@ async function syncFromSupabase() {
                 matCode: (b.mat_code || '').trim().toUpperCase(),
                 category: b.category || '-',
                 system: b.system || '-',
-                iso: b.iso_dwg_no || '-',
-                lineNo: b.line_no || '-',
-                desc: b.full_description || '-',
                 uom: b.uom || 'EA',
-                qty: parseFloat(b.qty) || 0
+                qty: parseFloat(b.total_qty) || 0
             })).filter(b => b.qty > 0 && b.matCode);
         }
+        db.bomIsoList = bomIsoRaw.map(r => ({
+            system: r.system || '-',
+            iso: r.iso_dwg_no || '-'
+        })).filter(r => r.iso !== '-');
         
         if (recvRaw.length > 0) {
             db.receiving = recvRaw.map(r => ({
@@ -279,7 +285,7 @@ function updateDashboard() {
     // Expedite Alert Setup ( <= 20% Received per Matcode )
     const bomSummary = {};
     db.bom.forEach(b => {
-        if(!bomSummary[b.matCode]) bomSummary[b.matCode] = { qty: 0, desc: b.desc };
+        if(!bomSummary[b.matCode]) bomSummary[b.matCode] = { qty: 0, category: b.category };
         bomSummary[b.matCode].qty += b.qty;
     });
 
@@ -309,7 +315,7 @@ function updateDashboard() {
             li.innerHTML = `
                 <div class="wi-icon"><i class="fas fa-exclamation-circle text-danger"></i></div>
                 <div class="wi-content">
-                    <div class="wi-title">[${matCode}] ${bomSummary[matCode].desc}</div>
+                    <div class="wi-title">[${matCode}] ${bomSummary[matCode].category || '-'}</div>
                     <div class="wi-desc">BOM: ${req.toFixed(1)} | Received: ${rec.toFixed(1)} (${pct.toFixed(1)}%)</div>
                 </div>
                 <button class="btn btn-small btn-outline-danger shadow-none">Expedite</button>
@@ -327,8 +333,9 @@ function updateDashboard() {
     let catRec = { Pipe: 0, Fitting: 0, Support: 0, Valve: 0, Speciality: 0, Others: 0 };
 
     db.bom.forEach(b => {
-        let cat = window.getCategory(b.desc, b.matCode);
-        catBom[cat] += b.qty;
+        let cat = b.category || window.getCategory('', b.matCode);
+        if (catBom[cat] !== undefined) catBom[cat] += b.qty;
+        else catBom['Others'] += b.qty;
     });
 
     db.receiving.forEach(r => {
@@ -471,7 +478,7 @@ function initFilterOptions() {
 
     if(bomSys && bomIsoData) {
         const systems = [...new Set(db.bom.map(b => b.system).filter(Boolean))].sort();
-        const isos = [...new Set(db.bom.map(b => b.iso).filter(Boolean))].sort();
+        const isos = [...new Set(db.bomIsoList.map(r => r.iso))].sort();
 
         bomSys.innerHTML = '<option value="All">All Systems</option>' + systems.map(s => `<option value="${s}">${s}</option>`).join('');
         bomIsoData.innerHTML = isos.map(i => `<option value="${i}">`).join('');
@@ -511,48 +518,53 @@ function renderTablePagination(total, current, pageSize, infoId, btnPrevId, btnN
     btnNext.onclick = () => { if(current < totalPages - 1) { updateFn(current + 1); } };
 }
 
-function renderBomTable() {
+async function renderBomTable() {
     let tbody = document.querySelector('#bomTable tbody');
     if(!tbody) return;
-    tbody.innerHTML = '';
-    
-    // Smart data selection: use filtered if searching/filtering, otherwise full db.
-    let isFiltering = false;
-    const isoSearchVal = document.getElementById('bomIsoSearch')?.value;
-    const sysFilterVal = document.getElementById('bomSystemFilter')?.value;
-    
-    if (isoSearchVal || (sysFilterVal && sysFilterVal !== 'All')) {
-        isFiltering = true;
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
+
+    const iso = (document.getElementById('bomIsoSearch')?.value || '').trim();
+    const sys = document.getElementById('bomSystemFilter')?.value || 'All';
+
+    let query = supabaseClient.from('bom')
+        .select('mat_code, category, system, iso_dwg_no, full_description, uom, qty', { count: 'exact' })
+        .range(currentBomPage * PAGE_SIZE, (currentBomPage + 1) * PAGE_SIZE - 1)
+        .order('iso_dwg_no');
+
+    if (sys !== 'All') query = query.eq('system', sys);
+    if (iso) query = query.ilike('iso_dwg_no', `%${iso}%`);
+
+    const { data, count, error } = await query;
+    if (error) {
+        tbody.innerHTML = `<tr><td colspan="8" style="color:red;text-align:center;">Error: ${error.message}</td></tr>`;
+        return;
     }
 
-    let data = (isFiltering) ? filteredBomData : db.bom;
-    
-    let slicedBom = data.slice(currentBomPage * PAGE_SIZE, (currentBomPage + 1) * PAGE_SIZE);
-    
-    slicedBom.forEach(b => {
-        let isAuto = b.matCode.includes('NEW-MAT');
+    tbody.innerHTML = '';
+    (data || []).forEach(b => {
+        let cat = b.category || window.getCategory(b.full_description, b.mat_code);
+        let isAuto = (b.mat_code || '').includes('NEW-MAT');
         let badgeClass = isAuto ? 'warn' : 'ok';
-        let cat = window.getCategory(b.desc, b.matCode);
-        let tr = `<tr>
+        let desc = b.full_description || '-';
+        tbody.innerHTML += `<tr>
             <td>${b.system || '-'}</td>
-            <td>${b.iso}</td>
+            <td>${b.iso_dwg_no || '-'}</td>
             <td><strong>${cat}</strong></td>
-            <td><span class="status-badge ${badgeClass}">${b.matCode}</span></td>
-            <td>${b.desc}</td>
-            <td>${b.uom}</td>
-            <td>${b.qty.toFixed(2)}</td>
+            <td><span class="status-badge ${badgeClass}">${b.mat_code}</span></td>
+            <td title="${desc}">${desc.length > 50 ? desc.substring(0,47)+'...' : desc}</td>
+            <td>${b.uom || 'EA'}</td>
+            <td>${parseFloat(b.qty || 0).toFixed(2)}</td>
             <td><button class="btn-small btn-outline-danger">Del</button></td>
         </tr>`;
-        tbody.innerHTML += tr;
     });
 
     renderTablePagination(
-        data.length, 
-        currentBomPage, 
-        PAGE_SIZE, 
-        'bomPaginationInfo', 
-        'btnPrevBom', 
-        'btnNextBom', 
+        count || 0,
+        currentBomPage,
+        PAGE_SIZE,
+        'bomPaginationInfo',
+        'btnPrevBom',
+        'btnNextBom',
         (p) => { currentBomPage = p; renderBomTable(); }
     );
 }
@@ -625,13 +637,9 @@ window.updateIsoDropdown = function() {
     let sys = sysSelect ? sysSelect.value : 'All';
 
     const isosMap = {};
-    db.bom.forEach(b => {
-        let bSys = b.system ? b.system.trim() : 'Unassigned';
-        let matchSys = (sys === 'All' || bSys === sys);
-        if (matchSys) {
-            let iso = (b.iso && b.iso !== 'Unassigned') ? b.iso.trim() : null;
-            if (iso) isosMap[iso] = true;
-        }
+    db.bomIsoList.forEach(r => {
+        let matchSys = (sys === 'All' || (r.system || '').trim() === sys);
+        if (matchSys && r.iso && r.iso !== 'Unassigned') isosMap[r.iso] = true;
     });
 
     const isos = Object.keys(isosMap).sort();
@@ -956,16 +964,8 @@ function attachEventListeners() {
     const btnFilterBom = document.getElementById('btnFilterBom');
     if(btnFilterBom) {
         btnFilterBom.addEventListener('click', () => {
-            const iso = document.getElementById('bomIsoSearch').value.trim().toUpperCase();
-            const sys = document.getElementById('bomSystemFilter').value;
-
-            filteredBomData = db.bom.filter(b => {
-                const matchIso = !iso || b.iso.toUpperCase().includes(iso);
-                const matchSys = sys === 'All' || b.system === sys;
-                return matchIso && matchSys;
-            });
             currentBomPage = 0;
-            renderBomTable();
+            renderBomTable(); // 서버사이드 필터 쿼리 (필터값은 renderBomTable 내부에서 읽음)
         });
     }
 
@@ -1001,72 +1001,69 @@ function attachEventListeners() {
     
     const btnFilterIssue = document.getElementById('btnFilterIssue');
     if (btnFilterIssue) {
-        btnFilterIssue.addEventListener('click', () => {
-            let sys = document.getElementById('issueSystemFilter') ? document.getElementById('issueSystemFilter').value : 'All';
-            let iso = document.getElementById('issueIsoSearch').value || 'All';
-
-            let filteredBom = db.bom.filter(b => {
-                let bSys = b.system ? b.system.trim() : 'Unassigned';
-                let bIso = b.iso ? b.iso.trim() : 'Unassigned';
-                let matchSys = (sys === 'All') || (bSys === sys);
-                let matchIso = (iso === 'All') || (bIso === iso);
-                return matchSys && matchIso;
-            });
+        btnFilterIssue.addEventListener('click', async () => {
+            let sys = document.getElementById('issueSystemFilter')?.value || 'All';
+            let iso = (document.getElementById('issueIsoSearch')?.value || '').trim();
 
             let tbody = document.querySelector('#issueTable tbody');
-            tbody.innerHTML = '';
-            
-            if (filteredBom.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No BOM materials found for the selected ISO Drawing.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:16px;color:#888;">Loading...</td></tr>';
+
+            // 서버사이드 쿼리: 선택된 system+ISO로 bom 테이블 직접 필터
+            let query = supabaseClient.from('bom')
+                .select('mat_code, iso_dwg_no, full_description, uom, qty, system')
+                .order('iso_dwg_no')
+                .limit(100);
+            if (sys !== 'All') query = query.eq('system', sys);
+            if (iso && iso !== 'All') query = query.eq('iso_dwg_no', iso);
+
+            const { data: bomRows, error } = await query;
+            if (error) {
+                tbody.innerHTML = `<tr><td colspan="8" style="color:red;text-align:center;">Error: ${error.message}</td></tr>`;
                 return;
             }
 
-            // A drawing shouldn't exceed 1000 items, if it does, slice it to prevent freeze
-            let renderLimit = 100;
-            let overLimit = false;
-            if (filteredBom.length > renderLimit) {
-                filteredBom = filteredBom.slice(0, renderLimit);
-                overLimit = true;
+            tbody.innerHTML = '';
+            if (!bomRows || bomRows.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">No BOM materials found for the selected ISO Drawing.</td></tr>';
+                return;
             }
 
+            // Pre-build receiving/issued maps for quick lookup
+            const recMap = {};
+            db.receiving.forEach(r => { if(r.matCode) recMap[r.matCode] = (recMap[r.matCode] || 0) + r.qty; });
+            const issMap = {};
+            db.issued.forEach(i => { if(i.matCode) issMap[i.matCode] = (issMap[i.matCode] || 0) + i.qty; });
+
             let htmlString = '';
-            filteredBom.forEach(b => {
-                let mat = b.matCode;
-                if(!mat || mat === 'None') return;
+            bomRows.forEach(b => {
+                let mat = (b.mat_code || '').trim().toUpperCase();
+                if (!mat || mat === 'NONE') return;
 
-                let totalRec = db.receiving.filter(r => r.matCode === mat).reduce((acc, curr) => acc + curr.qty, 0);
-                let totalIss = db.issued.filter(i => i.matCode === mat).reduce((acc, curr) => acc + curr.qty, 0);
-                
-                // Also double check for cases where BOM/Receiving might have subtle matCode differences
-                // but we already normalized them in syncFromSupabase above.
-                
+                let totalRec = recMap[mat] || 0;
+                let totalIss = issMap[mat] || 0;
                 let stockQty = Math.max(0, totalRec - totalIss);
-                
-                let maxReq = totalRec; 
-                let defaultReq = Math.min(b.qty, stockQty);
-
-                // JSON escape description just in case
-                let safeDesc = b.desc.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                let qty = parseFloat(b.qty) || 0;
+                let defaultReq = Math.min(qty, stockQty);
+                let safeDesc = (b.full_description || '-').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
                 htmlString += `<tr>
-                    <td>${b.iso}</td>
+                    <td>${b.iso_dwg_no || '-'}</td>
                     <td>${mat}</td>
                     <td title="${safeDesc}">${safeDesc.length > 40 ? safeDesc.substring(0,40)+'...' : safeDesc}</td>
                     <td>${b.uom || 'EA'}</td>
-                    <td>${b.qty.toFixed(2)}</td>
+                    <td>${qty.toFixed(2)}</td>
                     <td>${totalRec.toFixed(2)}</td>
                     <td><strong>${stockQty.toFixed(2)}</strong></td>
                     <td>
-                        <input type="number" class="form-control" style="width:80px;" min="0" max="${maxReq}" value="${Math.max(0, defaultReq)}"
-                        data-matcode="${mat}" data-iso="${b.iso}" data-size="-" data-unit="${b.uom||'EA'}" data-desc="${safeDesc}">
+                        <input type="number" class="form-control" style="width:80px;" min="0" max="${totalRec}" value="${Math.max(0, defaultReq)}"
+                        data-matcode="${mat}" data-iso="${b.iso_dwg_no||'-'}" data-size="-" data-unit="${b.uom||'EA'}" data-desc="${safeDesc}">
                     </td>
                 </tr>`;
             });
 
             tbody.innerHTML = htmlString;
-            
-            if(overLimit) {
-                 tbody.innerHTML += `<tr><td colspan="7" style="text-align:center; color:var(--color-danger);"><strong>Warning: Too many items. Only showing top ${renderLimit}. Please select a specific ISO drawing.</strong></td></tr>`;
+            if (bomRows.length >= 100) {
+                tbody.innerHTML += `<tr><td colspan="8" style="text-align:center;color:var(--color-warning);">최대 100건 표시됩니다. ISO Drawing을 선택하면 더 정확한 결과를 볼 수 있습니다.</td></tr>`;
             }
         });
     }
