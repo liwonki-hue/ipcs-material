@@ -595,8 +595,7 @@ function renderReceivingTable() {
 // --- 5. Material Issue (ISO/MR Table) ---
 function renderIssueOptions() {
     const sysSelect = document.getElementById('issueSystemFilter');
-    const areaSelect = document.getElementById('issueAreaFilter');
-    
+
     // Sort systems
     const systemsMap = {};
     db.bom.forEach(b => {
