@@ -26,13 +26,27 @@ let db = {
 window.getCategory = function(desc, matCode) {
     if (!desc && !matCode) return 'Others';
     let d = ((desc||'') + ' ' + (matCode||'')).toUpperCase();
-    if (d.includes('PIPE') || d.includes('TUBE')) return 'Pipe';
-    if (d.includes('VALVE') || d.includes('VLV')) return 'Valve';
+    let m = (matCode || '').toUpperCase();
+    
+    // 1. Valve Detection
+    if (d.includes('VALVE') || d.includes('VLV') || 
+        /^(BAV|GLV|GTV|CHV|BFV|PLV|PSV|PRV|CV-)/.test(m)) return 'Valve';
+        
+    // 2. Pipe Detection
+    if (d.includes('PIPE') || d.includes('TUBE') || m.startsWith('PIS-') || m.startsWith('PIP-')) return 'Pipe';
+
+    // 3. Support Detection
     if (d.includes('SUPPORT') || d.includes('SHOE') || d.includes('GUIDE') || d.includes('U-BOLT') || d.includes('UBOLT')) return 'Support';
-    if (d.includes('TRAP') || d.includes('STRAINER') || d.includes('SIGHT') || d.includes('HOSE') || d.includes('SPECIALTY')) return 'Speciality';
-    // Fasteners (Stud Bolt, Bolt, Nut) → Others. U-BOLT/UBOLT은 위에서 Support 처리됨
-    if ((d.includes('BOLT') && !d.includes('U-BOLT') && !d.includes('UBOLT')) || /\bNUT\b/.test(d) || d.includes('STB-')) return 'Others';
-    if (d.includes('ELBOW') || d.includes('TEE') || d.includes('REDUCER') || d.includes('CAP') || d.includes('OLET') || d.includes('FLANGE') || d.includes('NIPPLE') || d.includes('COUPLING') || d.includes('UNION') || d.includes('GASKET') || d.includes('BLIND') || d.includes('FLN') || d.includes('EL9') || d.includes('EL4')) return 'Fitting';
+
+    // 4. Speciality Detection
+    if (d.includes('TRAP') || d.includes('STRAINER') || d.includes('SIGHT') || d.includes('HOSE') || d.includes('SPECIALTY') || m.startsWith('SP-')) return 'Speciality';
+
+    // 5. Fitting Detection
+    if (d.includes('ELBOW') || d.includes('TEE') || d.includes('REDUCER') || d.includes('CAP') || d.includes('OLET') || d.includes('FLANGE') || d.includes('NIPPLE') || d.includes('COUPLING') || d.includes('UNION') || d.includes('GASKET') || d.includes('BLIND') || d.includes('FLN') || d.includes('EL9') || d.includes('EL4') || m.startsWith('ELB-') || m.startsWith('TEE-') || m.startsWith('RED-') || m.startsWith('CAP-') || m.startsWith('FLN-') || m.startsWith('GSKT-')) return 'Fitting';
+    
+    // 6. Others / Bolting
+    if (d.includes('BOLT') || /\bNUT\b/.test(d) || m.startsWith('STB-') || m.startsWith('NUT-')) return 'Others';
+
     return 'Others';
 };
 
@@ -128,9 +142,9 @@ async function syncFromSupabase() {
             db.bom = bomRaw.map(b => ({
                 matCode: (b.mat_code || '').trim().toUpperCase(),
                 category: b.category || '-',
-                system: b.system || '-',
+                system: b.system, tag: b.tag || '-',
                 uom: b.uom || 'EA',
-                qty: parseFloat(b.total_qty) || 0
+                qty: parseFloat(b.total_qty || b.qty) || 0
             })).filter(b => b.qty > 0 && b.matCode);
         }
         db.bomIsoList = bomIsoRaw.map(r => ({
@@ -184,35 +198,6 @@ async function syncFromSupabase() {
     }
 }
 
-// --- Helper: Category Classifier (Moved out of conditional block) ---
-window.getCategory = function(desc, matCode) {
-    if (!desc && !matCode) return 'Others';
-    let d = ((desc||'') + ' ' + (matCode||'')).toUpperCase();
-    if (d.includes('PIPE') || d.includes('TUBE')) return 'Pipe';
-    if (d.includes('VALVE') || d.includes('VLV')) return 'Valve';
-    if (d.includes('SUPPORT') || d.includes('SHOE') || d.includes('GUIDE') || d.includes('U-BOLT') || d.includes('UBOLT')) return 'Support';
-    if (d.includes('TRAP') || d.includes('STRAINER') || d.includes('SIGHT') || d.includes('HOSE') || d.includes('SPECIALTY')) return 'Speciality';
-    // Fasteners (Stud Bolt, Bolt, Nut) → Others. U-BOLT/UBOLT은 위에서 Support 처리됨
-    if ((d.includes('BOLT') && !d.includes('U-BOLT') && !d.includes('UBOLT')) || /\bNUT\b/.test(d) || d.includes('STB-')) return 'Others';
-    if (d.includes('ELBOW') || d.includes('TEE') || d.includes('REDUCER') || d.includes('CAP') || d.includes('OLET') || d.includes('FLANGE') || d.includes('NIPPLE') || d.includes('COUPLING') || d.includes('UNION') || d.includes('GASKET') || d.includes('BLIND') || d.includes('FLN') || d.includes('EL9') || d.includes('EL4')) return 'Fitting';
-    return 'Others';
-};
-
-window.extractSizeFromMatCode = function(matCode) {
-    if (!matCode) return '-';
-    let dnMatch = matCode.match(/DN(\d+)/i);
-    if (dnMatch) {
-        let val = parseInt(dnMatch[1], 10);
-        return (val / 10).toString() + '"';
-    }
-    let dMatch = matCode.match(/D(\d{3})/i);
-    if (dMatch) {
-        let val = parseInt(dMatch[1], 10);
-        return (val / 10).toString() + '"';
-    }
-    return '-';
-};
-
 // Legacy local data processing removed. Data now lives exclusively in Supabase.
 
 // ==========================================
@@ -238,55 +223,123 @@ function initNavigation() {
     const navItems = document.querySelectorAll('.sidebar .nav-item');
     const sections = document.querySelectorAll('.main-content .view-section');
 
+    window.showSection = function(targetId) {
+        navItems.forEach(n => n.classList.remove('active'));
+        sections.forEach(s => s.classList.remove('active'));
+        
+        const navItem = Array.from(navItems).find(n => n.getAttribute('data-target') === targetId);
+        if (navItem) navItem.classList.add('active');
+        
+        const section = document.getElementById(targetId);
+        if (section) section.classList.add('active');
+        
+        if(targetId === 'dashboard') updateDashboard();
+        if(targetId === 'issue') renderIssueOptions();
+        if(targetId === 'bom_management') renderBomTable();
+        if(targetId === 'receiving') renderReceivingTable();
+        if(targetId === 'matcode_master') renderMatCodeMaster();
+        if(targetId === 'stock_ledger') renderStockTable();
+    };
+
     navItems.forEach(item => {
         item.addEventListener('click', () => {
-            const targetId = item.getAttribute('data-target');
-            navItems.forEach(n => n.classList.remove('active'));
-            sections.forEach(s => s.classList.remove('active'));
-            item.classList.add('active');
-            document.getElementById(targetId).classList.add('active');
-            
-            if(targetId === 'dashboard') updateDashboard();
-            if(targetId === 'issue') renderIssueOptions();
-            if(targetId === 'bom_management') renderBomTable();
-            if(targetId === 'receiving') renderReceivingTable();
-            if(targetId === 'matcode_master') renderMatCodeMaster();
-            if(targetId === 'stock_ledger') renderStockTable();
+            showSection(item.getAttribute('data-target'));
         });
     });
 }
 
 function renderAllViews() {
     updateDashboard();
-    // For large data, we only render the active view on start or when clicked
-    // Initial view is dashboard
 }
 
-// --- 1. Dashboard & KPI ---
 let myChart = null;
 function updateDashboard() {
-    let totalBom = db.bom.reduce((acc, curr) => acc + curr.qty, 0);
-    let totalReceived = db.receiving.reduce((acc, curr) => acc + curr.qty, 0);
-    let totalIssued = db.issued.reduce((acc, curr) => acc + curr.qty, 0);
-    let currentStock = totalReceived - totalIssued;
-
-    let rPct = totalBom > 0 ? ((totalReceived / totalBom) * 100).toFixed(1) : 0;
+    if (!supabaseClient) return;
     
-    // Update the new Overall Progress KPI
-    const kpiProgress = document.getElementById('kpi-progress');
-    if (kpiProgress) kpiProgress.innerText = `${rPct}%`;
+    const dashIso = (document.getElementById('dashIsoSearch')?.value || '').trim().toUpperCase();
+    const dashSys = document.getElementById('dashSystemFilter')?.value || 'All';
 
-    document.getElementById('kpi-bom').innerHTML = `${totalBom.toLocaleString(undefined, {maximumFractionDigits:1})} <span class="unit">EA/M</span>`;
-    document.getElementById('kpi-received').innerHTML = `${totalReceived.toLocaleString(undefined, {maximumFractionDigits:1})} <span class="unit">EA/M</span>`;
-    document.getElementById('kpi-issued').innerHTML = `${totalIssued.toLocaleString(undefined, {maximumFractionDigits:1})} <span class="unit">EA/M</span>`;
-    document.getElementById('kpi-stock').innerHTML = `${Math.max(0, currentStock).toLocaleString(undefined, {maximumFractionDigits:1})} <span class="unit">EA/M</span>`;
+    // 1. KPI 카드용 전체 합계 데이터와 2. 도면별 목록 데이터를 병렬로 호출
+    Promise.all([
+        supabaseClient.from('v_project_summary').select('*').limit(1),
+        supabaseClient.from('v_iso_intelligent_status').select('*')
+            .match(dashSys !== 'All' ? { system: dashSys } : {})
+            .ilike('iso_dwg_no', `%${dashIso}%`)
+    ]).then(([summaryRes, listRes]) => {
+        // --- 1. 상단 KPI 업데이트 (중복 없는 순수 합계) ---
+        if (summaryRes.error) console.error('v_project_summary error:', summaryRes.error);
+        const summary = Array.isArray(summaryRes.data) ? summaryRes.data[0] : summaryRes.data;
+        if (summary) {
+            const totalBom = parseFloat(summary.global_bom_qty || 0);
+            const totalRec = parseFloat(summary.global_rec_qty || 0);
+            const totalIss = parseFloat(summary.global_issued_qty || 0);
+            const prog = totalBom > 0 ? (totalRec / totalBom * 100).toFixed(1) : 0;
 
-    let iPct = totalBom > 0 ? ((totalIssued / totalBom) * 100).toFixed(1) : 0;
+            const kpiMap = {
+                'kpi-progress': `${prog}%`,
+                'kpi-bom': `${totalBom.toLocaleString()} <span class="unit">EA</span>`,
+                'kpi-received': `${totalRec.toLocaleString()} <span class="unit">EA</span>`,
+                'kpi-issued': `${totalIss.toLocaleString()} <span class="unit">EA</span>`,
+                'kpi-stock': `${Math.max(0, totalRec - totalIss).toLocaleString()} <span class="unit">EA</span>`
+            };
+            for (const [id, val] of Object.entries(kpiMap)) {
+                const el = document.getElementById(id);
+                if (el) el.innerHTML = val;
+            }
+        }
+
+        // --- 2. 도면 목록 및 차트 업데이트 ---
+        const data = listRes.data;
+        if (!data) return;
+
+        let readyCount = 0, priorityCount = 0, shortageCount = 0;
+        data.forEach(iso => {
+            if (iso.readiness_score === 100) readyCount++;
+            else if (iso.readiness_score >= 90) priorityCount++;
+            else shortageCount++;
+        });
+
+        if (window.isoChart) window.isoChart.destroy();
+        const ctx = document.getElementById('isoReadinessChart');
+        if (ctx && typeof Chart !== 'undefined') {
+            window.isoChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Ready (100%)', 'Critical (<90%)', 'Priority (>90%)'],
+                    datasets: [{ data: [readyCount, shortageCount, priorityCount], backgroundColor: ['#2e7d32', '#c62828', '#fec107'] }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+            });
+        }
+
+        const tbody = document.getElementById('priorityIsoTbody');
+        if (tbody) {
+            tbody.innerHTML = '';
+            data.sort((a,b) => b.readiness_score - a.readiness_score).slice(0, 50).forEach(iso => {
+                const sCls = iso.readiness_score === 100 ? 'ok' : 'warn';
+                tbody.innerHTML += `<tr>
+                    <td><strong>${iso.iso_dwg_no}</strong></td>
+                    <td>${iso.total_items}</td><td>${iso.ready_items}</td>
+                    <td style="font-weight:600; color:#0d47a1;">${parseFloat(iso.total_bom_qty || 0).toLocaleString()}</td>
+                    <td style="font-weight:600; color:#2e7d32;">${parseFloat(iso.total_rec_qty || 0).toLocaleString()}</td>
+                    <td><div class="progress-mini" style="background:#eee; height:8px; border-radius:4px; overflow:hidden;"><div style="width:${iso.readiness_score}%; background:${iso.readiness_score === 100 ? '#2e7d32' : '#fec107'}; height:100%;"></div></div></td>
+                    <td><span class="status-badge ${sCls}">${iso.readiness_score === 100 ? 'READY' : 'PARTIAL'}</span></td>
+                    <td><button class="btn-small btn-primary" onclick="window.showIsoDetail('${iso.iso_dwg_no}')">Detail</button></td>
+                </tr>`;
+            });
+        }
+
+        if (typeof updateExpediteAlerts === 'function') updateExpediteAlerts();
+        if (typeof updateCategoryCharts === 'function') updateCategoryCharts();
+
+    }).catch(err => console.error("Dashboard Sync Fail:", err));
+}
+
+function updateExpediteAlerts() {
+    const expediteListEl = document.getElementById('expediteList');
+    if (!expediteListEl) return;
     
-    document.getElementById('kpi-received-pct').innerText = `${rPct}% of Total BOM`;
-    document.getElementById('kpi-issued-pct').innerText = `${iPct}% of Total BOM`;
-
-    // Expedite Alert Setup ( <= 20% Received per Matcode )
+    expediteListEl.innerHTML = '';
     const bomSummary = {};
     db.bom.forEach(b => {
         if(!bomSummary[b.matCode]) bomSummary[b.matCode] = { qty: 0, category: b.category };
@@ -301,12 +354,10 @@ function updateDashboard() {
         }
     });
 
-    const alertList = document.getElementById('expediteList');
-    alertList.innerHTML = '';
     let hasAlert = false;
     let alertCount = 0;
     Object.keys(bomSummary).forEach(matCode => {
-        if(alertCount > 50) return;
+        if(alertCount > 20) return; 
         let req = bomSummary[matCode].qty;
         let rec = recSummary[matCode] || 0;
         let pct = (req > 0) ? (rec / req) * 100 : 100;
@@ -320,58 +371,78 @@ function updateDashboard() {
                 <div class="wi-icon"><i class="fas fa-exclamation-circle text-danger"></i></div>
                 <div class="wi-content">
                     <div class="wi-title">[${matCode}] ${bomSummary[matCode].category || '-'}</div>
-                    <div class="wi-desc">BOM: ${req.toFixed(1)} | Received: ${rec.toFixed(1)} (${pct.toFixed(1)}%)</div>
+                    <div class="wi-desc">Req: ${req.toFixed(1)} | Rec: ${rec.toFixed(1)} (${pct.toFixed(1)}%)</div>
                 </div>
-                <button class="btn btn-small btn-outline-danger shadow-none">Expedite</button>
             `;
-            alertList.appendChild(li);
+            expediteListEl.appendChild(li);
         }
     });
 
     if(!hasAlert) {
-        alertList.innerHTML = `<div class="empty-state-small" style="padding:10px; color:#666;">All items are > 20% received.</div>`;
+        expediteListEl.innerHTML = `<div class="empty-state-small" style="padding:10px; color:#666;">All items are > 20% received.</div>`;
     }
+}
 
-    const catLabels = ['Pipe', 'Fitting', 'Support', 'Valve', 'Speciality', 'Others'];
-    let catBom = { Pipe: 0, Fitting: 0, Support: 0, Valve: 0, Speciality: 0, Others: 0 };
-    let catRec = { Pipe: 0, Fitting: 0, Support: 0, Valve: 0, Speciality: 0, Others: 0 };
+function updateCategoryCharts() {
+    if (!supabaseClient) return;
 
-    db.bom.forEach(b => {
-        let cat = b.category || window.getCategory('', b.matCode);
-        if (catBom[cat] !== undefined) catBom[cat] += b.qty;
-        else catBom['Others'] += b.qty;
-    });
+    // Fetch category summary from server view
+    supabaseClient.from('v_category_readiness').select('*')
+    .then(({ data, error }) => {
+        if (error) {
+            console.error("❌ Chart Sync Error:", error);
+            return;
+        }
+        if (!data) return;
 
-    db.receiving.forEach(r => {
-        let cat = window.getCategory(r.desc, r.matCode);
-        catRec[cat] += r.qty;
-    });
-
-    let bData = catLabels.map(l => catBom[l]);
-    let rData = catLabels.map(l => catRec[l]);
-
-    if(myChart) myChart.destroy();
-    const ctx = document.getElementById('progressChart');
-    if(ctx) {
-        myChart = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: catLabels,
-                datasets: [
-                    { label: 'BOM Req', data: bData, backgroundColor: '#0288d1' },
-                    { label: 'Received', data: rData, backgroundColor: '#2e7d32' }
-                ]
-            },
-            options: { 
-                responsive: true, 
-                maintainAspectRatio: false,
-                scales: {
-                    x: { grid: { display: false } },
-                    y: { grid: { display: false } }
-                }
-            }
+        const catLabels = ['Pipe', 'Fitting', 'Support', 'Valve', 'Speciality', 'Others'];
+        const bomDataArr = catLabels.map(l => {
+            const match = data.find(d => d.category === l);
+            return match ? parseFloat(match.total_bom) : 0;
         });
-    }
+        const recDataArr = catLabels.map(l => {
+            const match = data.find(d => d.category === l);
+            return match ? parseFloat(match.total_rec) : 0;
+        });
+
+        // 1. Progress Bar Chart
+        if (window.myChart) window.myChart.destroy();
+        const ctxBar = document.getElementById('progressChart');
+        if (ctxBar && typeof Chart !== 'undefined') {
+            window.myChart = new Chart(ctxBar, {
+                type: 'bar',
+                data: {
+                    labels: catLabels,
+                    datasets: [
+                        { label: 'Total BOM Req', data: bomDataArr, backgroundColor: 'rgba(2, 136, 209, 0.7)' },
+                        { label: 'Total Received', data: recDataArr, backgroundColor: 'rgba(46, 125, 50, 0.7)' }
+                    ]
+                },
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false,
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+
+        // 2. BOM Composition Pie Chart
+        if (window.bomPieChart) window.bomPieChart.destroy();
+        const ctxPie = document.getElementById('bomPieChart');
+        if (ctxPie && typeof Chart !== 'undefined') {
+            window.bomPieChart = new Chart(ctxPie, {
+                type: 'pie',
+                data: {
+                    labels: catLabels,
+                    datasets: [{
+                        data: bomDataArr,
+                        backgroundColor: ['#0288d1', '#2e7d32', '#f57f17', '#c62828', '#673ab7', '#607d8b']
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+    });
 }
 
 // --- 6. Stock Ledger ---
@@ -408,7 +479,7 @@ function renderStockTable() {
     const masterMap = {};
     db.matCodeMaster.forEach(m => { masterMap[m.matCode] = m; });
     const bomLookup = {};
-    db.bom.forEach(b => { bomLookup[b.matCode] = { unit: b.uom, system: b.system }; });
+    db.bom.forEach(b => { bomLookup[b.matCode] = { unit: b.uom, system: b.system, tag: b.tag }; });
 
     displayList.forEach(matCode => {
         if(matCode.includes('None') && recMap[matCode] === undefined) return;
@@ -419,6 +490,14 @@ function renderStockTable() {
 
         let mData = masterMap[matCode] || { category: '-', itemDesc: '-', size1: '-', size2: '-' };
         let cat = mData.category !== '-' ? mData.category : window.getCategory(mData.itemDesc, matCode);
+        
+        // If it's a Valve, try to find a Tag No from BOM or Receiving to show instead of just 'Valve'
+        if (cat === 'Valve') {
+            let tagItem = db.bom.find(b => b.matCode === matCode && b.category !== 'BULK' && b.category !== 'Valve');
+            if (!tagItem) tagItem = db.receiving.find(r => r.matCode === matCode && r.category !== 'BULK' && r.category !== 'Valve');
+            if (tagItem) cat = tagItem.category;
+        }
+
         let item = mData.itemDesc;
         let size = mData.size1 !== '-' ? mData.size1 : window.extractSizeFromMatCode(matCode);
 
@@ -547,14 +626,18 @@ async function renderBomTable() {
 
     tbody.innerHTML = '';
     (data || []).forEach(b => {
-        let cat = b.category || window.getCategory(b.full_description, b.mat_code);
+        let displayCat = b.category;
+        if (displayCat === 'BULK' || !displayCat) {
+            displayCat = window.getCategory(b.full_description, b.mat_code);
+        }
+        
         let isAuto = (b.mat_code || '').includes('NEW-MAT');
         let badgeClass = isAuto ? 'warn' : 'ok';
         let desc = b.full_description || '-';
         tbody.innerHTML += `<tr>
             <td>${b.system || '-'}</td>
             <td>${b.iso_dwg_no || '-'}</td>
-            <td><strong>${cat}</strong></td>
+            <td><strong>${displayCat}</strong></td>
             <td><span class="status-badge ${badgeClass}">${b.mat_code}</span></td>
             <td title="${desc}">${desc.length > 50 ? desc.substring(0,47)+'...' : desc}</td>
             <td>${b.uom || 'EA'}</td>
@@ -579,19 +662,41 @@ function renderReceivingTable() {
     if(!tbody) return;
     tbody.innerHTML = '';
     
-    let data = filteredPlData.length > 0 || document.getElementById('plItemSearch').value || document.getElementById('plDocFilter').value !== 'All' ? filteredPlData : db.receiving;
+    let search = (document.getElementById('plItemSearch')?.value || '').trim().toUpperCase();
+    let doc = document.getElementById('plDocFilter')?.value || 'All';
+    
+    let data = db.receiving;
+    if (doc !== 'All') data = data.filter(r => r.docNo === doc);
+    if (search) {
+        data = data.filter(r => 
+            r.matCode.includes(search) || 
+            r.plNo.includes(search) || 
+            r.category.toUpperCase().includes(search) || 
+            r.desc.toUpperCase().includes(search)
+        );
+    }
     
     let slicedPl = data.slice(currentPlPage * PAGE_SIZE, (currentPlPage + 1) * PAGE_SIZE); 
     
     slicedPl.forEach(r => {
-        let catBadge = {Pipe:'info', Fitting:'ok', Valve:'warn', Speciality:'warn', Other:'err'}[r.category] || 'ok';
+        let displayCat = r.category;
+        if (displayCat === 'BULK' || !displayCat) {
+            displayCat = window.getCategory(r.desc, r.matCode);
+        }
+        
+        let catForBadge = displayCat;
+        if (!['Pipe', 'Fitting', 'Support', 'Valve', 'Speciality', 'Others'].includes(catForBadge)) {
+            catForBadge = 'Valve'; // Tag items are valves
+        }
+
+        let catBadge = {Pipe:'info', Fitting:'ok', Valve:'warn', Speciality:'warn', Other:'err'}[catForBadge] || 'ok';
         let shortDesc = r.desc.length > 60 ? r.desc.substring(0, 57) + '...' : r.desc;
 
         let tr = `<tr>
             <td>${r.docNo}</td>
             <td>${r.plNo}</td>
             <td><span class="status-badge ok">${r.matCode}</span></td>
-            <td><span class="status-badge ${catBadge}">${r.category}</span></td>
+            <td><span class="status-badge ${catBadge}">${displayCat}</span></td>
             <td title="${r.desc}">${shortDesc}</td>
             <td>${r.unit || 'EA'}</td>
             <td>${r.qty.toFixed(2)}</td>
@@ -737,7 +842,6 @@ async function parsePLFile(file) {
                 const ws = wb.Sheets[wb.SheetNames[0]];
                 const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
 
-                // Find header row
                 let headerIdx = 0;
                 for (let i = 0; i < Math.min(rows.length, 10); i++) {
                     const row = rows[i] || [];
@@ -965,6 +1069,37 @@ async function savePLReview() {
 
 // The action of clicking Search ISO BOM
 function attachEventListeners() {
+    // Global Search
+    const globalSearchInput = document.getElementById('globalSearchInput');
+    if (globalSearchInput) {
+        globalSearchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const term = e.target.value.trim().toUpperCase();
+                if (!term) return;
+                
+                // Switch view and set search term
+                if (term.includes('PGU-DE') || term.includes('PL-')) {
+                    showSection('receiving');
+                    const plInput = document.getElementById('plItemSearch');
+                    if (plInput) plInput.value = term;
+                    renderReceivingTable();
+                } else if (term.includes('B0-MV') || term.includes('B1-MV') || term.includes('VLV')) {
+                    showSection('bom_management');
+                    const bomInput = document.getElementById('bomIsoSearch');
+                    if (bomInput) bomInput.value = term;
+                    renderBomTable();
+                } else {
+                    showSection('stock_ledger');
+                    // MatCode search logic can be added later
+                }
+            }
+        });
+    }
+
+    // Sync Button
+    const btnSync = document.getElementById('btnSyncData');
+    if (btnSync) btnSync.addEventListener('click', syncFromSupabase);
+
     // BOM Filter Button
     const btnFilterBom = document.getElementById('btnFilterBom');
     if(btnFilterBom) {
@@ -1302,36 +1437,49 @@ function attachEventListeners() {
         });
     }
 
-    ['btnCloseNewMatCode', 'btnCancelNewMatCode'].forEach(id => {
-        const el = document.getElementById(id);
-        if(el) el.addEventListener('click', () => {
-            document.getElementById('newMatCodeModal').style.display = 'none';
+    const btnDashFilter = document.getElementById('btnDashFilter');
+    if (btnDashFilter) {
+        btnDashFilter.addEventListener('click', () => {
+            if (typeof window.updateDashboard === 'function') window.updateDashboard();
         });
-    });
+    }
 }
 
 // Function to render the MR Table
 function renderMrTable() {
     let tbody = document.querySelector('#mrTableOutput tbody');
     if (!tbody) return;
-    
     tbody.innerHTML = '';
-    
     if (db.mrTable.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color: #888;">MR Table is empty. Please add items using the form above.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color: #888;">MR Table is empty.</td></tr>';
         return;
     }
-
     db.mrTable.forEach(m => {
-        let tr = `<tr>
+        tbody.innerHTML += `<tr>
             <td><strong>${m.mrNo}</strong></td>
             <td>${m.iso}</td>
             <td><span class="status-badge ok">${m.matCode}</span></td>
-            <td title="${m.desc}">${m.desc.length > 20 ? m.desc.substring(0,20)+'...' : m.desc}</td>
-            <td>${m.size}</td>
-            <td>${m.unit}</td>
-            <td><strong>${m.reqQty.toFixed(2)}</strong></td>
+            <td title="${m.desc}">${m.desc.substring(0,20)}...</td>
+            <td>${m.size}</td><td>${m.unit}</td>
+            <td><strong>${(m.reqQty || 0).toFixed(2)}</strong></td>
         </tr>`;
-        tbody.innerHTML += tr;
     });
 }
+
+/**
+ * 대시보드에서 특정 도면의 상세 내역으로 이동하는 함수
+ */
+window.showIsoDetail = function(isoDwgNo) {
+    if (!isoDwgNo) return;
+    if (typeof showSection === 'function') showSection('issue');
+    setTimeout(() => {
+        const searchInput = document.getElementById('issueIsoSearch');
+        if (searchInput) {
+            searchInput.value = isoDwgNo;
+            searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+            searchInput.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    }, 100);
+    
+    console.log("Jumping to ISO Detail:", isoDwgNo);
+};
