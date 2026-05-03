@@ -541,37 +541,19 @@ function updateCategoryCharts() {
         const pipeStk = Math.max(0, pipeRec - pipeIss);
         const othStk  = Math.max(0, otherRec - otherIss);
 
-        // BOM KPI
-        const elBom = document.getElementById('kpi-bom');
-        if (elBom) elBom.innerHTML =
-            `${pipeBom.toLocaleString()} <span class="unit">M</span>`
-          + ` <span style="font-size:13px;color:#5c748e;font-weight:500;">+ ${otherBom.toLocaleString()} <span style="font-size:11px;">EA</span></span>`;
-        const elBomSub = document.getElementById('kpi-bom-sub');
-        if (elBomSub) elBomSub.textContent = `Pipe: ${pipeBom.toLocaleString()} M | Others: ${otherBom.toLocaleString()} EA`;
+        // Helper: render KPI card (big number = total, subtitle = breakdown)
+        function setKpi(valueId, subId, pipeVal, otherVal) {
+            const total = pipeVal + otherVal;
+            const elVal = document.getElementById(valueId);
+            if (elVal) elVal.innerHTML = `${total.toLocaleString()} <span class="unit">M/EA</span>`;
+            const elSub = document.getElementById(subId);
+            if (elSub) elSub.textContent = `Pipe: ${pipeVal.toLocaleString()} M | Others: ${otherVal.toLocaleString()} EA`;
+        }
 
-        // Received KPI
-        const elRec = document.getElementById('kpi-received');
-        if (elRec) elRec.innerHTML =
-            `${pipeRec.toLocaleString()} <span class="unit">M</span>`
-          + ` <span style="font-size:13px;color:#5c748e;font-weight:500;">+ ${otherRec.toLocaleString()} <span style="font-size:11px;">EA</span></span>`;
-        const elRecPct = document.getElementById('kpi-received-pct');
-        if (elRecPct) elRecPct.textContent = `Pipe: ${pipeRec.toLocaleString()} M | Others: ${otherRec.toLocaleString()} EA`;
-
-        // Issued KPI
-        const elIss = document.getElementById('kpi-issued');
-        if (elIss) elIss.innerHTML =
-            `${pipeIss.toLocaleString()} <span class="unit">M</span>`
-          + ` <span style="font-size:13px;color:#5c748e;font-weight:500;">+ ${otherIss.toLocaleString()} <span style="font-size:11px;">EA</span></span>`;
-        const elIssPct = document.getElementById('kpi-issued-pct');
-        if (elIssPct) elIssPct.textContent = `Pipe: ${pipeIss.toLocaleString()} M | Others: ${otherIss.toLocaleString()} EA`;
-
-        // Stock KPI
-        const elStk = document.getElementById('kpi-stock');
-        if (elStk) elStk.innerHTML =
-            `${pipeStk.toLocaleString()} <span class="unit">M</span>`
-          + ` <span style="font-size:13px;color:#5c748e;font-weight:500;">+ ${othStk.toLocaleString()} <span style="font-size:11px;">EA</span></span>`;
-        const elStkSub = document.getElementById('kpi-stock-sub');
-        if (elStkSub) elStkSub.textContent = `Pipe: ${pipeStk.toLocaleString()} M | Others: ${othStk.toLocaleString()} EA`;
+        setKpi('kpi-bom',      'kpi-bom-sub',      pipeBom,  otherBom);
+        setKpi('kpi-received',  'kpi-received-pct', pipeRec,  otherRec);
+        setKpi('kpi-issued',    'kpi-issued-pct',   pipeIss,  otherIss);
+        setKpi('kpi-stock',     'kpi-stock-sub',    pipeStk,  othStk);
 
         // 1. Progress Bar Chart
         if (window.myChart) window.myChart.destroy();
