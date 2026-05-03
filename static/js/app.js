@@ -1,3 +1,4 @@
+/* global Chart */
 // Supabase Configuration - LIVE CREDENTIALS (FIXED COLLISION)
 const SUPABASE_URL = 'https://ognhvfvlboqblueuldlm.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9nbmh2ZnZsYm9xYmx1ZXVsZGxtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3MzY2NTUsImV4cCI6MjA4ODMxMjY1NX0.paO5jr16M7yTySUAp9LgberoatDds9rTNa_eCU_ET_I';
@@ -21,6 +22,12 @@ let db = {
     mrTable: [],
     issued: []
 };
+
+// Session MR number - reused until MR Table is cleared after slip generation
+let sessionMrNo = null;
+
+// Cached ISO stage data for client-side re-filtering (donut chart clicks)
+let cachedIsoData = [];
 
 // --- Helper Functions (Globally Available) ---
 window.getCategory = function(desc, matCode) {
@@ -108,9 +115,9 @@ async function syncFromSupabase() {
     try {
         console.log("🚀 Starting Full Supabase Sync (Batching)...");
         
-        // bom_agg: aggregated view (~수천 행, 1 API 호출)
-        // bom_iso_list: distinct ISO 목록 (~수백 행, 1 API 호출)
-        // 기존 fetchAllRows('bom') → 73,397행 74회 API 호출 제거
+        // bom_agg: aggregated view (~thousands of rows, 1 API call)
+        // bom_iso_list: distinct ISO list (~hundreds of rows, 1 API call)
+        // Replaced fetchAllRows('bom') which caused 73,397 rows / 74 API calls
         const [matMasterRaw, bomRaw, bomIsoRaw, recvRaw, issuedRaw] = await Promise.all([
             fetchAllRows('matcode_master'),
             supabaseClient.from('bom_agg').select('*').then(r => r.data || []),
@@ -149,7 +156,7 @@ async function syncFromSupabase() {
         }
         db.bomIsoList = bomIsoRaw.map(r => ({
             system: r.system || '-',
-            iso: r.iso_dwg_no || '-'
+            iso: r.iso || '-'
         })).filter(r => r.iso !== '-');
         
         if (recvRaw.length > 0) {
@@ -164,11 +171,13 @@ async function syncFromSupabase() {
             })).filter(r => r.qty > 0 && r.matCode);
         }
         
-        if (issuedRaw.length > 0) { 
+        if (issuedRaw.length > 0) {
             db.issued = issuedRaw.map(i => ({
                 matCode: (i.mat_code || '').trim().toUpperCase(),
                 qty: parseFloat(i.qty) || 0,
-                iso: i.iso || '-'
+                iso: i.iso || '-',
+                mrNo: i.mr_no || '-',
+                issueDate: i.issue_date ? i.issue_date.split('T')[0] : '-'
             }));
         }
 
@@ -239,6 +248,7 @@ function initNavigation() {
         if(targetId === 'receiving') renderReceivingTable();
         if(targetId === 'matcode_master') renderMatCodeMaster();
         if(targetId === 'stock_ledger') renderStockTable();
+        if(targetId === 'mr_history') renderMrHistory();
     };
 
     navItems.forEach(item => {
@@ -252,21 +262,102 @@ function renderAllViews() {
     updateDashboard();
 }
 
+// ISO stage classification (module-level for reuse)
+function getIsoStage(sp, fd) {
+    if (fd >= 100) return { label: 'ERECTION READY', cls: 'ok',   color: '#2e7d32' };
+    if (sp >= 100) return { label: 'SPOOL READY',    cls: 'info',  color: '#1565c0' };
+    if (sp >= 50)  return { label: 'SPOOL IN PROG',  cls: 'warn',  color: '#f57f17' };
+    return             { label: 'CRITICAL',        cls: 'err',   color: '#c62828' };
+}
+
+// Render ISO priority table — reusable for dropdown filter & donut chart click
+function renderIsoTable(data, dashStage) {
+    const stageOrder = { 'SPOOL READY': 0, 'SPOOL IN PROG': 1, 'ERECTION READY': 2, 'CRITICAL': 3 };
+    const filteredData = dashStage === 'All'
+        ? data
+        : data.filter(iso => getIsoStage(parseFloat(iso.spool_score||0), parseFloat(iso.field_score||0)).label === dashStage);
+    const tbody = document.getElementById('priorityIsoTbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    if (filteredData.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#888;padding:20px;">No ISOs found for stage: ${dashStage}</td></tr>`;
+    }
+    [...filteredData].sort((a, b) => {
+        const sa = getIsoStage(parseFloat(a.spool_score||0), parseFloat(a.field_score||0));
+        const sb = getIsoStage(parseFloat(b.spool_score||0), parseFloat(b.field_score||0));
+        const od = (stageOrder[sa.label]??9) - (stageOrder[sb.label]??9);
+        return od !== 0 ? od : parseFloat(b.spool_score||0) - parseFloat(a.spool_score||0);
+    }).slice(0, 50).forEach(iso => {
+        const sp = parseFloat(iso.spool_score || 0);
+        const fd = parseFloat(iso.field_score || 0);
+        const stage = getIsoStage(sp, fd);
+        const spBar = `<div style="display:flex;align-items:center;gap:5px;">
+            <div style="width:55px;background:#eee;height:7px;border-radius:4px;overflow:hidden;">
+                <div style="width:${sp}%;background:#1565c0;height:100%;"></div>
+            </div><span style="font-size:11px;font-weight:600;color:#1565c0;">${sp}%</span></div>`;
+        const fdBar = `<div style="display:flex;align-items:center;gap:5px;">
+            <div style="width:55px;background:#eee;height:7px;border-radius:4px;overflow:hidden;">
+                <div style="width:${fd}%;background:#2e7d32;height:100%;"></div>
+            </div><span style="font-size:11px;font-weight:600;color:#2e7d32;">${fd}%</span></div>`;
+        tbody.innerHTML += `<tr style="cursor:pointer;" onclick="window.showIsoDetail('${iso.iso_dwg_no}')" title="${iso.iso_dwg_no}">
+            <td><strong style="color:#0A2540;text-decoration:underline dotted;">${iso.iso_dwg_no}</strong></td>
+            <td>${spBar}</td>
+            <td>${fdBar}</td>
+            <td style="font-weight:600;color:#0d47a1;">${parseFloat(iso.total_bom_qty||0).toLocaleString()}</td>
+            <td style="font-weight:600;color:#2e7d32;">${parseFloat(iso.total_rec_qty||0).toLocaleString()}</td>
+            <td><span class="status-badge ${stage.cls}" style="white-space:nowrap;">${stage.label}</span></td>
+            <td><button style="background:#0A2540;color:white;border:none;padding:5px 12px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;" onclick="event.stopPropagation();window.showIsoDetail('${iso.iso_dwg_no}')"><i class="fas fa-file-signature"></i> Issue MR</button></td>
+        </tr>`;
+    });
+}
+
 let myChart = null;
 function updateDashboard() {
     if (!supabaseClient) return;
-    
-    const dashIso = (document.getElementById('dashIsoSearch')?.value || '').trim().toUpperCase();
-    const dashSys = document.getElementById('dashSystemFilter')?.value || 'All';
 
-    // 1. KPI 카드용 전체 합계 데이터와 2. 도면별 목록 데이터를 병렬로 호출
+    // Populate dashSystemFilter from db.bomIsoList or db.bom
+    const dashSysSelect = document.getElementById('dashSystemFilter');
+    const dashIsoSelect = document.getElementById('dashIsoSelect');
+
+    function populateDashIsoDropdown(system) {
+        if (!dashIsoSelect) return;
+        const isoList = (db.bomIsoList.length ? db.bomIsoList : db.bom)
+            .filter(r => system === 'All' || r.system === system)
+            .map(r => r.iso).filter(Boolean);
+        const uniq = [...new Set(isoList)].sort();
+        dashIsoSelect.innerHTML = '<option value="All">All ISOs</option>' +
+            uniq.map(i => `<option value="${i}">${i}</option>`).join('');
+    }
+
+    if (dashSysSelect && dashSysSelect.options.length <= 1) {
+        const systems = [...new Set(
+            (db.bomIsoList.length ? db.bomIsoList : db.bom)
+                .map(r => r.system).filter(s => s && s.trim() && s.trim() !== 'Unassigned')
+        )].sort();
+        dashSysSelect.innerHTML = '<option value="All">All Systems</option>' +
+            systems.map(s => `<option value="${s}">${s}</option>`).join('');
+        populateDashIsoDropdown('All');
+
+        dashSysSelect.addEventListener('change', () => {
+            populateDashIsoDropdown(dashSysSelect.value);
+        });
+    }
+
+    const dashIso = dashIsoSelect?.value || 'All';
+    const dashSys = dashSysSelect?.value || 'All';
+    const dashStage = document.getElementById('dashStageFilter')?.value || 'All';
+
+    // Fetch KPI summary and ISO stage data in parallel
     Promise.all([
         supabaseClient.from('v_project_summary').select('*').limit(1),
-        supabaseClient.from('v_iso_intelligent_status').select('*')
-            .match(dashSys !== 'All' ? { system: dashSys } : {})
-            .ilike('iso_dwg_no', `%${dashIso}%`)
+        (() => {
+            let q = supabaseClient.from('v_iso_stage_status').select('*');
+            if (dashSys !== 'All') q = q.eq('system', dashSys);
+            if (dashIso !== 'All') q = q.eq('iso_dwg_no', dashIso);
+            return q;
+        })()
     ]).then(([summaryRes, listRes]) => {
-        // --- 1. 상단 KPI 업데이트 (중복 없는 순수 합계) ---
+        // --- 1. Update top KPI cards ---
         if (summaryRes.error) console.error('v_project_summary error:', summaryRes.error);
         const summary = Array.isArray(summaryRes.data) ? summaryRes.data[0] : summaryRes.data;
         if (summary) {
@@ -274,7 +365,6 @@ function updateDashboard() {
             const totalRec = parseFloat(summary.global_rec_qty || 0);
             const totalIss = parseFloat(summary.global_issued_qty || 0);
             const prog = totalBom > 0 ? (totalRec / totalBom * 100).toFixed(1) : 0;
-
             const kpiMap = {
                 'kpi-progress': `${prog}%`,
                 'kpi-bom': `${totalBom.toLocaleString()} <span class="unit">EA</span>`,
@@ -288,49 +378,77 @@ function updateDashboard() {
             }
         }
 
-        // --- 2. 도면 목록 및 차트 업데이트 ---
-        const data = listRes.data;
-        if (!data) return;
+        // Always run these regardless of v_iso_stage_status result
+        if (typeof updateExpediteAlerts === 'function') updateExpediteAlerts();
+        if (typeof updateCategoryCharts === 'function') updateCategoryCharts();
 
-        let readyCount = 0, priorityCount = 0, shortageCount = 0;
+        // --- 2. Stage-based ISO chart & table ---
+        if (listRes.error) {
+            console.error('v_iso_stage_status error:', listRes.error);
+            const tbody = document.getElementById('priorityIsoTbody');
+            if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#c62828;padding:20px;">
+                <i class="fas fa-exclamation-triangle"></i> View not ready. Run in Supabase SQL Editor:<br>
+                <code style="font-size:11px;">GRANT SELECT ON material.v_iso_stage_status TO anon;</code>
+            </td></tr>`;
+            return;
+        }
+        const data = listRes.data;
+        if (!data || data.length === 0) {
+            const tbody = document.getElementById('priorityIsoTbody');
+            if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#888;padding:20px;">No ISO data found.</td></tr>';
+            return;
+        }
+
+        // Cache for donut chart click re-filtering
+        cachedIsoData = data;
+
+        // Count by stage
+        let erectionReady = 0, spoolReady = 0, spoolInProg = 0, critical = 0;
         data.forEach(iso => {
-            if (iso.readiness_score === 100) readyCount++;
-            else if (iso.readiness_score >= 90) priorityCount++;
-            else shortageCount++;
+            const sp = parseFloat(iso.spool_score || 0);
+            const fd = parseFloat(iso.field_score || 0);
+            if (fd >= 100) erectionReady++;
+            else if (sp >= 100) spoolReady++;
+            else if (sp >= 50) spoolInProg++;
+            else critical++;
         });
 
+        // Donut chart — 4 stage segments with click-to-filter
+        const stageValues = ['ERECTION READY', 'SPOOL READY', 'SPOOL IN PROG', 'CRITICAL'];
         if (window.isoChart) window.isoChart.destroy();
         const ctx = document.getElementById('isoReadinessChart');
         if (ctx && typeof Chart !== 'undefined') {
             window.isoChart = new Chart(ctx, {
                 type: 'doughnut',
                 data: {
-                    labels: ['Ready (100%)', 'Critical (<90%)', 'Priority (>90%)'],
-                    datasets: [{ data: [readyCount, shortageCount, priorityCount], backgroundColor: ['#2e7d32', '#c62828', '#fec107'] }]
+                    labels: [
+                        `Erection Ready (${erectionReady})`,
+                        `Spool Ready (${spoolReady})`,
+                        `Spool In Prog (${spoolInProg})`,
+                        `Critical (${critical})`
+                    ],
+                    datasets: [{
+                        data: [erectionReady, spoolReady, spoolInProg, critical],
+                        backgroundColor: ['#2e7d32', '#1565c0', '#f57f17', '#c62828']
+                    }]
                 },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } },
+                    onClick: (_event, elements) => {
+                        if (elements.length === 0) return;
+                        const stage = stageValues[elements[0].index];
+                        const sel = document.getElementById('dashStageFilter');
+                        if (sel) sel.value = stage;
+                        renderIsoTable(cachedIsoData, stage);
+                    }
+                }
             });
         }
 
-        const tbody = document.getElementById('priorityIsoTbody');
-        if (tbody) {
-            tbody.innerHTML = '';
-            data.sort((a,b) => b.readiness_score - a.readiness_score).slice(0, 50).forEach(iso => {
-                const sCls = iso.readiness_score === 100 ? 'ok' : 'warn';
-                tbody.innerHTML += `<tr>
-                    <td><strong>${iso.iso_dwg_no}</strong></td>
-                    <td>${iso.total_items}</td><td>${iso.ready_items}</td>
-                    <td style="font-weight:600; color:#0d47a1;">${parseFloat(iso.total_bom_qty || 0).toLocaleString()}</td>
-                    <td style="font-weight:600; color:#2e7d32;">${parseFloat(iso.total_rec_qty || 0).toLocaleString()}</td>
-                    <td><div class="progress-mini" style="background:#eee; height:8px; border-radius:4px; overflow:hidden;"><div style="width:${iso.readiness_score}%; background:${iso.readiness_score === 100 ? '#2e7d32' : '#fec107'}; height:100%;"></div></div></td>
-                    <td><span class="status-badge ${sCls}">${iso.readiness_score === 100 ? 'READY' : 'PARTIAL'}</span></td>
-                    <td><button class="btn-small btn-primary" onclick="window.showIsoDetail('${iso.iso_dwg_no}')">Detail</button></td>
-                </tr>`;
-            });
-        }
-
-        if (typeof updateExpediteAlerts === 'function') updateExpediteAlerts();
-        if (typeof updateCategoryCharts === 'function') updateCategoryCharts();
+        // Render table with current stage filter
+        renderIsoTable(data, dashStage);
 
     }).catch(err => console.error("Dashboard Sync Fail:", err));
 }
@@ -405,6 +523,56 @@ function updateCategoryCharts() {
             return match ? parseFloat(match.total_rec) : 0;
         });
 
+        // Update KPI cards with unit-aware breakdown (Pipe=M, Others=EA)
+        const pipeData  = data.find(d => d.category === 'Pipe');
+        const pipeBom   = pipeData ? parseFloat(pipeData.total_bom) : 0;
+        const pipeRec   = pipeData ? parseFloat(pipeData.total_rec) : 0;
+        const otherBom  = bomDataArr.slice(1).reduce((s, v) => s + v, 0);
+        const otherRec  = recDataArr.slice(1).reduce((s, v) => s + v, 0);
+
+        // Issued breakdown by category using matCodeMaster lookup
+        let pipeIss = 0, otherIss = 0;
+        db.issued.forEach(i => {
+            const master = db.matCodeMaster.find(m => m.matCode === i.matCode);
+            const cat = master ? master.category : window.getCategory('', i.matCode);
+            if (cat === 'Pipe') pipeIss += i.qty;
+            else otherIss += i.qty;
+        });
+        const pipeStk = Math.max(0, pipeRec - pipeIss);
+        const othStk  = Math.max(0, otherRec - otherIss);
+
+        // BOM KPI
+        const elBom = document.getElementById('kpi-bom');
+        if (elBom) elBom.innerHTML =
+            `${pipeBom.toLocaleString()} <span class="unit">M</span>`
+          + ` <span style="font-size:13px;color:#5c748e;font-weight:500;">+ ${otherBom.toLocaleString()} <span style="font-size:11px;">EA</span></span>`;
+        const elBomSub = document.getElementById('kpi-bom-sub');
+        if (elBomSub) elBomSub.textContent = `Pipe: ${pipeBom.toLocaleString()} M | Others: ${otherBom.toLocaleString()} EA`;
+
+        // Received KPI
+        const elRec = document.getElementById('kpi-received');
+        if (elRec) elRec.innerHTML =
+            `${pipeRec.toLocaleString()} <span class="unit">M</span>`
+          + ` <span style="font-size:13px;color:#5c748e;font-weight:500;">+ ${otherRec.toLocaleString()} <span style="font-size:11px;">EA</span></span>`;
+        const elRecPct = document.getElementById('kpi-received-pct');
+        if (elRecPct) elRecPct.textContent = `Pipe: ${pipeRec.toLocaleString()} M | Others: ${otherRec.toLocaleString()} EA`;
+
+        // Issued KPI
+        const elIss = document.getElementById('kpi-issued');
+        if (elIss) elIss.innerHTML =
+            `${pipeIss.toLocaleString()} <span class="unit">M</span>`
+          + ` <span style="font-size:13px;color:#5c748e;font-weight:500;">+ ${otherIss.toLocaleString()} <span style="font-size:11px;">EA</span></span>`;
+        const elIssPct = document.getElementById('kpi-issued-pct');
+        if (elIssPct) elIssPct.textContent = `Pipe: ${pipeIss.toLocaleString()} M | Others: ${otherIss.toLocaleString()} EA`;
+
+        // Stock KPI
+        const elStk = document.getElementById('kpi-stock');
+        if (elStk) elStk.innerHTML =
+            `${pipeStk.toLocaleString()} <span class="unit">M</span>`
+          + ` <span style="font-size:13px;color:#5c748e;font-weight:500;">+ ${othStk.toLocaleString()} <span style="font-size:11px;">EA</span></span>`;
+        const elStkSub = document.getElementById('kpi-stock-sub');
+        if (elStkSub) elStkSub.textContent = `Pipe: ${pipeStk.toLocaleString()} M | Others: ${othStk.toLocaleString()} EA`;
+
         // 1. Progress Bar Chart
         if (window.myChart) window.myChart.destroy();
         const ctxBar = document.getElementById('progressChart');
@@ -412,16 +580,16 @@ function updateCategoryCharts() {
             window.myChart = new Chart(ctxBar, {
                 type: 'bar',
                 data: {
-                    labels: catLabels,
+                    labels: catLabels.map(l => l === 'Pipe' ? 'Pipe (M)' : `${l} (EA)`),
                     datasets: [
                         { label: 'Total BOM Req', data: bomDataArr, backgroundColor: 'rgba(2, 136, 209, 0.7)' },
                         { label: 'Total Received', data: recDataArr, backgroundColor: 'rgba(46, 125, 50, 0.7)' }
                     ]
                 },
-                options: { 
-                    responsive: true, 
+                options: {
+                    responsive: true,
                     maintainAspectRatio: false,
-                    scales: { y: { beginAtZero: true } }
+                    scales: { y: { beginAtZero: true, title: { display: true, text: 'Qty (Pipe=M, Others=EA)', font: { size: 11 } } } }
                 }
             });
         }
@@ -570,11 +738,14 @@ function initFilterOptions() {
     // PL Filters
     const plDoc = document.getElementById('plDocFilter');
     const plPkg = document.getElementById('plPkgFilter');
+    const plCat = document.getElementById('plCategoryFilter');
     if(plDoc && plPkg) {
         const docs = [...new Set(db.receiving.map(r => r.docNo))].sort();
         const pkgs = [...new Set(db.receiving.map(r => r.plNo))].sort();
+        const cats = [...new Set(db.receiving.map(r => r.category).filter(Boolean))].sort();
         plDoc.innerHTML = '<option value="All">All DOCs</option>' + docs.map(d => `<option value="${d}">${d}</option>`).join('');
         plPkg.innerHTML = '<option value="All">All PKGs</option>' + pkgs.map(p => `<option value="${p}">${p}</option>`).join('');
+        if(plCat) plCat.innerHTML = '<option value="All">All Categories</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
     }
 }
 
@@ -609,7 +780,7 @@ async function renderBomTable() {
     const iso = (document.getElementById('bomIsoSearch')?.value || '').trim();
     const sys = document.getElementById('bomSystemFilter')?.value || 'All';
 
-    // bom_detail: ISO 내 동일 MatCode SUM 집계 뷰
+    // bom_detail: aggregated view summing same MatCode within an ISO
     let query = supabaseClient.from('bom_detail')
         .select('mat_code, category, system, iso_dwg_no, full_description, uom, qty', { count: 'exact' })
         .range(currentBomPage * PAGE_SIZE, (currentBomPage + 1) * PAGE_SIZE - 1)
@@ -858,7 +1029,7 @@ async function parsePLFile(file) {
                 const qtyIdx = headers.findIndex(h => h.includes('QTY') || h.includes('QUANTITY'));
 
                 if (pkgIdx === -1) {
-                    alert('PKG_NO 컬럼을 찾을 수 없습니다. 파일 형식을 확인해주세요.');
+                    alert('PKG_NO column not found. Please check the file format.');
                     resolve(); return;
                 }
 
@@ -878,7 +1049,7 @@ async function parsePLFile(file) {
                 resolve();
             } catch (err) {
                 console.error('PL parse error:', err);
-                alert('파일 파싱 오류: ' + err.message);
+                alert('File parsing error: ' + err.message);
                 reject(err);
             }
         };
@@ -1032,11 +1203,11 @@ function updatePLReviewSummary() {
 async function savePLReview() {
     const unresolved = plReviewData.filter(r => r.status !== 'matched');
     if (unresolved.length > 0) {
-        alert(`아직 ${unresolved.length}건의 MatCode가 미지정입니다. 모두 지정 후 저장해주세요.`);
+        alert(`${unresolved.length} MatCode(s) are still unassigned. Please assign all before saving.`);
         return;
     }
 
-    if (!confirm(`총 ${plReviewData.length}건을 Receiving에 저장하시겠습니까?`)) return;
+    if (!confirm(`Save ${plReviewData.length} item(s) to Receiving?`)) return;
 
     const toInsert = plReviewData.map(r => ({
         mat_code: r.matCode,
@@ -1055,12 +1226,12 @@ async function savePLReview() {
             const { error } = await supabaseClient.from('receiving').insert(batch);
             if (error) throw error;
         }
-        alert(`✅ ${toInsert.length}건이 Receiving에 저장되었습니다!`);
+        alert(`✅ ${toInsert.length} item(s) saved to Receiving successfully!`);
         document.getElementById('plReviewPanel').style.display = 'none';
         plReviewData = [];
         await syncFromSupabase();
     } catch (err) {
-        alert('저장 오류: ' + err.message);
+        alert('Save error: ' + err.message);
         console.error(err);
     } finally {
         showLoading(false);
@@ -1105,7 +1276,7 @@ function attachEventListeners() {
     if(btnFilterBom) {
         btnFilterBom.addEventListener('click', () => {
             currentBomPage = 0;
-            renderBomTable(); // 서버사이드 필터 쿼리 (필터값은 renderBomTable 내부에서 읽음)
+            renderBomTable(); // Server-side filter query (filter values read inside renderBomTable)
         });
     }
 
@@ -1116,12 +1287,14 @@ function attachEventListeners() {
             const item = document.getElementById('plItemSearch').value.trim().toUpperCase();
             const doc = document.getElementById('plDocFilter').value;
             const pkg = document.getElementById('plPkgFilter').value;
-            
+            const cat = document.getElementById('plCategoryFilter')?.value || 'All';
+
             filteredPlData = db.receiving.filter(r => {
                 const matchItem = !item || (r.desc.toUpperCase().includes(item));
                 const matchDoc = doc === 'All' || r.docNo === doc;
                 const matchPkg = pkg === 'All' || r.plNo === pkg;
-                return matchItem && matchDoc && matchPkg;
+                const matchCat = cat === 'All' || r.category === cat;
+                return matchItem && matchDoc && matchPkg && matchCat;
             });
             currentPlPage = 0;
             renderReceivingTable();
@@ -1137,6 +1310,73 @@ function attachEventListeners() {
         isoSearchInput.addEventListener('focus', function() {
             this.value = ''; // Auto-clear to show all suggestions
         });
+
+        // Auto-search: triggers Search BOM when ISO is selected from datalist or Enter is pressed
+        let isoAutoSearchTimer = null;
+        isoSearchInput.addEventListener('input', function() {
+            clearTimeout(isoAutoSearchTimer);
+            const val = this.value.trim();
+            // Immediately search if value exactly matches a datalist option
+            const datalist = document.getElementById('isoDatalist');
+            const options = datalist ? Array.from(datalist.options).map(o => o.value) : [];
+            if (options.includes(val)) {
+                document.getElementById('btnFilterIssue')?.click();
+            }
+        });
+        isoSearchInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('btnFilterIssue')?.click();
+            }
+        });
+    }
+
+    // Toggle: hide items with no stock
+    const toggleHideNoStock = document.getElementById('toggleHideNoStock');
+    if (toggleHideNoStock) {
+        toggleHideNoStock.addEventListener('change', function() {
+            const rows = document.querySelectorAll('#issueTable tbody tr');
+            rows.forEach(row => {
+                const input = row.querySelector('input[type="number"]');
+                if (!input) return;
+                const maxVal = parseFloat(input.getAttribute('max')) || 0;
+                row.style.display = (this.checked && maxVal <= 0) ? 'none' : '';
+            });
+        });
+    }
+
+    // Fill all rows with BOM Qty
+    const btnFillBomQty = document.getElementById('btnFillBomQty');
+    if (btnFillBomQty) {
+        btnFillBomQty.addEventListener('click', function() {
+            document.querySelectorAll('#issueTable tbody tr').forEach(row => {
+                const input = row.querySelector('input[type="number"]');
+                if (!input) return;
+                const bomCell = row.cells[5]; // BOM (Req) column (index 5)
+                if (bomCell) input.value = parseFloat(bomCell.textContent) || 0;
+            });
+        });
+    }
+
+    // Fill all rows with Stock Qty
+    const btnFillStockQty = document.getElementById('btnFillStockQty');
+    if (btnFillStockQty) {
+        btnFillStockQty.addEventListener('click', function() {
+            document.querySelectorAll('#issueTable tbody tr').forEach(row => {
+                const input = row.querySelector('input[type="number"]');
+                if (!input) return;
+                const maxVal = parseFloat(input.getAttribute('max')) || 0;
+                input.value = maxVal;
+            });
+        });
+    }
+
+    // Clear all request quantities
+    const btnClearQty = document.getElementById('btnClearQty');
+    if (btnClearQty) {
+        btnClearQty.addEventListener('click', function() {
+            document.querySelectorAll('#issueTable input[type="number"]').forEach(inp => { inp.value = 0; });
+        });
     }
     
     const btnFilterIssue = document.getElementById('btnFilterIssue');
@@ -1144,27 +1384,32 @@ function attachEventListeners() {
         btnFilterIssue.addEventListener('click', async () => {
             let sys = document.getElementById('issueSystemFilter')?.value || 'All';
             let iso = (document.getElementById('issueIsoSearch')?.value || '').trim();
+            let categoryFilter = document.getElementById('issueCategoryFilter')?.value || 'All';
 
             let tbody = document.querySelector('#issueTable tbody');
-            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:16px;color:#888;">Loading...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:16px;color:#888;">Loading...</td></tr>';
 
-            // 서버사이드 쿼리: 선택된 system+ISO로 bom 테이블 직접 필터
+            // When ISO is specified: load all materials (no limit)
+            // Without ISO: limit to 200 items
             let query = supabaseClient.from('bom')
                 .select('mat_code, iso_dwg_no, full_description, uom, qty, system')
-                .order('iso_dwg_no')
-                .limit(100);
+                .order('iso_dwg_no');
+
             if (sys !== 'All') query = query.eq('system', sys);
-            if (iso && iso !== 'All') query = query.eq('iso_dwg_no', iso);
+            if (iso && iso !== 'All') {
+                query = query.eq('iso_dwg_no', iso);
+            } else {
+                query = query.limit(200);
+            }
 
             const { data: bomRows, error } = await query;
             if (error) {
-                tbody.innerHTML = `<tr><td colspan="8" style="color:red;text-align:center;">Error: ${error.message}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="9" style="color:red;text-align:center;">Error: ${error.message}</td></tr>`;
                 return;
             }
 
-            tbody.innerHTML = '';
             if (!bomRows || bomRows.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">No BOM materials found for the selected ISO Drawing.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;">No BOM materials found for the selected ISO Drawing.</td></tr>';
                 return;
             }
 
@@ -1174,10 +1419,22 @@ function attachEventListeners() {
             const issMap = {};
             db.issued.forEach(i => { if(i.matCode) issMap[i.matCode] = (issMap[i.matCode] || 0) + i.qty; });
 
+            // Category color map
+            const catColors = {
+                'Pipe': '#1565c0', 'Fitting': '#2e7d32', 'Valve': '#e65100',
+                'Speciality': '#6a1b9a', 'Others': '#546e7a'
+            };
+
             let htmlString = '';
+            let displayCount = 0;
             bomRows.forEach(b => {
                 let mat = (b.mat_code || '').trim().toUpperCase();
                 if (!mat || mat === 'NONE') return;
+
+                let category = window.getCategory(b.full_description, mat);
+
+                // Apply category filter
+                if (categoryFilter !== 'All' && category !== categoryFilter) return;
 
                 let totalRec = recMap[mat] || 0;
                 let totalIss = issMap[mat] || 0;
@@ -1185,25 +1442,33 @@ function attachEventListeners() {
                 let qty = parseFloat(b.qty) || 0;
                 let defaultReq = Math.min(qty, stockQty);
                 let safeDesc = (b.full_description || '-').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                let catColor = catColors[category] || '#546e7a';
 
-                htmlString += `<tr>
+                // Row highlight based on stock availability
+                let stockStyle = stockQty >= qty ? 'background:#f1f8e9;' : (stockQty > 0 ? 'background:#fff8e1;' : '');
+
+                htmlString += `<tr style="${stockStyle}">
                     <td>${b.iso_dwg_no || '-'}</td>
-                    <td>${mat}</td>
-                    <td title="${safeDesc}">${safeDesc.length > 40 ? safeDesc.substring(0,40)+'...' : safeDesc}</td>
+                    <td><span style="font-size:11px;font-weight:600;color:${catColor};background:${catColor}18;padding:2px 7px;border-radius:10px;white-space:nowrap;">${category}</span></td>
+                    <td><strong>${mat}</strong></td>
+                    <td title="${safeDesc}">${safeDesc.length > 45 ? safeDesc.substring(0,45)+'...' : safeDesc}</td>
                     <td>${b.uom || 'EA'}</td>
                     <td>${qty.toFixed(2)}</td>
                     <td>${totalRec.toFixed(2)}</td>
-                    <td><strong>${stockQty.toFixed(2)}</strong></td>
+                    <td><strong style="color:${stockQty >= qty ? '#2e7d32' : (stockQty > 0 ? '#e65100' : '#c62828')};">${stockQty.toFixed(2)}</strong></td>
                     <td>
-                        <input type="number" class="form-control" style="width:80px;" min="0" max="${totalRec}" value="${Math.max(0, defaultReq)}"
-                        data-matcode="${mat}" data-iso="${b.iso_dwg_no||'-'}" data-size="-" data-unit="${b.uom||'EA'}" data-desc="${safeDesc}">
+                        <input type="number" class="form-control" style="width:80px;" min="0" max="${stockQty}" value="${Math.max(0, defaultReq)}"
+                        data-matcode="${mat}" data-iso="${b.iso_dwg_no||'-'}" data-size="${window.extractSizeFromMatCode(mat).replace(/"/g, '&quot;')}" data-unit="${b.uom||'EA'}" data-desc="${safeDesc}" data-category="${category}">
                     </td>
                 </tr>`;
+                displayCount++;
             });
 
-            tbody.innerHTML = htmlString;
-            if (bomRows.length >= 100) {
-                tbody.innerHTML += `<tr><td colspan="8" style="text-align:center;color:var(--color-warning);">최대 100건 표시됩니다. ISO Drawing을 선택하면 더 정확한 결과를 볼 수 있습니다.</td></tr>`;
+            tbody.innerHTML = htmlString || `<tr><td colspan="9" style="text-align:center;color:#888;">No materials found for the selected category.</td></tr>`;
+
+            if (!iso || iso === 'All') {
+                tbody.innerHTML += `<tr><td colspan="9" style="text-align:center;color:var(--color-warning);font-size:12px;padding:8px;">
+                    <i class="fas fa-info-circle"></i> Specify an ISO Drawing to view all materials for that drawing.</td></tr>`;
             }
         });
     }
@@ -1214,8 +1479,11 @@ function attachEventListeners() {
         btnAddToMr.addEventListener('click', () => {
             const inputs = document.querySelectorAll('#issueTable input[type="number"]');
             let addedCount = 0;
-            // Generate ONE MR number for this batch
-            let currentMr = "MR-" + new Date().getFullYear() + "-" + (Math.floor(Math.random() * 9000) + 1000);
+            // Session MR number: generate only on the first Add To MR click
+            if (!sessionMrNo) {
+                sessionMrNo = "MR-" + new Date().getFullYear() + "-" + (Math.floor(Math.random() * 9000) + 1000);
+            }
+            let currentMr = sessionMrNo;
 
             inputs.forEach(inp => {
                 let reqQty = parseFloat(inp.value) || 0;
@@ -1272,9 +1540,47 @@ function attachEventListeners() {
              
              let printTbody = document.getElementById('printTbody');
              printTbody.innerHTML = '';
+
+             // Build matCode → [{plNo, qty}] sorted by PKG NO ascending
+             const pkgRecords = {};
+             db.receiving.forEach(r => {
+                 if (!r.matCode || r.plNo === '-') return;
+                 if (!pkgRecords[r.matCode]) pkgRecords[r.matCode] = {};
+                 pkgRecords[r.matCode][r.plNo] = (pkgRecords[r.matCode][r.plNo] || 0) + (r.qty || 0);
+             });
+             // Convert to arrays sorted by PKG NO ascending
+             const pkgSorted = {};
+             Object.keys(pkgRecords).forEach(mat => {
+                 pkgSorted[mat] = Object.entries(pkgRecords[mat])
+                     .sort((a, b) => a[0].localeCompare(b[0]))
+                     .map(([plNo, qty]) => ({ plNo, qty }));
+             });
+
              db.mrTable.forEach(mrItem => {
+                 const records = pkgSorted[mrItem.matCode] || [];
+                 let remaining = mrItem.reqQty;
+                 const allocated = [];
+
+                 for (const rec of records) {
+                     if (remaining <= 0) break;
+                     const take = Math.min(remaining, rec.qty);
+                     // Show PKG NO only if single package covers the request; show qty if multiple needed
+                     allocated.push({ plNo: rec.plNo, take });
+                     remaining -= take;
+                 }
+
+                 let pkgDisplay;
+                 if (allocated.length === 0) {
+                     pkgDisplay = '-';
+                 } else if (allocated.length === 1) {
+                     pkgDisplay = allocated[0].plNo;
+                 } else {
+                     pkgDisplay = allocated.map(a => `${a.plNo}<br><span style="font-size:10px;color:#555;">(${a.take % 1 === 0 ? a.take : a.take.toFixed(2)})</span>`).join('<br>');
+                 }
+
                  let tr = `<tr>
                      <td style="border:1px solid #000; padding:8px;">${mrItem.iso}</td>
+                     <td style="border:1px solid #000; padding:8px; font-weight:600; color:#0d47a1; line-height:1.6;">${pkgDisplay}</td>
                      <td style="border:1px solid #000; padding:8px;">${mrItem.matCode}</td>
                      <td style="border:1px solid #000; padding:8px;">${mrItem.desc}</td>
                      <td style="border:1px solid #000; padding:8px;">${mrItem.size}</td>
@@ -1343,6 +1649,7 @@ function attachEventListeners() {
              alert("Material Issue Slip Printed and Stock updated successfully!");
              document.getElementById('printModal').style.display = 'none';
              db.mrTable = [];
+             sessionMrNo = null; // Reset session MR number after slip is issued
              renderMrTable();
              
              const filterBtn = document.getElementById('btnFilterIssue');
@@ -1406,7 +1713,7 @@ function attachEventListeners() {
             const saveToMaster = document.getElementById('newMatSaveToMaster').checked;
 
             if(!matCode || !category) {
-                alert('MatCode와 Category를 모두 입력해주세요.');
+                alert('Please enter both MatCode and Category.');
                 return;
             }
 
@@ -1443,6 +1750,12 @@ function attachEventListeners() {
             if (typeof window.updateDashboard === 'function') window.updateDashboard();
         });
     }
+
+    // MR History search button
+    const btnFilterMrHist = document.getElementById('btnFilterMrHist');
+    if (btnFilterMrHist) {
+        btnFilterMrHist.addEventListener('click', renderMrHistory);
+    }
 }
 
 // Function to render the MR Table
@@ -1450,6 +1763,17 @@ function renderMrTable() {
     let tbody = document.querySelector('#mrTableOutput tbody');
     if (!tbody) return;
     tbody.innerHTML = '';
+
+    // Show MR number and item count in the panel header
+    const mrHeader = document.querySelector('#mrTableOutput').closest('.panel')?.querySelector('h3');
+    if (mrHeader) {
+        if (sessionMrNo && db.mrTable.length > 0) {
+            mrHeader.innerHTML = `<i class="fas fa-clipboard-list"></i> Pending MR Table &nbsp;<span style="font-size:12px;font-weight:400;background:rgba(255,255,255,0.2);padding:2px 10px;border-radius:10px;letter-spacing:0.5px;">${sessionMrNo}</span> &nbsp;<span style="font-size:12px;font-weight:400;opacity:0.8;">${db.mrTable.length} item(s)</span>`;
+        } else {
+            mrHeader.innerHTML = `<i class="fas fa-clipboard-list"></i> Pending MR Table (For Issue Slip)`;
+        }
+    }
+
     if (db.mrTable.length === 0) {
         tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color: #888;">MR Table is empty.</td></tr>';
         return;
@@ -1466,20 +1790,206 @@ function renderMrTable() {
     });
 }
 
+// ==========================================
+// MR History & ISO Progress
+// ==========================================
+
+async function renderMrHistory() {
+    if (!supabaseClient) return;
+
+    const dateFrom = document.getElementById('mrHistDateFrom')?.value || '';
+    const dateTo   = document.getElementById('mrHistDateTo')?.value || '';
+    const isoSearch = (document.getElementById('mrHistIsoSearch')?.value || '').trim().toUpperCase();
+    const statusFilter = document.getElementById('mrHistStatus')?.value || 'All';
+
+    const histTbody = document.getElementById('mrHistTbody');
+    const progTbody = document.getElementById('isoMrProgressTbody');
+    if (histTbody) histTbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#888;padding:20px;">Loading...</td></tr>';
+    if (progTbody) progTbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#888;padding:20px;">Loading...</td></tr>';
+
+    // 1. Group db.issued by mrNo
+    const mrMap = {};
+    db.issued.forEach(i => {
+        const key = i.mrNo || '-';
+        if (key === '-') return;
+        if (!mrMap[key]) mrMap[key] = { mrNo: key, iso: i.iso || '-', date: i.issueDate || '-', items: [], totalQty: 0 };
+        mrMap[key].items.push(i);
+        mrMap[key].totalQty += (i.qty || 0);
+    });
+
+    let mrList = Object.values(mrMap).sort((a, b) => b.date.localeCompare(a.date));
+
+    // 2. Apply filters
+    if (dateFrom) mrList = mrList.filter(m => m.date >= dateFrom);
+    if (dateTo)   mrList = mrList.filter(m => m.date <= dateTo);
+    if (isoSearch) mrList = mrList.filter(m => m.iso.toUpperCase().includes(isoSearch));
+
+    // 3. Fetch BOM data for all unique ISOs that appear in issued records
+    const uniqueISOs = [...new Set(mrList.map(m => m.iso).filter(i => i !== '-'))];
+
+    const bomByIso = {};        // iso → { matCode → bomQty }
+    const issuedByIsoMat = {}; // `iso::matCode` → total issued qty (across ALL dates)
+
+    if (uniqueISOs.length > 0) {
+        // chunk large IN queries to avoid URL length limits
+        const chunkSize = 50;
+        for (let c = 0; c < uniqueISOs.length; c += chunkSize) {
+            const chunk = uniqueISOs.slice(c, c + chunkSize);
+            const { data: bomRows } = await supabaseClient
+                .from('bom')
+                .select('iso_dwg_no, mat_code, qty')
+                .in('iso_dwg_no', chunk);
+            if (bomRows) {
+                bomRows.forEach(b => {
+                    if (!bomByIso[b.iso_dwg_no]) bomByIso[b.iso_dwg_no] = {};
+                    bomByIso[b.iso_dwg_no][b.mat_code] = (bomByIso[b.iso_dwg_no][b.mat_code] || 0) + (parseFloat(b.qty) || 0);
+                });
+            }
+        }
+    }
+
+    // Build issued totals per iso+matCode (all time, not just filtered range)
+    db.issued.forEach(i => {
+        const key = `${i.iso}::${i.matCode}`;
+        issuedByIsoMat[key] = (issuedByIsoMat[key] || 0) + (i.qty || 0);
+    });
+
+    // 4. Determine PARTIAL / CLOSED status per ISO
+    function getIsoStatus(iso) {
+        const bom = bomByIso[iso];
+        if (!bom || Object.keys(bom).length === 0) return 'UNKNOWN';
+        for (const [mc, bomQty] of Object.entries(bom)) {
+            const issued = issuedByIsoMat[`${iso}::${mc}`] || 0;
+            if (issued < bomQty - 0.001) return 'PARTIAL';
+        }
+        return 'CLOSED';
+    }
+
+    // Apply status filter
+    if (statusFilter !== 'All') mrList = mrList.filter(m => getIsoStatus(m.iso) === statusFilter);
+
+    // 5. Render MR History table
+    if (histTbody) {
+        if (mrList.length === 0) {
+            histTbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#888;padding:20px;">No MR records found.</td></tr>';
+        } else {
+            histTbody.innerHTML = '';
+            mrList.forEach(mr => {
+                const status = getIsoStatus(mr.iso);
+                const sCls   = status === 'CLOSED' ? 'ok' : (status === 'PARTIAL' ? 'warn' : '');
+                const suppBtn = status === 'PARTIAL'
+                    ? `<button class="btn btn-primary btn-small" onclick="window.loadSupplementMR('${mr.iso.replace(/'/g,"\\'")}','${mr.mrNo}')"><i class="fas fa-plus-circle"></i> Supplement Issue</button>`
+                    : '<span style="color:#aaa;font-size:11px;">Closed</span>';
+                histTbody.innerHTML += `<tr>
+                    <td><strong style="color:var(--color-primary);">${mr.mrNo}</strong></td>
+                    <td style="font-size:12px;">${mr.iso}</td>
+                    <td>${mr.date}</td>
+                    <td style="text-align:center;">${mr.items.length}</td>
+                    <td style="text-align:right;">${mr.totalQty.toFixed(2)}</td>
+                    <td><span class="status-badge ${sCls}">${status}</span></td>
+                    <td>${suppBtn}</td>
+                </tr>`;
+            });
+        }
+    }
+
+    // 6. Render ISO-level progress table
+    if (progTbody) {
+        const isoRows = [];
+        uniqueISOs.forEach(iso => {
+            const bom = bomByIso[iso] || {};
+            const mcs = Object.keys(bom);
+            let totalBom = 0, totalIssued = 0;
+            mcs.forEach(mc => {
+                totalBom    += (bom[mc] || 0);
+                totalIssued += (issuedByIsoMat[`${iso}::${mc}`] || 0);
+            });
+            const remaining = Math.max(0, totalBom - totalIssued);
+            const progress  = totalBom > 0 ? Math.min(100, totalIssued / totalBom * 100) : 0;
+            const status    = progress >= 99.9 ? 'CLOSED' : 'PARTIAL';
+            // Latest MR for this ISO
+            const isoMrs = Object.values(mrMap).filter(m => m.iso === iso).sort((a, b) => b.date.localeCompare(a.date));
+            const latestMrNo = isoMrs.length > 0 ? isoMrs[0].mrNo : '-';
+            isoRows.push({ iso, bomItems: mcs.length, totalBom, totalIssued, remaining, progress, status, latestMrNo });
+        });
+
+        isoRows.sort((a, b) => a.progress - b.progress); // PARTIAL first
+
+        if (isoRows.length === 0) {
+            progTbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#888;">No data.</td></tr>';
+        } else {
+            progTbody.innerHTML = '';
+            isoRows.forEach(r => {
+                const sCls = r.status === 'CLOSED' ? 'ok' : 'warn';
+                const pct  = r.progress.toFixed(1);
+                const barColor = r.progress >= 100 ? '#2e7d32' : (r.progress >= 50 ? '#f57f17' : '#c62828');
+                const suppBtn = r.status === 'PARTIAL'
+                    ? `<button class="btn btn-primary btn-small" onclick="window.loadSupplementMR('${r.iso.replace(/'/g,"\\'")}','${r.latestMrNo}')"><i class="fas fa-plus-circle"></i> Supplement Issue</button>`
+                    : '<span style="color:#aaa;font-size:11px;">-</span>';
+                progTbody.innerHTML += `<tr>
+                    <td style="font-size:12px;">${r.iso}</td>
+                    <td style="text-align:center;">${r.bomItems}</td>
+                    <td style="font-weight:600;color:#0d47a1;text-align:right;">${r.totalBom.toFixed(2)}</td>
+                    <td style="font-weight:600;color:#2e7d32;text-align:right;">${r.totalIssued.toFixed(2)}</td>
+                    <td style="font-weight:600;color:${r.remaining > 0 ? '#c62828' : '#888'};text-align:right;">${r.remaining.toFixed(2)}</td>
+                    <td>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <div style="flex:1;background:#eee;height:8px;border-radius:4px;overflow:hidden;min-width:80px;">
+                                <div style="width:${pct}%;background:${barColor};height:100%;border-radius:4px;"></div>
+                            </div>
+                            <span style="font-size:11px;font-weight:600;min-width:38px;">${pct}%</span>
+                        </div>
+                    </td>
+                    <td><span class="status-badge ${sCls}">${r.status}</span></td>
+                    <td>${suppBtn}</td>
+                </tr>`;
+            });
+        }
+    }
+}
+
 /**
- * 대시보드에서 특정 도면의 상세 내역으로 이동하는 함수
+ * Supplement Issue: Auto-load remaining items for the ISO into Material Requisition tab
+ */
+window.loadSupplementMR = function(iso, baseMrNo) {
+    // Determine supplement suffix (S2, S3, ...)
+    const base = baseMrNo.split('-S')[0];
+    const existingSuffixes = db.issued
+        .map(i => i.mrNo)
+        .filter(n => n && n.startsWith(base + '-S'))
+        .map(n => { const p = n.split('-S'); return p.length > 1 ? (parseInt(p[p.length - 1]) || 1) : 1; });
+    const nextSuffix = existingSuffixes.length > 0 ? Math.max(...existingSuffixes) + 1 : 2;
+    sessionMrNo = `${base}-S${nextSuffix}`;
+
+    if (typeof showSection === 'function') showSection('issue');
+    setTimeout(() => {
+        const searchInput = document.getElementById('issueIsoSearch');
+        if (searchInput) searchInput.value = iso;
+        const catFilter = document.getElementById('issueCategoryFilter');
+        if (catFilter) catFilter.value = 'All';
+        document.getElementById('btnFilterIssue')?.click();
+
+        // Update MR table header to show supplement number
+        const mrHeader = document.querySelector('#mrTableOutput')?.closest('.panel')?.querySelector('h3');
+        if (mrHeader) {
+            mrHeader.innerHTML = `<i class="fas fa-clipboard-list"></i> Supplement MR &nbsp;<span style="font-size:12px;font-weight:400;background:rgba(255,152,0,0.25);padding:2px 10px;border-radius:10px;letter-spacing:0.5px;color:#e65100;">${sessionMrNo}</span>`;
+        }
+    }, 200);
+};
+
+/**
+ * Navigate from Dashboard to Material Requisition for a specific ISO drawing
  */
 window.showIsoDetail = function(isoDwgNo) {
     if (!isoDwgNo) return;
     if (typeof showSection === 'function') showSection('issue');
+    // Wait for section switch and renderIssueOptions() to complete before searching
     setTimeout(() => {
         const searchInput = document.getElementById('issueIsoSearch');
-        if (searchInput) {
-            searchInput.value = isoDwgNo;
-            searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-            searchInput.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-    }, 100);
-    
-    console.log("Jumping to ISO Detail:", isoDwgNo);
+        if (searchInput) searchInput.value = isoDwgNo;
+        // Reset category filter then search all
+        const catFilter = document.getElementById('issueCategoryFilter');
+        if (catFilter) catFilter.value = 'All';
+        document.getElementById('btnFilterIssue')?.click();
+    }, 150);
 };

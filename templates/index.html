@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EPC Piping Material Management System</title>
     <!-- CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260503e">
     <!-- FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Google Fonts: Inter -->
@@ -43,6 +43,7 @@
                  <div class="nav-item" data-target="receiving"><i class="fas fa-truck"></i> Material Receiving</div>
                  <div class="nav-item" data-target="issue"><i class="fas fa-file-signature"></i> Material Requisition</div>
                  <div class="nav-item" data-target="stock_ledger"><i class="fas fa-warehouse"></i> Material Stock</div>
+                 <div class="nav-item" data-target="mr_history"><i class="fas fa-history"></i> MR History</div>
              </div>
          </aside>
 
@@ -58,14 +59,14 @@
                         DOOSAN ENERBILITY · LLP INTEGRA CONSTRUCTION KZ · KAZAKHSTAN CCGT
                     </div>
                 </div>
-                 <div class="header-actions">
-                     <div class="search-bar" style="width: 250px;">
-                         <i class="fas fa-search"></i>
-                         <input type="text" placeholder="Search MatCode, ISO DWG...">
-                     </div>
-                     <button class="btn btn-outline btn-small"><i class="fas fa-upload"></i> Sync Data</button>
-                     <button class="btn btn-primary btn-small" id="btnResetData"><i class="fas fa-sync-alt"></i> Refresh</button>
-                 </div>
+                  <div class="header-actions">
+                      <div class="search-bar" style="width: 250px;">
+                          <i class="fas fa-search"></i>
+                          <input type="text" id="globalSearchInput" placeholder="Search MatCode, Tag No...">
+                      </div>
+                      <button class="btn btn-outline btn-small" id="btnSyncData"><i class="fas fa-upload"></i> Sync Data</button>
+                      <button class="btn btn-primary btn-small" id="btnResetData"><i class="fas fa-sync-alt"></i> Refresh</button>
+                  </div>
              </div>
 
             <!-- 1. Integrated Dashboard -->
@@ -93,7 +94,7 @@
                          <div class="kpi-info">
                              <div class="kpi-title">Total BOM Requirements</div>
                              <div class="kpi-value" id="kpi-bom">0 <span class="unit">EA</span></div>
-                             <div class="kpi-desc">Total materials in engineering design</div>
+                             <div class="kpi-desc" id="kpi-bom-sub">Total materials in engineering design</div>
                          </div>
                          <div class="kpi-icon">
                              <i class="fas fa-cubes"></i>
@@ -123,7 +124,7 @@
                          <div class="kpi-info">
                              <div class="kpi-title">Current Stock Available</div>
                              <div class="kpi-value" id="kpi-stock">0 <span class="unit">EA</span></div>
-                             <div class="kpi-desc">Ready for material issue check</div>
+                             <div class="kpi-desc" id="kpi-stock-sub">Ready for material issue check</div>
                          </div>
                          <div class="kpi-icon" style="background-color: rgba(0,80,158,0.1); color:#00509E;">
                              <i class="fas fa-boxes"></i>
@@ -131,28 +132,79 @@
                      </div>
                  </div>
 
-                 <!-- Expedite alert & Charts -->
-                 <div class="dashboard-content-grid">
-                     <!-- Chart -->
+                 <!-- Readiness & Charts -->
+                 <div class="dashboard-content-grid" style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 20px;">
+                     <!-- Chart 1: ISO Readiness (Donut) -->
                      <div class="panel chart-panel">
                          <div class="panel-header">
-                             <h2>Material Progress Chart</h2>
+                             <h2><i class="fas fa-tasks"></i> ISO Drawing Readiness</h2>
                          </div>
-                         <div class="chart-container">
-                             <canvas id="progressChart"></canvas>
+                         <div class="chart-container" style="min-height: 300px;">
+                             <canvas id="isoReadinessChart"></canvas>
                          </div>
                      </div>
 
-                     <!-- Alert Panel (Receiving <= 20%) -->
-                     <div class="panel warning-panel">
-                         <div class="panel-header alert-header">
-                             <h2><i class="fas fa-exclamation-triangle"></i> Expedite Alert ( <= 20% Received )</h2>
-                         </div>
-                         <ul class="warning-list" id="expediteList">
-                             <div class="empty-state-small">No data loaded or all items > 20%</div>
-                         </ul>
-                     </div>
+                     <!-- Chart 2: Material Progress (Bar) -->
+                     <div class="panel chart-panel">
+                          <div class="panel-header">
+                              <h2><i class="fas fa-chart-bar"></i> Material Progress by Category</h2>
+                          </div>
+                          <div class="chart-container" style="min-height: 300px;">
+                              <canvas id="progressChart"></canvas>
+                          </div>
+                      </div>
                  </div>
+
+                 <!-- High Priority ISO Table -->
+                 <div class="panel data-panel" style="margin-top: 20px;">
+                    <div class="panel-header" style="background:#e3f2fd; border-bottom:1px solid #bbdefb; display:flex; justify-content:space-between; align-items:center;">
+                        <h2 style="color:#0d47a1; margin:0;"><i class="fas fa-rocket"></i> High Priority ISOs (Ready to Work)</h2>
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <select id="dashSystemFilter" class="form-control" style="width:130px; height:32px; font-size:12px;">
+                                <option value="All">All Systems</option>
+                            </select>
+                            <select id="dashStageFilter" class="form-control" style="width:155px; height:32px; font-size:12px;">
+                                <option value="All">All Stages</option>
+                                <option value="ERECTION READY">Erection Ready</option>
+                                <option value="SPOOL READY">Spool Ready</option>
+                                <option value="SPOOL IN PROG">Spool In Prog</option>
+                                <option value="CRITICAL">Critical</option>
+                            </select>
+                            <select id="dashIsoSelect" class="form-control" style="width:230px; height:32px; font-size:12px;">
+                                <option value="All">All ISOs</option>
+                            </select>
+                            <button class="btn btn-primary btn-small" id="btnDashFilter" style="height:32px;"><i class="fas fa-search"></i> Search</button>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="data-table" id="priorityIsoTable">
+                            <thead>
+                                <tr>
+                                    <th>ISO Drawing No</th>
+                                    <th style="color:#1565c0;">Spool Ready</th>
+                                    <th style="color:#2e7d32;">Field Ready</th>
+                                    <th style="color:#0d47a1;">BOM Qty</th>
+                                    <th style="color:#2e7d32;">Rec Qty</th>
+                                    <th>Stage</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="priorityIsoTbody">
+                                <tr><td colspan="6" style="text-align:center;">Analyzing high priority drawings...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                 <!-- Expedite alert Panel (Full width row) -->
+                 <div class="panel warning-panel" style="margin-top: 20px;">
+                    <div class="panel-header alert-header">
+                        <h2><i class="fas fa-exclamation-triangle"></i> Expedite Alert ( <= 20% Received )</h2>
+                    </div>
+                    <ul class="warning-list" id="expediteList" style="max-height: 400px; display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 15px;">
+                        <div class="empty-state-small">No data loaded or all items > 20%</div>
+                    </ul>
+                </div>
             </section>
 
              <!-- 2. MatCode Master Tab -->
@@ -308,6 +360,10 @@
                               <label>PKG NO</label>
                               <select id="plPkgFilter" class="form-control" style="width: 100%;"><option value="All">All PKGs</option></select>
                           </div>
+                          <div class="form-group" style="flex: 1;">
+                              <label>Category</label>
+                              <select id="plCategoryFilter" class="form-control" style="width: 100%;"><option value="All">All Categories</option></select>
+                          </div>
                           <div class="form-group" style="flex: 0 0 160px;">
                               <button class="btn btn-primary" id="btnFilterPl" style="height: 38px; width: 160px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0;"><i class="fas fa-search"></i> Search PL</button>
                           </div>
@@ -402,6 +458,17 @@
                              <label>System</label>
                              <select id="issueSystemFilter" class="form-control" style="width: 100%;"><option>All</option></select>
                          </div>
+                         <div class="form-group" style="flex: 1;">
+                             <label>Category</label>
+                             <select id="issueCategoryFilter" class="form-control" style="width: 100%;">
+                                 <option value="All">All Categories</option>
+                                 <option value="Pipe">Pipe</option>
+                                 <option value="Fitting">Fitting</option>
+                                 <option value="Valve">Valve</option>
+                                 <option value="Speciality">Speciality</option>
+                                 <option value="Others">Others</option>
+                             </select>
+                         </div>
                          <div class="form-group" style="flex: 0 0 160px;">
                              <button class="btn btn-primary" id="btnFilterIssue" style="height: 38px; width: 160px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0;"><i class="fas fa-search"></i> Search BOM</button>
                          </div>
@@ -409,10 +476,17 @@
                  </div>
 
                  <div class="panel data-panel" style="margin-bottom: 20px;">
-                     <div class="panel-header" style="background:rgba(10,37,64,0.03); padding:10px 15px; margin-bottom:0; border-bottom:1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+                     <div class="panel-header" style="background:rgba(10,37,64,0.03); padding:10px 15px; margin-bottom:0; border-bottom:1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                          <h3 style="margin:0; font-size:14px; font-weight:600;"><i class="fas fa-search-plus"></i> ISO Material List</h3>
-                         <div style="flex: 0 0 160px;">
-                             <button class="btn btn-primary" id="btnAddToMr" style="height: 38px; width: 160px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0;"><i class="fas fa-plus-circle"></i> Add To MR</button>
+                         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                             <label style="display:flex; align-items:center; gap:5px; font-size:12px; font-weight:500; cursor:pointer; margin:0; padding:0 8px; height:32px; background:#fff3e0; border:1px solid #ffb74d; border-radius:4px; white-space:nowrap;">
+                                 <input type="checkbox" id="toggleHideNoStock" style="margin:0; width:13px; height:13px;">
+                                 Hide Zero-Stock Items
+                             </label>
+                             <button class="btn btn-outline btn-small" id="btnFillBomQty" title="Apply BOM Qty to All" style="height:32px; font-size:12px; white-space:nowrap;"><i class="fas fa-layer-group"></i> BOM Qty</button>
+                             <button class="btn btn-outline btn-small" id="btnFillStockQty" title="Apply Stock Qty to All" style="height:32px; font-size:12px; white-space:nowrap;"><i class="fas fa-boxes"></i> Stock Qty</button>
+                             <button class="btn btn-outline btn-small" id="btnClearQty" title="Clear All Qty" style="height:32px; font-size:12px; white-space:nowrap;"><i class="fas fa-eraser"></i> Clear</button>
+                             <button class="btn btn-primary" id="btnAddToMr" style="height:38px; min-width:140px; display:flex; align-items:center; justify-content:center; gap:8px; padding:0 16px;"><i class="fas fa-plus-circle"></i> Add To MR</button>
                          </div>
                      </div>
                      <div class="table-responsive">
@@ -420,6 +494,7 @@
                              <thead>
                                  <tr>
                                      <th>ISO Drawing</th>
+                                     <th>Category</th>
                                      <th>Mat Code</th>
                                      <th>Description</th>
                                      <th>Unit</th>
@@ -430,7 +505,7 @@
                                  </tr>
                              </thead>
                              <tbody>
-                                 <tr><td colspan="7" style="text-align:center;">Please search an ISO Drawing to load materials.</td></tr>
+                                 <tr><td colspan="9" style="text-align:center;">Enter an ISO Drawing and click Search BOM.</td></tr>
                              </tbody>
                          </table>
                      </div>
@@ -499,6 +574,98 @@
                  </div>
             </section>
 
+            <!-- 7. MR History -->
+            <section id="mr_history" class="view-section">
+                <div class="page-header">
+                    <div>
+                        <h1>MR History</h1>
+                        <p class="subtitle">MR Issuance History & ISO Completion Status (Supplement MR Management)</p>
+                    </div>
+                </div>
+
+                <!-- Filter Panel -->
+                <div class="panel filter-panel" style="margin-bottom:20px;">
+                    <div style="display:flex;align-items:flex-end;gap:15px;width:100%;flex-wrap:wrap;">
+                        <div class="form-group" style="flex:1;min-width:130px;">
+                            <label>Date From</label>
+                            <input type="date" id="mrHistDateFrom" class="form-control">
+                        </div>
+                        <div class="form-group" style="flex:1;min-width:130px;">
+                            <label>Date To</label>
+                            <input type="date" id="mrHistDateTo" class="form-control">
+                        </div>
+                        <div class="form-group" style="flex:3;min-width:200px;">
+                            <label>ISO Drawing</label>
+                            <input type="text" id="mrHistIsoSearch" class="form-control" placeholder="Search ISO Drawing...">
+                        </div>
+                        <div class="form-group" style="flex:1;min-width:130px;">
+                            <label>Status</label>
+                            <select id="mrHistStatus" class="form-control">
+                                <option value="All">All Status</option>
+                                <option value="PARTIAL">Partial (Supplement Required)</option>
+                                <option value="CLOSED">Closed (Complete)</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex:0 0 130px;">
+                            <button class="btn btn-primary" id="btnFilterMrHist" style="height:38px;width:130px;display:flex;align-items:center;justify-content:center;gap:8px;padding:0;">
+                                <i class="fas fa-search"></i> Search
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MR Issuance History -->
+                <div class="panel data-panel" style="margin-bottom:20px;">
+                    <div class="panel-header">
+                        <h3><i class="fas fa-history"></i> MR Issuance History</h3>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="data-table" id="mrHistTable">
+                            <thead>
+                                <tr>
+                                    <th>MR No</th>
+                                    <th>ISO Drawing</th>
+                                    <th>Issue Date</th>
+                                    <th style="text-align:center;">Items</th>
+                                    <th style="text-align:right;">Total Qty</th>
+                                    <th>Status</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mrHistTbody">
+                                <tr><td colspan="7" style="text-align:center;color:#888;padding:20px;">Click MR History in the sidebar to load data.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- MR Completion by ISO -->
+                <div class="panel data-panel">
+                    <div class="panel-header" style="background:#e8f5e9;border-bottom:1px solid #c8e6c9;">
+                        <h3 style="color:#2e7d32;margin:0;"><i class="fas fa-chart-bar"></i> MR Completion by ISO</h3>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="data-table" id="isoMrProgressTable">
+                            <thead>
+                                <tr>
+                                    <th>ISO Drawing</th>
+                                    <th style="text-align:center;">BOM Items</th>
+                                    <th style="color:#0d47a1;text-align:right;">Total BOM Qty</th>
+                                    <th style="color:#2e7d32;text-align:right;">Total Issued</th>
+                                    <th style="color:#c62828;text-align:right;">Remaining</th>
+                                    <th>Progress</th>
+                                    <th>Status</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="isoMrProgressTbody">
+                                <tr><td colspan="8" style="text-align:center;color:#888;padding:20px;">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
         </main>
     </div>
 
@@ -523,6 +690,7 @@
                     <thead>
                         <tr style="background-color:#f0f0f0;">
                             <th style="border:1px solid #000; padding:8px; font-size:12px;">ISO Drawing</th>
+                            <th style="border:1px solid #000; padding:8px; font-size:12px;">PKG NO</th>
                             <th style="border:1px solid #000; padding:8px; font-size:12px;">Mat Code</th>
                             <th style="border:1px solid #000; padding:8px; font-size:12px;">Description</th>
                             <th style="border:1px solid #000; padding:8px; font-size:12px;">Size</th>
@@ -605,6 +773,6 @@
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
     <!-- Preloaded backend data (Removed large data.js) -->
-    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260503e"></script>
 </body>
 </html>
