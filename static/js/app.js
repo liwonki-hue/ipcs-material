@@ -785,27 +785,35 @@ function renderStockTable() {
 }
 
 // --- 2. MatCode Master ---
-function renderMatCodeMaster() {
+function renderMatCodeMaster(filter) {
     let tbody = document.querySelector('#matCodeTable tbody');
-    tbody.innerHTML = '';
-    if(db.matCodeMaster.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8">No Master Data available.</td></tr>';
+    if (!tbody) return;
+    if (db.matCodeMaster.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#888;">No Master Data available.</td></tr>';
         return;
     }
-    db.matCodeMaster.forEach(m => {
-        let catBadge = {Pipe:'info', Fitting:'ok', Valve:'warn', Speciality:'warn', Other:'err'}[m.category] || 'ok';
-        let tr = `<tr>
+    const q = (filter || (document.getElementById('masterSearch')?.value) || '').toUpperCase();
+    const data = q
+        ? db.matCodeMaster.filter(m =>
+            m.matCode.includes(q) || m.itemDesc.toUpperCase().includes(q) ||
+            m.matlDesc.toUpperCase().includes(q) || m.category.toUpperCase().includes(q))
+        : db.matCodeMaster;
+
+    const BADGE = {Pipe:'info', Fitting:'ok', Valve:'warn', Speciality:'warn', Other:'err'};
+    // Build full HTML string first → single DOM write (prevents O(n²) freeze)
+    tbody.innerHTML = data.map(m => {
+        const cb = BADGE[m.category] || 'ok';
+        return `<tr>
             <td><strong><span class="status-badge ok">${m.matCode}</span></strong></td>
-            <td><span class="status-badge ${catBadge}">${m.category}</span></td>
-            <td>${m.itemDesc}</td>
-            <td>${m.matlDesc}</td>
-            <td>${m.size1}</td>
-            <td>${m.size2}</td>
-            <td>${m.classDesc}</td>
-            <td>${m.etDesc}</td>
+            <td><span class="status-badge ${cb}">${m.category}</span></td>
+            <td>${m.itemDesc}</td><td>${m.matlDesc}</td>
+            <td>${m.size1}</td><td>${m.size2}</td>
+            <td>${m.classDesc}</td><td>${m.etDesc}</td>
         </tr>`;
-        tbody.innerHTML += tr;
-    });
+    }).join('');
+
+    const info = document.getElementById('masterInfo');
+    if (info) info.textContent = `${data.length} / ${db.matCodeMaster.length} items`;
 }
 
 // --- 3. BOM & Receiving Paginations ---
