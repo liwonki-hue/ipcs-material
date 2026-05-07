@@ -785,22 +785,28 @@ function renderStockTable() {
 }
 
 // --- 2. MatCode Master ---
-function renderMatCodeMaster(filter) {
+function renderMatCodeMaster() {
     let tbody = document.querySelector('#matCodeTable tbody');
     if (!tbody) return;
     if (db.matCodeMaster.length === 0) {
         tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#888;">No Master Data available.</td></tr>';
         return;
     }
-    const q = (filter || (document.getElementById('masterSearch')?.value) || '').toUpperCase();
-    const data = q
-        ? db.matCodeMaster.filter(m =>
-            m.matCode.includes(q) || m.itemDesc.toUpperCase().includes(q) ||
-            m.matlDesc.toUpperCase().includes(q) || m.category.toUpperCase().includes(q))
-        : db.matCodeMaster;
+    const q    = (document.getElementById('masterSearch')?.value || '').toUpperCase();
+    const cat  = document.getElementById('masterCatFilter')?.value  || 'All';
+    const item = document.getElementById('masterItemFilter')?.value || 'All';
+    const size = document.getElementById('masterSizeFilter')?.value || 'All';
+
+    const data = db.matCodeMaster.filter(m => {
+        if (q && !m.matCode.includes(q) && !m.itemDesc.toUpperCase().includes(q) &&
+            !m.matlDesc.toUpperCase().includes(q) && !m.category.toUpperCase().includes(q)) return false;
+        if (cat  !== 'All' && m.category  !== cat)  return false;
+        if (item !== 'All' && m.itemDesc  !== item)  return false;
+        if (size !== 'All' && m.size1     !== size)  return false;
+        return true;
+    });
 
     const BADGE = {Pipe:'info', Fitting:'ok', Valve:'warn', Speciality:'warn', Other:'err'};
-    // Build full HTML string first → single DOM write (prevents O(n²) freeze)
     tbody.innerHTML = data.map(m => {
         const cb = BADGE[m.category] || 'ok';
         return `<tr>
@@ -840,6 +846,19 @@ function initFilterOptions() {
         bomIsoData.innerHTML = isos.map(i => `<option value="${i}">`).join('');
         if(bomItemF) bomItemF.innerHTML = '<option value="All">All Items</option>' + bomItems.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
         if(bomSizeF) bomSizeF.innerHTML = '<option value="All">All Sizes</option>' + bomSizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
+    }
+
+    // MatCode Master Filters
+    const mCat  = document.getElementById('masterCatFilter');
+    const mItem = document.getElementById('masterItemFilter');
+    const mSize = document.getElementById('masterSizeFilter');
+    if (mCat && db.matCodeMaster.length > 0) {
+        const cats  = [...new Set(db.matCodeMaster.map(m => m.category).filter(Boolean))].sort();
+        const items = [...new Set(db.matCodeMaster.map(m => m.itemDesc).filter(v => v && v !== '-'))].sort();
+        const sizes = [...new Set(db.matCodeMaster.map(m => m.size1).filter(v => v && v !== '-'))].sort((a,b) => parseFloat(a) - parseFloat(b));
+        mCat.innerHTML  = '<option value="All">All Categories</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
+        mItem.innerHTML = '<option value="All">All Items</option>'      + items.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
+        mSize.innerHTML = '<option value="All">All Sizes</option>'      + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
     }
 
     // PL Filters
@@ -1568,6 +1587,14 @@ function attachEventListeners() {
         btnFilterBom.addEventListener('click', () => {
             currentBomPage = 0;
             renderBomTable();
+        });
+    }
+
+    // MatCode Master Filter Button
+    const btnFilterMaster = document.getElementById('btnFilterMaster');
+    if(btnFilterMaster) {
+        btnFilterMaster.addEventListener('click', () => {
+            renderMatCodeMaster();
         });
     }
 

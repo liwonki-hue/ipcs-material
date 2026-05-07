@@ -308,11 +308,34 @@
                          <p class="subtitle">Reference rules for generating MatCodes.</p>
                      </div>
                  </div>
-                 <div class="panel filter-panel" style="margin-bottom:16px;">
-                     <div style="display:flex;align-items:center;gap:12px;">
-                         <input type="text" id="masterSearch" class="form-control" placeholder="Search MatCode, Item, Material, Category..." style="max-width:380px;"
-                             oninput="renderMatCodeMaster()">
-                         <span id="masterInfo" style="font-size:0.85rem;color:#666;"></span>
+                 <div class="panel filter-panel" style="margin-bottom:20px;">
+                     <div style="display:flex; align-items:flex-end; justify-content:space-between; width:100%;">
+                         <div style="display:flex; align-items:flex-end; gap:12px; flex:1;">
+                             <div class="form-group" style="flex:2;">
+                                 <label>MatCode Search</label>
+                                 <input type="text" id="masterSearch" class="form-control" style="width:100%;" placeholder="Type MatCode keyword...">
+                             </div>
+                             <div class="form-group" style="flex:1;">
+                                 <label>Category</label>
+                                 <select id="masterCatFilter" class="form-control" style="width:100%;"><option value="All">All Categories</option></select>
+                             </div>
+                             <div class="form-group" style="flex:1;">
+                                 <label>Item</label>
+                                 <select id="masterItemFilter" class="form-control" style="width:100%;"><option value="All">All Items</option></select>
+                             </div>
+                             <div class="form-group" style="flex:1;">
+                                 <label>Size</label>
+                                 <select id="masterSizeFilter" class="form-control" style="width:100%;"><option value="All">All Sizes</option></select>
+                             </div>
+                             <div style="padding-bottom:1px;">
+                                 <button class="btn btn-primary" id="btnFilterMaster" style="height:38px; white-space:nowrap; display:flex; align-items:center; gap:8px;">
+                                     <i class="fas fa-search"></i> Search
+                                 </button>
+                             </div>
+                         </div>
+                         <div style="padding-bottom:1px; margin-left:12px;">
+                             <span id="masterInfo" style="font-size:0.85rem; color:#666; white-space:nowrap;"></span>
+                         </div>
                      </div>
                  </div>
                  <div class="panel data-panel">
