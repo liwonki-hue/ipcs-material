@@ -57,8 +57,67 @@ window.getCategory = function(desc, matCode) {
     return 'Others';
 };
 
+window.extractItemFromDesc = function(desc) {
+    if (!desc) return '-';
+    // Check compound item names first (order matters — longer first)
+    const COMPOUND = [
+        'TEE-RED', 'REDUCER-CON', 'REDUCER-ECC',
+        'FLANGE-BLIND', 'FLANGE-SLIP', 'FLANGE-WELD', 'FLANGE-LAP',
+        'COUPLING-HALF', 'COUPLING-FULL',
+        'SWAGE-CON', 'SWAGE-ECC',
+        'ELBOW LR', 'ELBOW SR',
+        'NIPPLE', 'WELDOLET', 'SOCKOLET', 'THREADOLET',
+    ];
+    const upper = desc.toUpperCase().trim();
+    for (const c of COMPOUND) {
+        if (upper.startsWith(c)) return c;
+    }
+    // Skip leading dimension prefix (e.g., 3", 1/2", DN80, 2"x1")
+    const s = desc.replace(/^[\d"'\s\/\-×xX]+/, '').trim();
+    if (!s) return '-';
+    const m = s.match(/^([A-Za-z][A-Za-z\s]*?)(?:\s*[-\/,]|$)/);
+    const raw = m ? m[1].trim().toUpperCase() : s.split(/[\s\-\/,_]/)[0].toUpperCase();
+    // Normalize short item names to full names
+    const ITEM_MAP = {
+        'BALL': 'BALL VALVE', 'GATE': 'GATE VALVE',
+        'GLOBE': 'GLOBE VALVE', 'CHECK': 'CHECK VALVE',
+        'CHCK': 'CHECK VALVE', 'BUTTERFLY': 'BUTTERFLY VALVE',
+        'BTFY': 'BUTTERFLY VALVE',
+    };
+    return ITEM_MAP[raw] || raw;
+};
+
+window.extractItemFromMatCode = function(matCode) {
+    const prefix = (matCode || '').split('-')[0].toUpperCase();
+    const MAP = {
+        'PIS':'PIPE', 'PIW':'PIPE', 'PIN':'NIPPLE',
+        'EL9L':'ELBOW', 'EL4L':'ELBOW', 'ELS':'ELBOW',
+        'FLN':'FLANGE', 'FLB':'FLANGE', 'FLS':'FLANGE', 'FLO':'FLANGE', 'FLR':'FLANGE',
+        'TEE':'TEE', 'TER':'TEE-RED',
+        'RDC':'RED-CON', 'RDE':'RED-ECC',
+        'CAP':'CAP',
+        'CPH':'COUPLING', 'CPU':'COUPLING',
+        'SWC':'SWAGE', 'SWE':'SWAGE',
+        'WOL':'WELDOLET', 'SOL':'SOCKOLET', 'TOL':'THREADOLET',
+        'VLV':'VALVE', 'VBL':'BALL VALVE', 'VGA':'GATE VALVE', 'VGL':'GLOBE VALVE',
+        'VCH':'CHECK VALVE', 'CHV':'CHECK VALVE', 'VBF':'BUTTERFLY VALVE',
+        'GSKT':'GASKET', 'GSK':'GASKET',
+        'STD':'STUD', 'NUT':'NUT', 'BOL':'BOLT',
+        'UNI':'UNION', 'PLG':'PLUG', 'BUS':'BUSHING',
+        'INS':'INSTRUMENT', 'SPT':'SUPPORT',
+    };
+    return MAP[prefix] || '-';
+};
+
 window.extractSizeFromMatCode = function(matCode) {
     if (!matCode) return '-';
+    // Dual-size: D060D040 → "6\"×4\""
+    let dDual = matCode.match(/D(\d{3})D(\d{3})/i);
+    if (dDual) {
+        const v1 = parseInt(dDual[1], 10) / 10;
+        const v2 = parseInt(dDual[2], 10) / 10;
+        return v1 + '"×' + v2 + '"';
+    }
     let dnMatch = matCode.match(/DN(\d+)/i);
     if (dnMatch) {
         let val = parseInt(dnMatch[1], 10);
@@ -271,44 +330,94 @@ function getIsoStage(sp, fd) {
 }
 
 // Render ISO priority table — reusable for dropdown filter & donut chart click
+const ISO_PAGE_SIZE = 20;
+let isoCurrentPage = 1;
+let isoSortedData = [];
+
+function renderIsoPage(page) {
+    const tbody = document.getElementById('priorityIsoTbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    const start = (page - 1) * ISO_PAGE_SIZE;
+    const pageData = isoSortedData.slice(start, start + ISO_PAGE_SIZE);
+    if (pageData.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#888;padding:20px;">No ISOs found.</td></tr>`;
+    } else {
+        pageData.forEach(iso => {
+            const sp = parseFloat(iso.spool_score || 0);
+            const fd = parseFloat(iso.field_score || 0);
+            const stage = getIsoStage(sp, fd);
+            const spBar = `<div style="display:flex;align-items:center;gap:5px;">
+                <div style="width:55px;background:#eee;height:7px;border-radius:4px;overflow:hidden;">
+                    <div style="width:${Math.min(sp,100)}%;background:#1565c0;height:100%;"></div>
+                </div><span style="font-size:11px;font-weight:600;color:#1565c0;">${sp}%</span></div>`;
+            const fdBar = `<div style="display:flex;align-items:center;gap:5px;">
+                <div style="width:55px;background:#eee;height:7px;border-radius:4px;overflow:hidden;">
+                    <div style="width:${Math.min(fd,100)}%;background:#2e7d32;height:100%;"></div>
+                </div><span style="font-size:11px;font-weight:600;color:#2e7d32;">${fd}%</span></div>`;
+            tbody.innerHTML += `<tr style="cursor:pointer;" onclick="window.showIsoDetail('${iso.iso_dwg_no}')" title="${iso.iso_dwg_no}">
+                <td><strong style="color:#0A2540;text-decoration:underline dotted;">${iso.iso_dwg_no}</strong></td>
+                <td>${spBar}</td>
+                <td>${fdBar}</td>
+                <td style="font-weight:600;color:#0d47a1;">${parseFloat(iso.total_bom_qty||0).toLocaleString()}</td>
+                <td style="font-weight:600;color:#2e7d32;">${parseFloat(iso.total_rec_qty||0).toLocaleString()}</td>
+                <td><span class="status-badge ${stage.cls}" style="white-space:nowrap;">${stage.label}</span></td>
+                <td><button style="background:#0A2540;color:white;border:none;padding:5px 12px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;" onclick="event.stopPropagation();window.showIsoDetail('${iso.iso_dwg_no}')"><i class="fas fa-file-signature"></i> Issue MR</button></td>
+            </tr>`;
+        });
+    }
+    renderIsoPaginator(page);
+}
+
+function renderIsoPaginator(page) {
+    const paginator = document.getElementById('isoPaginator');
+    if (!paginator) return;
+    const totalPages = Math.ceil(isoSortedData.length / ISO_PAGE_SIZE);
+    if (totalPages <= 1) { paginator.innerHTML = ''; return; }
+
+    const btnStyle = (active) =>
+        `style="min-width:32px;height:30px;padding:0 8px;border:1px solid ${active ? '#0A2540' : '#ccc'};background:${active ? '#0A2540' : '#fff'};color:${active ? '#fff' : '#333'};border-radius:4px;cursor:${active ? 'default' : 'pointer'};font-size:12px;font-weight:600;"`;
+
+    let html = '';
+    html += `<button ${btnStyle(false)} ${page === 1 ? 'disabled' : ''} onclick="isoGoPage(${page - 1})">&#8249;</button>`;
+
+    const delta = 2;
+    let pages = new Set([1, totalPages]);
+    for (let i = Math.max(2, page - delta); i <= Math.min(totalPages - 1, page + delta); i++) pages.add(i);
+    const sorted = [...pages].sort((a, b) => a - b);
+
+    let prev = 0;
+    sorted.forEach(p => {
+        if (prev && p - prev > 1) html += `<span style="padding:0 4px;color:#999;">…</span>`;
+        const isActive = p === page;
+        html += `<button ${btnStyle(isActive)} ${isActive ? 'disabled' : ''} onclick="isoGoPage(${p})">${p}</button>`;
+        prev = p;
+    });
+
+    html += `<button ${btnStyle(false)} ${page === totalPages ? 'disabled' : ''} onclick="isoGoPage(${page + 1})">&#8250;</button>`;
+    html += `<span style="font-size:11px;color:#888;margin-left:6px;">${isoSortedData.length} ISOs / ${totalPages} pages</span>`;
+    paginator.innerHTML = html;
+}
+
+window.isoGoPage = function(page) {
+    isoCurrentPage = page;
+    renderIsoPage(page);
+    document.getElementById('priorityIsoTbody')?.closest('.panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
 function renderIsoTable(data, dashStage) {
     const stageOrder = { 'SPOOL READY': 0, 'SPOOL IN PROG': 1, 'ERECTION READY': 2, 'CRITICAL': 3 };
     const filteredData = dashStage === 'All'
         ? data
         : data.filter(iso => getIsoStage(parseFloat(iso.spool_score||0), parseFloat(iso.field_score||0)).label === dashStage);
-    const tbody = document.getElementById('priorityIsoTbody');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-    if (filteredData.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#888;padding:20px;">No ISOs found for stage: ${dashStage}</td></tr>`;
-    }
-    [...filteredData].sort((a, b) => {
+    isoSortedData = [...filteredData].sort((a, b) => {
         const sa = getIsoStage(parseFloat(a.spool_score||0), parseFloat(a.field_score||0));
         const sb = getIsoStage(parseFloat(b.spool_score||0), parseFloat(b.field_score||0));
         const od = (stageOrder[sa.label]??9) - (stageOrder[sb.label]??9);
         return od !== 0 ? od : parseFloat(b.spool_score||0) - parseFloat(a.spool_score||0);
-    }).slice(0, 50).forEach(iso => {
-        const sp = parseFloat(iso.spool_score || 0);
-        const fd = parseFloat(iso.field_score || 0);
-        const stage = getIsoStage(sp, fd);
-        const spBar = `<div style="display:flex;align-items:center;gap:5px;">
-            <div style="width:55px;background:#eee;height:7px;border-radius:4px;overflow:hidden;">
-                <div style="width:${sp}%;background:#1565c0;height:100%;"></div>
-            </div><span style="font-size:11px;font-weight:600;color:#1565c0;">${sp}%</span></div>`;
-        const fdBar = `<div style="display:flex;align-items:center;gap:5px;">
-            <div style="width:55px;background:#eee;height:7px;border-radius:4px;overflow:hidden;">
-                <div style="width:${fd}%;background:#2e7d32;height:100%;"></div>
-            </div><span style="font-size:11px;font-weight:600;color:#2e7d32;">${fd}%</span></div>`;
-        tbody.innerHTML += `<tr style="cursor:pointer;" onclick="window.showIsoDetail('${iso.iso_dwg_no}')" title="${iso.iso_dwg_no}">
-            <td><strong style="color:#0A2540;text-decoration:underline dotted;">${iso.iso_dwg_no}</strong></td>
-            <td>${spBar}</td>
-            <td>${fdBar}</td>
-            <td style="font-weight:600;color:#0d47a1;">${parseFloat(iso.total_bom_qty||0).toLocaleString()}</td>
-            <td style="font-weight:600;color:#2e7d32;">${parseFloat(iso.total_rec_qty||0).toLocaleString()}</td>
-            <td><span class="status-badge ${stage.cls}" style="white-space:nowrap;">${stage.label}</span></td>
-            <td><button style="background:#0A2540;color:white;border:none;padding:5px 12px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;" onclick="event.stopPropagation();window.showIsoDetail('${iso.iso_dwg_no}')"><i class="fas fa-file-signature"></i> Issue MR</button></td>
-        </tr>`;
     });
+    isoCurrentPage = 1;
+    renderIsoPage(1);
 }
 
 let myChart = null;
@@ -346,6 +455,7 @@ function updateDashboard() {
     const dashIso = dashIsoSelect?.value || 'All';
     const dashSys = dashSysSelect?.value || 'All';
     const dashStage = document.getElementById('dashStageFilter')?.value || 'All';
+    const dashIsoSearchVal = (document.getElementById('dashIsoSearch')?.value || '').trim().toUpperCase();
 
     // Fetch KPI summary and ISO stage data in parallel
     Promise.all([
@@ -354,6 +464,7 @@ function updateDashboard() {
             let q = supabaseClient.from('v_iso_stage_status').select('*');
             if (dashSys !== 'All') q = q.eq('system', dashSys);
             if (dashIso !== 'All') q = q.eq('iso_dwg_no', dashIso);
+            if (dashIsoSearchVal) q = q.ilike('iso_dwg_no', `%${dashIsoSearchVal}%`);
             return q;
         })()
     ]).then(([summaryRes, listRes]) => {
@@ -708,26 +819,38 @@ function initFilterOptions() {
     // BOM Filters
     const bomSys = document.getElementById('bomSystemFilter');
     const bomIsoData = document.getElementById('bomIsoDatalist');
+    const bomItemF = document.getElementById('bomItemFilter');
+    const bomSizeF = document.getElementById('bomSizeFilter');
 
     if(bomSys && bomIsoData) {
         const systems = [...new Set(db.bom.map(b => b.system).filter(Boolean))].sort();
         const isos = [...new Set(db.bomIsoList.map(r => r.iso))].sort();
+        const bomItems = [...new Set(db.bom.map(b => window.extractItemFromMatCode(b.matCode)).filter(v => v && v !== '-'))].sort();
+        const bomSizes = [...new Set(db.bom.map(b => window.extractSizeFromMatCode(b.matCode)).filter(v => v && v !== '-'))].sort((a,b) => parseFloat(a) - parseFloat(b));
 
         bomSys.innerHTML = '<option value="All">All Systems</option>' + systems.map(s => `<option value="${s}">${s}</option>`).join('');
         bomIsoData.innerHTML = isos.map(i => `<option value="${i}">`).join('');
+        if(bomItemF) bomItemF.innerHTML = '<option value="All">All Items</option>' + bomItems.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
+        if(bomSizeF) bomSizeF.innerHTML = '<option value="All">All Sizes</option>' + bomSizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
     }
 
     // PL Filters
     const plDoc = document.getElementById('plDocFilter');
     const plPkg = document.getElementById('plPkgFilter');
     const plCat = document.getElementById('plCategoryFilter');
+    const plItemF = document.getElementById('plItemFilter');
+    const plSizeF = document.getElementById('plSizeFilter');
     if(plDoc && plPkg) {
         const docs = [...new Set(db.receiving.map(r => r.docNo))].sort();
         const pkgs = [...new Set(db.receiving.map(r => r.plNo))].sort();
         const cats = [...new Set(db.receiving.map(r => r.category).filter(Boolean))].sort();
+        const items = [...new Set(db.receiving.map(r => window.extractItemFromMatCode(r.matCode)).filter(v => v && v !== '-'))].sort();
+        const sizes = [...new Set(db.receiving.map(r => window.extractSizeFromMatCode(r.matCode)).filter(v => v && v !== '-'))].sort();
         plDoc.innerHTML = '<option value="All">All DOCs</option>' + docs.map(d => `<option value="${d}">${d}</option>`).join('');
         plPkg.innerHTML = '<option value="All">All PKGs</option>' + pkgs.map(p => `<option value="${p}">${p}</option>`).join('');
         if(plCat) plCat.innerHTML = '<option value="All">All Categories</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
+        if(plItemF) plItemF.innerHTML = '<option value="All">All Items</option>' + items.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
+        if(plSizeF) plSizeF.innerHTML = '<option value="All">All Sizes</option>' + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
     }
 }
 
@@ -757,10 +880,13 @@ function renderTablePagination(total, current, pageSize, infoId, btnPrevId, btnN
 async function renderBomTable() {
     let tbody = document.querySelector('#bomTable tbody');
     if(!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
 
-    const iso = (document.getElementById('bomIsoSearch')?.value || '').trim();
-    const sys = document.getElementById('bomSystemFilter')?.value || 'All';
+    const iso  = (document.getElementById('bomIsoSearch')?.value || '').trim();
+    const sys  = document.getElementById('bomSystemFilter')?.value || 'All';
+    const cat  = document.getElementById('bomCategoryFilter')?.value || 'All';
+    const item = document.getElementById('bomItemFilter')?.value || 'All';
+    const size = document.getElementById('bomSizeFilter')?.value || 'All';
 
     // bom_detail: aggregated view summing same MatCode within an ISO
     let query = supabaseClient.from('bom_detail')
@@ -770,10 +896,23 @@ async function renderBomTable() {
 
     if (sys !== 'All') query = query.eq('system', sys);
     if (iso) query = query.ilike('iso_dwg_no', `%${iso}%`);
+    if (cat !== 'All') query = query.ilike('category', `%${cat}%`);
+    if (item !== 'All') query = query.ilike('full_description', `%${item}%`);
+    if (size !== 'All') {
+        const toD = v => 'D' + Math.round(parseFloat(v) * 10).toString().padStart(3, '0');
+        const dualMatch = size.match(/([\d.]+)"×([\d.]+)"/);
+        if (dualMatch) {
+            // "6\"×4\"" → D060D040
+            query = query.ilike('mat_code', `%${toD(dualMatch[1])}${toD(dualMatch[2])}%`);
+        } else {
+            const single = size.match(/([\d.]+)"/);
+            if (single) query = query.ilike('mat_code', `%-${toD(single[1])}-%`);
+        }
+    }
 
     const { data, count, error } = await query;
     if (error) {
-        tbody.innerHTML = `<tr><td colspan="8" style="color:red;text-align:center;">Error: ${error.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="10" style="color:red;text-align:center;">Error: ${error.message}</td></tr>`;
         return;
     }
 
@@ -786,13 +925,17 @@ async function renderBomTable() {
         
         let isAuto = (b.mat_code || '').includes('NEW-MAT');
         let badgeClass = isAuto ? 'warn' : 'ok';
-        let desc = b.full_description || '-';
+        let desc = (b.full_description || '-').replace(/_/g, '-');
+        const size = window.extractSizeFromMatCode(b.mat_code);
+        const item = window.extractItemFromDesc(desc);
         tbody.innerHTML += `<tr>
             <td>${b.system || '-'}</td>
             <td>${b.iso_dwg_no || '-'}</td>
             <td><strong>${displayCat}</strong></td>
             <td><span class="status-badge ${badgeClass}">${b.mat_code}</span></td>
             <td title="${desc}">${desc.length > 50 ? desc.substring(0,47)+'...' : desc}</td>
+            <td style="font-weight:600;">${item}</td>
+            <td style="font-weight:600;">${size}</td>
             <td>${b.uom || 'EA'}</td>
             <td>${parseFloat(b.qty || 0).toFixed(2)}</td>
             <td><button class="btn-small btn-outline-danger">Del</button></td>
@@ -815,19 +958,22 @@ function renderReceivingTable() {
     if(!tbody) return;
     tbody.innerHTML = '';
     
-    let search = (document.getElementById('plItemSearch')?.value || '').trim().toUpperCase();
-    let doc = document.getElementById('plDocFilter')?.value || 'All';
-    
-    let data = db.receiving;
-    if (doc !== 'All') data = data.filter(r => r.docNo === doc);
-    if (search) {
-        data = data.filter(r => 
-            r.matCode.includes(search) || 
-            r.plNo.includes(search) || 
-            r.category.toUpperCase().includes(search) || 
-            r.desc.toUpperCase().includes(search)
-        );
-    }
+    const search = (document.getElementById('plItemSearch')?.value || '').trim().toUpperCase();
+    const doc    = document.getElementById('plDocFilter')?.value  || 'All';
+    const pkg    = document.getElementById('plPkgFilter')?.value  || 'All';
+    const cat    = document.getElementById('plCategoryFilter')?.value || 'All';
+    const itemF  = document.getElementById('plItemFilter')?.value || 'All';
+    const sizeF  = document.getElementById('plSizeFilter')?.value || 'All';
+
+    let data = db.receiving.filter(r => {
+        const matchSearch = !search || r.matCode.toUpperCase().includes(search) || r.plNo.toUpperCase().includes(search) || (r.category||'').toUpperCase().includes(search) || r.desc.toUpperCase().includes(search);
+        const matchDoc  = doc  === 'All' || r.docNo    === doc;
+        const matchPkg  = pkg  === 'All' || r.plNo     === pkg;
+        const matchCat  = cat  === 'All' || r.category === cat;
+        const matchItemF = itemF === 'All' || window.extractItemFromMatCode(r.matCode)    === itemF;
+        const matchSizeF = sizeF === 'All' || window.extractSizeFromMatCode(r.matCode)   === sizeF;
+        return matchSearch && matchDoc && matchPkg && matchCat && matchItemF && matchSizeF;
+    });
     
     let slicedPl = data.slice(currentPlPage * PAGE_SIZE, (currentPlPage + 1) * PAGE_SIZE); 
     
@@ -843,17 +989,23 @@ function renderReceivingTable() {
         }
 
         let catBadge = {Pipe:'info', Fitting:'ok', Valve:'warn', Speciality:'warn', Other:'err'}[catForBadge] || 'ok';
-        let shortDesc = r.desc.length > 60 ? r.desc.substring(0, 57) + '...' : r.desc;
+        const descDisplay = (r.desc || '').replace(/_/g, '-');
+        let shortDesc = descDisplay.length > 60 ? descDisplay.substring(0, 57) + '...' : descDisplay;
 
+        const size = window.extractSizeFromMatCode(r.matCode);
+        const item = window.extractItemFromMatCode(r.matCode);
+        const safeCode = r.matCode.replace(/'/g, "\\'");
         let tr = `<tr>
             <td>${r.docNo}</td>
             <td>${r.plNo}</td>
             <td><span class="status-badge ok">${r.matCode}</span></td>
             <td><span class="status-badge ${catBadge}">${displayCat}</span></td>
-            <td title="${r.desc}">${shortDesc}</td>
+            <td title="${descDisplay}">${shortDesc}</td>
+            <td style="font-weight:600;">${item}</td>
+            <td style="font-weight:600;">${size}</td>
             <td>${r.unit || 'EA'}</td>
             <td>${r.qty.toFixed(2)}</td>
-            <td><button class="btn-small btn-outline">Detail</button></td>
+            <td><button class="btn-small btn-outline" onclick="window.showReceivingDetail('${safeCode}')">Detail</button></td>
         </tr>`;
         tbody.innerHTML += tr;
     });
@@ -1253,12 +1405,209 @@ function attachEventListeners() {
     const btnSync = document.getElementById('btnSyncData');
     if (btnSync) btnSync.addEventListener('click', syncFromSupabase);
 
+    // ── BOM Upload & Update ──────────────────────────────────────────
+    let bomUploadRows = [];
+
+    function cleanVal(v) {
+        if (v === null || v === undefined) return '';
+        const s = String(v).trim();
+        return (s === 'nan' || s === '-' || s === 'NaN') ? '' : s;
+    }
+
+    const btnUploadBom = document.getElementById('btnUploadBom');
+    const bomFileInput = document.getElementById('bomFileInput');
+    if (btnUploadBom) btnUploadBom.addEventListener('click', () => bomFileInput.click());
+
+    if (bomFileInput) {
+        bomFileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                try {
+                    const wb = XLSX.read(new Uint8Array(ev.target.result), { type: 'array' });
+                    const ws = wb.Sheets[wb.SheetNames[0]];
+                    const raw = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+                    // Flexible header mapping
+                    const COL = {
+                        system:   ['System Area','system','System','SYSTEM'],
+                        iso:      ['ISO Drawing','iso_dwg_no','ISO','iso'],
+                        category: ['Category','category','CATEGORY'],
+                        matCode:  ['Mat Code','mat_code','MatCode','MATCODE'],
+                        desc:     ['Description','full_description','DESCRIPTION','desc'],
+                        uom:      ['Unit','uom','UOM','unit'],
+                        qty:      ['Design Qty','qty','QTY','Qty','quantity'],
+                    };
+                    function getVal(row, keys) {
+                        for (const k of keys) if (k in row) return row[k];
+                        return '';
+                    }
+
+                    bomUploadRows = raw.map(r => ({
+                        system:           cleanVal(getVal(r, COL.system)),
+                        iso_dwg_no:       cleanVal(getVal(r, COL.iso)) || null,
+                        category:         cleanVal(getVal(r, COL.category)),
+                        mat_code:         cleanVal(getVal(r, COL.matCode)),
+                        full_description: cleanVal(getVal(r, COL.desc)),
+                        uom:              cleanVal(getVal(r, COL.uom)) || 'EA',
+                        qty:              parseFloat(getVal(r, COL.qty)) || 0,
+                    })).filter(r => r.mat_code);
+
+                    // Preview
+                    const tbody = document.getElementById('bomUploadPreviewTbody');
+                    tbody.innerHTML = '';
+                    bomUploadRows.slice(0, 50).forEach(r => {
+                        tbody.innerHTML += `<tr>
+                            <td>${r.system || '<span style="color:#e53935">—</span>'}</td>
+                            <td>${r.iso_dwg_no || '<span style="color:#e53935">—</span>'}</td>
+                            <td>${r.category}</td>
+                            <td><span class="status-badge ok">${r.mat_code}</span></td>
+                            <td title="${r.full_description}">${r.full_description.length > 45 ? r.full_description.substring(0,42)+'...' : r.full_description}</td>
+                            <td>${r.uom}</td>
+                            <td>${r.qty}</td>
+                        </tr>`;
+                    });
+
+                    const nanCount  = bomUploadRows.filter(r => !r.system).length;
+                    const noIsoCount = bomUploadRows.filter(r => !r.iso_dwg_no).length;
+                    const isoSet = new Set(bomUploadRows.map(r => r.iso_dwg_no).filter(Boolean));
+
+                    document.getElementById('bomUploadSummary').innerHTML = `
+                        <div style="display:flex; gap:20px; flex-wrap:wrap; margin-bottom:8px;">
+                            <div style="background:#e3f2fd; border-radius:8px; padding:10px 18px; text-align:center;">
+                                <div style="font-size:22px; font-weight:800; color:#0d47a1;">${bomUploadRows.length.toLocaleString()}</div>
+                                <div style="font-size:11px; color:#555;">Total Rows</div>
+                            </div>
+                            <div style="background:#e8f5e9; border-radius:8px; padding:10px 18px; text-align:center;">
+                                <div style="font-size:22px; font-weight:800; color:#2e7d32;">${isoSet.size.toLocaleString()}</div>
+                                <div style="font-size:11px; color:#555;">Unique ISOs</div>
+                            </div>
+                            ${nanCount ? `<div style="background:#fff3e0; border-radius:8px; padding:10px 18px; text-align:center;">
+                                <div style="font-size:22px; font-weight:800; color:#e65100;">${nanCount}</div>
+                                <div style="font-size:11px; color:#555;">System Empty</div>
+                            </div>` : ''}
+                            ${noIsoCount ? `<div style="background:#fff3e0; border-radius:8px; padding:10px 18px; text-align:center;">
+                                <div style="font-size:22px; font-weight:800; color:#e65100;">${noIsoCount}</div>
+                                <div style="font-size:11px; color:#555;">ISO Empty</div>
+                            </div>` : ''}
+                        </div>
+                        <div style="font-size:12px; color:#888;">※ Showing first 50 rows preview. All ${bomUploadRows.length} rows will be updated.</div>
+                        <div style="font-size:12px; color:#c62828; font-weight:600; margin-top:6px;">
+                            ⚠ Existing BOM rows for ISOs in this file will be deleted and replaced.
+                        </div>`;
+
+                    document.getElementById('bomUploadModal').style.display = 'flex';
+                } catch(err) {
+                    alert('Excel parse error: ' + err.message);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+            bomFileInput.value = '';
+        });
+    }
+
+    document.getElementById('btnCloseBomUpload')?.addEventListener('click',  () => { document.getElementById('bomUploadModal').style.display = 'none'; });
+    document.getElementById('btnCancelBomUpload')?.addEventListener('click', () => { document.getElementById('bomUploadModal').style.display = 'none'; });
+
+    document.getElementById('btnConfirmBomUpload')?.addEventListener('click', async () => {
+        if (!bomUploadRows.length) return;
+        const btn = document.getElementById('btnConfirmBomUpload');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+
+        try {
+            // Get unique ISOs from upload (delete those ISOs first)
+            const isoSet = [...new Set(bomUploadRows.map(r => r.iso_dwg_no).filter(Boolean))];
+
+            // Delete existing rows for these ISOs in chunks
+            const DEL_CHUNK = 50;
+            for (let i = 0; i < isoSet.length; i += DEL_CHUNK) {
+                const chunk = isoSet.slice(i, i + DEL_CHUNK);
+                const { error } = await supabaseClient.from('bom').delete().in('iso_dwg_no', chunk);
+                if (error) throw error;
+            }
+            // Also delete rows with null/no iso (if any in upload)
+            const hasNullIso = bomUploadRows.some(r => !r.iso_dwg_no);
+            if (hasNullIso) {
+                await supabaseClient.from('bom').delete().is('iso_dwg_no', null);
+            }
+
+            // Insert in batches of 300
+            const BATCH = 300;
+            for (let i = 0; i < bomUploadRows.length; i += BATCH) {
+                const { error } = await supabaseClient.from('bom').insert(bomUploadRows.slice(i, i + BATCH));
+                if (error) throw error;
+            }
+
+            document.getElementById('bomUploadModal').style.display = 'none';
+            alert(`✅ BOM updated successfully!\n${bomUploadRows.length} rows inserted across ${isoSet.length} ISOs.`);
+            currentBomPage = 0;
+            renderBomTable();
+        } catch(err) {
+            alert('❌ Upload failed: ' + err.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-check"></i> Confirm & Update BOM';
+            bomUploadRows = [];
+        }
+    });
+    // ── End BOM Upload ───────────────────────────────────────────────
+
     // BOM Filter Button
     const btnFilterBom = document.getElementById('btnFilterBom');
     if(btnFilterBom) {
         btnFilterBom.addEventListener('click', () => {
             currentBomPage = 0;
-            renderBomTable(); // Server-side filter query (filter values read inside renderBomTable)
+            renderBomTable();
+        });
+    }
+
+    // BOM Export Excel Button
+    const btnExportBom = document.getElementById('btnExportBom');
+    if (btnExportBom) {
+        btnExportBom.addEventListener('click', async () => {
+            btnExportBom.disabled = true;
+            btnExportBom.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exporting...';
+            try {
+                const iso = (document.getElementById('bomIsoSearch')?.value || '').trim();
+                const sys = document.getElementById('bomSystemFilter')?.value || 'All';
+                const cat = document.getElementById('bomCategoryFilter')?.value || 'All';
+
+                let query = supabaseClient.from('bom_detail')
+                    .select('system, iso_dwg_no, category, mat_code, full_description, uom, qty')
+                    .order('iso_dwg_no');
+                if (sys !== 'All') query = query.eq('system', sys);
+                if (iso) query = query.ilike('iso_dwg_no', `%${iso}%`);
+                if (cat !== 'All') query = query.ilike('category', `%${cat}%`);
+
+                const { data, error } = await query;
+                if (error) throw error;
+
+                const rows = (data || []).map(b => ({
+                    'System Area': b.system || '-',
+                    'ISO Drawing': b.iso_dwg_no || '-',
+                    'Category':    b.category || '-',
+                    'Mat Code':    b.mat_code || '-',
+                    'Description': b.full_description || '-',
+                    'Unit':        b.uom || 'EA',
+                    'Design Qty':  parseFloat(b.qty || 0)
+                }));
+
+                const ws = XLSX.utils.json_to_sheet(rows);
+                ws['!cols'] = [18,30,14,24,50,8,12].map(w => ({ wch: w }));
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'BOM');
+
+                const today = new Date().toISOString().split('T')[0];
+                const fileName = `BOM_Export_${today}${sys !== 'All' ? '_' + sys : ''}${cat !== 'All' ? '_' + cat : ''}.xlsx`;
+                XLSX.writeFile(wb, fileName);
+            } catch(e) {
+                alert('Export failed: ' + e.message);
+            } finally {
+                btnExportBom.disabled = false;
+                btnExportBom.innerHTML = '<i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export Excel';
+            }
         });
     }
 
@@ -1270,18 +1619,57 @@ function attachEventListeners() {
             const doc = document.getElementById('plDocFilter').value;
             const pkg = document.getElementById('plPkgFilter').value;
             const cat = document.getElementById('plCategoryFilter')?.value || 'All';
+            const itemF = document.getElementById('plItemFilter')?.value || 'All';
+            const sizeF = document.getElementById('plSizeFilter')?.value || 'All';
 
             filteredPlData = db.receiving.filter(r => {
                 const matchItem = !item || (r.desc.toUpperCase().includes(item));
                 const matchDoc = doc === 'All' || r.docNo === doc;
                 const matchPkg = pkg === 'All' || r.plNo === pkg;
                 const matchCat = cat === 'All' || r.category === cat;
-                return matchItem && matchDoc && matchPkg && matchCat;
+                const matchItemF = itemF === 'All' || window.extractItemFromMatCode(r.matCode) === itemF;
+                const matchSizeF = sizeF === 'All' || window.extractSizeFromMatCode(r.matCode) === sizeF;
+                return matchItem && matchDoc && matchPkg && matchCat && matchItemF && matchSizeF;
             });
             currentPlPage = 0;
             renderReceivingTable();
         });
     }
+
+    // Receiving Export Excel
+    const btnExportPl = document.getElementById('btnExportPl');
+    if (btnExportPl) {
+        btnExportPl.addEventListener('click', () => {
+            const item = (document.getElementById('plItemSearch')?.value || '').trim().toUpperCase();
+            const doc  = document.getElementById('plDocFilter')?.value || 'All';
+            const pkg  = document.getElementById('plPkgFilter')?.value || 'All';
+            const cat  = document.getElementById('plCategoryFilter')?.value || 'All';
+
+            let data = db.receiving;
+            if (doc  !== 'All') data = data.filter(r => r.docNo    === doc);
+            if (pkg  !== 'All') data = data.filter(r => r.plNo     === pkg);
+            if (cat  !== 'All') data = data.filter(r => r.category === cat);
+            if (item)           data = data.filter(r => r.desc.toUpperCase().includes(item));
+
+            const rows = data.map(r => ({
+                'DOC NO':           r.docNo    || '-',
+                'PKG NO':           r.plNo     || '-',
+                'Mat Code':         r.matCode  || '-',
+                'Category':         r.category || '-',
+                'Full Description': r.desc     || '-',
+                'Unit':             r.unit     || 'EA',
+                'Qty':              r.qty      || 0,
+            }));
+
+            const ws = XLSX.utils.json_to_sheet(rows);
+            ws['!cols'] = [16, 26, 24, 14, 55, 8, 10].map(w => ({ wch: w }));
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Receiving');
+            const today = new Date().toISOString().split('T')[0];
+            XLSX.writeFile(wb, `Receiving_Export_${today}.xlsx`);
+        });
+    }
+
     const sysSelect = document.getElementById('issueSystemFilter');
     if (sysSelect) {
         sysSelect.addEventListener('change', window.updateAreaDropdown);
@@ -1733,6 +2121,13 @@ function attachEventListeners() {
         });
     }
 
+    const dashIsoSearchInput = document.getElementById('dashIsoSearch');
+    if (dashIsoSearchInput) {
+        dashIsoSearchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') btnDashFilter?.click();
+        });
+    }
+
     // MR History search button
     const btnFilterMrHist = document.getElementById('btnFilterMrHist');
     if (btnFilterMrHist) {
@@ -1757,13 +2152,48 @@ function renderMrTable() {
     }
 
     if (db.mrTable.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color: #888;">MR Table is empty.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color: #888;">MR Table is empty.</td></tr>';
         return;
     }
+
+    // Build pkgRecords: matCode → sorted [{plNo, qty}]
+    const pkgRecords = {};
+    db.receiving.forEach(r => {
+        if (!r.matCode || r.plNo === '-') return;
+        if (!pkgRecords[r.matCode]) pkgRecords[r.matCode] = {};
+        pkgRecords[r.matCode][r.plNo] = (pkgRecords[r.matCode][r.plNo] || 0) + (r.qty || 0);
+    });
+    const pkgSorted = {};
+    Object.keys(pkgRecords).forEach(mat => {
+        pkgSorted[mat] = Object.entries(pkgRecords[mat])
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .map(([plNo, qty]) => ({ plNo, qty }));
+    });
+
     db.mrTable.forEach(m => {
+        const records = pkgSorted[m.matCode] || [];
+        let remaining = m.reqQty;
+        const allocated = [];
+        for (const rec of records) {
+            if (remaining <= 0) break;
+            allocated.push({ plNo: rec.plNo, take: Math.min(remaining, rec.qty) });
+            remaining -= allocated[allocated.length - 1].take;
+        }
+        let pkgDisplay;
+        if (allocated.length === 0) {
+            pkgDisplay = '<span style="color:#999;">-</span>';
+        } else if (allocated.length === 1) {
+            pkgDisplay = `<span style="font-weight:600;color:#0d47a1;">${allocated[0].plNo}</span>`;
+        } else {
+            pkgDisplay = allocated.map(a =>
+                `<span style="font-weight:600;color:#0d47a1;">${a.plNo}</span><span style="font-size:10px;color:#555;"> (${a.take % 1 === 0 ? a.take : a.take.toFixed(2)})</span>`
+            ).join('<br>');
+        }
+
         tbody.innerHTML += `<tr>
             <td><strong>${m.mrNo}</strong></td>
             <td>${m.iso}</td>
+            <td style="line-height:1.8;">${pkgDisplay}</td>
             <td><span class="status-badge ok">${m.matCode}</span></td>
             <td title="${m.desc}">${m.desc.substring(0,20)}...</td>
             <td>${m.size}</td><td>${m.unit}</td>
@@ -1974,4 +2404,81 @@ window.showIsoDetail = function(isoDwgNo) {
         if (catFilter) catFilter.value = 'All';
         document.getElementById('btnFilterIssue')?.click();
     }, 150);
+};
+
+// ── Receiving Detail Popup ────────────────────────────────────────
+window.showReceivingDetail = function(matCode) {
+    const modal = document.getElementById('receivingDetailModal');
+    if (!modal) return;
+
+    // All receiving records for this matCode
+    const recRecords = db.receiving.filter(r => r.matCode === matCode);
+    const totalRec   = recRecords.reduce((s, r) => s + r.qty, 0);
+
+    // BOM total qty for this matCode
+    const bomRecords = db.bom.filter(b => b.matCode === matCode);
+    const totalBom   = bomRecords.reduce((s, b) => s + (b.qty || 0), 0);
+
+    // Issued total qty
+    const totalIssued = db.issued
+        .filter(i => i.matCode === matCode)
+        .reduce((s, i) => s + (i.qty || 0), 0);
+
+    const stock = totalRec - totalIssued;
+    const sample = recRecords[0] || {};
+    const unit   = sample.unit || 'EA';
+    const size   = window.extractSizeFromMatCode(matCode);
+
+    // Summary cards
+    const cardStyle = (bg, color) =>
+        `background:${bg}; border-radius:8px; padding:12px 20px; text-align:center; min-width:110px;`;
+    document.getElementById('rdSummary').innerHTML = `
+        <div style="${cardStyle('#e3f2fd','#0d47a1')}">
+            <div style="font-size:22px;font-weight:800;color:#0d47a1;">${totalBom.toLocaleString()}</div>
+            <div style="font-size:11px;color:#555;">BOM Qty</div>
+        </div>
+        <div style="${cardStyle('#e8f5e9','#2e7d32')}">
+            <div style="font-size:22px;font-weight:800;color:#2e7d32;">${totalRec.toLocaleString()}</div>
+            <div style="font-size:11px;color:#555;">Total Received</div>
+        </div>
+        <div style="${cardStyle('#fff3e0','#e65100')}">
+            <div style="font-size:22px;font-weight:800;color:#e65100;">${totalIssued.toLocaleString()}</div>
+            <div style="font-size:11px;color:#555;">Total Issued</div>
+        </div>
+        <div style="${cardStyle(stock >= 0 ? '#f3e5f5' : '#ffebee', stock >= 0 ? '#6a1b9a' : '#c62828')}">
+            <div style="font-size:22px;font-weight:800;color:${stock >= 0 ? '#6a1b9a' : '#c62828'};">${stock.toLocaleString()}</div>
+            <div style="font-size:11px;color:#555;">Stock</div>
+        </div>`;
+
+    // Info row
+    document.getElementById('rdInfo').innerHTML = `
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+            <div><span style="color:#888;font-size:11px;">MAT CODE</span><br><strong>${matCode}</strong></div>
+            <div><span style="color:#888;font-size:11px;">DESCRIPTION</span><br><strong>${sample.desc || '-'}</strong></div>
+            <div><span style="color:#888;font-size:11px;">CATEGORY</span><br><strong>${sample.category || '-'}</strong></div>
+            <div><span style="color:#888;font-size:11px;">SIZE / UNIT</span><br><strong>${size} / ${unit}</strong></div>
+        </div>`;
+
+    // Records table
+    const tbody = document.getElementById('rdRecordsTbody');
+    tbody.innerHTML = '';
+    if (recRecords.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#888;">No receiving records.</td></tr>';
+    } else {
+        recRecords.forEach(r => {
+            tbody.innerHTML += `<tr>
+                <td>${r.docNo}</td>
+                <td style="font-weight:600;color:#0d47a1;">${r.plNo}</td>
+                <td style="font-weight:700;text-align:right;">${r.qty.toLocaleString()}</td>
+                <td>${r.unit || 'EA'}</td>
+            </tr>`;
+        });
+        tbody.innerHTML += `<tr style="background:#f0f4f8;font-weight:700;">
+            <td colspan="2" style="text-align:right;">Total</td>
+            <td style="text-align:right;color:#2e7d32;">${totalRec.toLocaleString()}</td>
+            <td>${unit}</td>
+        </tr>`;
+    }
+
+    modal.style.display = 'flex';
 };

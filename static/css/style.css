@@ -42,6 +42,34 @@ ul { list-style: none; }
 .nav-item:hover { background-color: #f1f5f9; color: var(--color-hover); }
 .nav-item.active { background-color: #f1f5f9; color: var(--color-primary); border-left-color: var(--color-primary); font-weight: 600; }
 
+/* Sidebar — How to Use Button */
+.sidebar-guide { border-top: 1px solid var(--border-color); flex-shrink: 0; }
+.sidebar-guide-toggle {
+    width: 100%; display: flex; align-items: center; gap: 8px;
+    padding: 13px 18px; background: #eef2f7; border: none; cursor: pointer;
+    font-size: 12px; font-weight: 700; color: #4a6278; text-transform: uppercase;
+    letter-spacing: 0.5px; transition: background 0.15s;
+}
+.sidebar-guide-toggle:hover { background: #dde6f0; color: #0A2540; }
+
+/* Guide Modal Cards */
+.guide-card {
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+    padding: 20px 22px 20px; display: flex; flex-direction: column; gap: 8px;
+    position: relative; margin-top: 8px;
+}
+.guide-card-num {
+    position: absolute; top: -12px; left: 18px;
+    width: 24px; height: 24px; border-radius: 50%;
+    background: #0A2540; color: #fff; font-size: 12px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+}
+.guide-card-icon { font-size: 20px; color: #1565c0; margin-top: 4px; }
+.guide-card-title { font-size: 15px; font-weight: 800; color: #0A2540; }
+.guide-card-body { font-size: 13.5px; color: #3d5166; line-height: 1.75; }
+.guide-card-body strong { color: #0A2540; }
+.guide-card-body ol li { margin-bottom: 2px; }
+
 /* Main Area */
 .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 
@@ -92,7 +120,7 @@ ul { list-style: none; }
 .kpi-card.highlight .kpi-icon { background-color: rgba(255,255,255,0.1); color: white; }
 
 /* Dashboard Grids & Panels */
-.dashboard-content-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+.dashboard-content-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .panel { background-color: var(--bg-panel); border-radius: 8px; box-shadow: var(--shadow-sm); border: 1px solid var(--border-color); padding: 20px; }
 .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid var(--border-color); }
 .panel-header h2, .panel-header h3 { font-size: 16px; color: var(--color-primary); font-weight: 600; display: flex; align-items: center; gap: 8px; }
@@ -114,6 +142,10 @@ ul { list-style: none; }
 .data-table th, .data-table td { padding: 10px 15px; text-align: left; border-bottom: 1px solid var(--border-color); font-size: 13px; }
 .data-table th { background-color: #f8f9fa; color: var(--text-secondary); font-weight: 600; font-size: 11px; text-transform: uppercase; }
 .data-table tbody tr:hover { background-color: rgba(10, 37, 64, 0.02); }
+
+/* BOM table center alignment */
+#bomTable th, #bomTable td { text-align: center; }
+#bomTable td:nth-child(4), #bomTable td:nth-child(5) { text-align: left; } /* Mat Code, Description */
 
 .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; display: inline-block; }
 .status-badge.ok { background-color: rgba(46, 125, 50, 0.1); color: var(--color-success); }
@@ -139,13 +171,31 @@ ul { list-style: none; }
 
 /* Print Styles */
 @media print {
+    @page { size: A4 portrait; margin: 10mm; }
+
+    /* Hide everything except the slip */
     body * { visibility: hidden; }
-    .modal-overlay { position: absolute; left: 0; top: 0; margin: 0; padding: 0; width: 100%; background: none;}
     #printArea, #printArea * { visibility: visible; }
-    #printArea { position: absolute; left: 0; top: 0; width: 100%; }
-    .modal-footer, .close-btn { display: none !important; }
-    table { border-collapse: collapse; width: 100%; margin-top: 15px;}
-    th, td { border: 1px solid #000 !important; padding: 8px !important; text-align: left; }
-    th { background-color: #f0f0f0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    h2 { font-size: 24px; text-align:center; margin-bottom:20px; }
+
+    /* Reset modal positioning — show printArea as the full page */
+    #printModal {
+        position: fixed !important;
+        inset: 0 !important;
+        background: none !important;
+        display: block !important;
+    }
+    #printArea {
+        position: fixed !important;
+        top: 0 !important; left: 0 !important;
+        width: 100% !important;
+        min-height: auto !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+    }
+
+    /* Table print styles */
+    #printArea table { border-collapse: collapse; width: 100%; }
+    #printArea th, #printArea td { border: 1px solid #000 !important; padding: 6px 5px !important; font-size: 10pt; }
+    #printArea thead tr { background: #0A2540 !important; color: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
