@@ -3,7 +3,7 @@ services:
     name: ipcs-material-service
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app
+    startCommand: gunicorn app:app --workers 2 --timeout 60 --keep-alive 5
     envVars:
       - key: PYTHON_VERSION
         value: 3.10.0
