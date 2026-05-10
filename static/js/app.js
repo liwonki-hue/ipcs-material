@@ -941,7 +941,8 @@ async function renderBomTable() {
             // MatCode prefix 기반 필터 (드롭박스 생성 기준과 동일)
             const prefixes = ITEM_PREFIX_MAP[item];
             if (prefixes && prefixes.length > 0) {
-                q = q.or(prefixes.map(p => `mat_code.ilike.${p}-%`).join(','));
+                // PostgREST or() 문자열은 % 대신 * 를 와일드카드로 사용
+                q = q.or(prefixes.map(p => `mat_code.ilike.${p}-*`).join(','));
             } else {
                 q = q.ilike('full_description', `%${item}%`);  // fallback
             }
