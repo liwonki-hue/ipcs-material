@@ -800,9 +800,9 @@ function renderMatCodeMaster() {
     const data = db.matCodeMaster.filter(m => {
         if (q && !m.matCode.includes(q) && !m.itemDesc.toUpperCase().includes(q) &&
             !m.matlDesc.toUpperCase().includes(q) && !m.category.toUpperCase().includes(q)) return false;
-        if (cat  !== 'All' && m.category  !== cat)  return false;
-        if (item !== 'All' && m.itemDesc  !== item)  return false;
-        if (size !== 'All' && m.size1     !== size)  return false;
+        if (cat  !== 'All' && m.category !== cat) return false;
+        if (item !== 'All' && window.extractItemFromMatCode(m.matCode) !== item) return false;
+        if (size !== 'All' && window.extractSizeFromMatCode(m.matCode) !== size) return false;
         return true;
     });
 
@@ -848,14 +848,14 @@ function initFilterOptions() {
         if(bomSizeF) bomSizeF.innerHTML = '<option value="All">All Sizes</option>' + bomSizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
     }
 
-    // MatCode Master Filters
+    // MatCode Master Filters (BOM/Receiving과 동일하게 MatCode 파싱 함수 사용)
     const mCat  = document.getElementById('masterCatFilter');
     const mItem = document.getElementById('masterItemFilter');
     const mSize = document.getElementById('masterSizeFilter');
     if (mCat && db.matCodeMaster.length > 0) {
         const cats  = [...new Set(db.matCodeMaster.map(m => m.category).filter(Boolean))].sort();
-        const items = [...new Set(db.matCodeMaster.map(m => m.itemDesc).filter(v => v && v !== '-'))].sort();
-        const sizes = [...new Set(db.matCodeMaster.map(m => m.size1).filter(v => v && v !== '-'))].sort((a,b) => parseFloat(a) - parseFloat(b));
+        const items = [...new Set(db.matCodeMaster.map(m => window.extractItemFromMatCode(m.matCode)).filter(v => v && v !== '-'))].sort();
+        const sizes = [...new Set(db.matCodeMaster.map(m => window.extractSizeFromMatCode(m.matCode)).filter(v => v && v !== '-'))].sort((a,b) => parseFloat(a) - parseFloat(b));
         mCat.innerHTML  = '<option value="All">All Categories</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
         mItem.innerHTML = '<option value="All">All Items</option>'      + items.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
         mSize.innerHTML = '<option value="All">All Sizes</option>'      + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
@@ -916,9 +916,10 @@ async function renderBomTable() {
     const size = document.getElementById('bomSizeFilter')?.value || 'All';
 
     // bom_detail: aggregated view summing same MatCode within an ISO
+    // PAGE_SIZE+1 fetch → hasMore 감지 (count=null 시에도 Next 동작)
     let query = supabaseClient.from('bom_detail')
         .select('mat_code, category, system, iso_dwg_no, full_description, uom, qty', { count: 'exact' })
-        .range(currentBomPage * PAGE_SIZE, (currentBomPage + 1) * PAGE_SIZE - 1)
+        .range(currentBomPage * PAGE_SIZE, (currentBomPage + 1) * PAGE_SIZE)
         .order('iso_dwg_no');
 
     if (sys !== 'All') query = query.eq('system', sys);
@@ -937,14 +938,23 @@ async function renderBomTable() {
         }
     }
 
-    const { data, count, error } = await query;
+    const { data: rawData, count, error } = await query;
     if (error) {
         tbody.innerHTML = `<tr><td colspan="10" style="color:red;text-align:center;">Error: ${error.message}</td></tr>`;
         return;
     }
 
+    const allFetched = rawData || [];
+    const hasMore = allFetched.length > PAGE_SIZE;
+    const data = allFetched.slice(0, PAGE_SIZE);
+
+    // count가 null이면(뷰 집계 한계) hasMore 기반으로 totalCount 추정
+    const totalCount = (count != null)
+        ? count
+        : (currentBomPage * PAGE_SIZE + data.length + (hasMore ? PAGE_SIZE : 0));
+
     tbody.innerHTML = '';
-    (data || []).forEach(b => {
+    data.forEach(b => {
         let displayCat = b.category;
         if (displayCat === 'BULK' || !displayCat) {
             displayCat = window.getCategory(b.full_description, b.mat_code);
@@ -970,7 +980,7 @@ async function renderBomTable() {
     });
 
     renderTablePagination(
-        count || 0,
+        totalCount,
         currentBomPage,
         PAGE_SIZE,
         'bomPaginationInfo',
