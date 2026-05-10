@@ -915,12 +915,37 @@ async function renderBomTable() {
     const item = document.getElementById('bomItemFilter')?.value || 'All';
     const size = document.getElementById('bomSizeFilter')?.value || 'All';
 
+    // Item명 → MatCode prefix 역매핑 (extractItemFromMatCode와 동일 기준)
+    const ITEM_PREFIX_MAP = {
+        'PIPE':['PIS','PIW'], 'NIPPLE':['PIN'],
+        'ELBOW':['EL9L','EL4L','ELS','ELB'],
+        'FLANGE':['FLN','FLB','FLS','FLO','FLR'],
+        'TEE':['TEE'], 'TEE-RED':['TER'],
+        'RED-CON':['RDC'], 'RED-ECC':['RDE'],
+        'CAP':['CAP'],
+        'COUPLING':['CPH','CPU'],
+        'SWAGE':['SWC','SWE'],
+        'WELDOLET':['WOL'], 'SOCKOLET':['SOL'], 'THREADOLET':['TOL'],
+        'VALVE':['VLV'], 'BALL VALVE':['VBL'], 'GATE VALVE':['VGA'],
+        'GLOBE VALVE':['VGL'], 'CHECK VALVE':['VCH','CHV'], 'BUTTERFLY VALVE':['VBF'],
+        'GASKET':['GSKT','GSK'], 'STUD':['STD'], 'NUT':['NUT'], 'BOLT':['BOL'],
+        'UNION':['UNI'], 'PLUG':['PLG'], 'BUSHING':['BUS'],
+    };
+
     // 필터를 두 쿼리(data + count)에 동일하게 적용하는 헬퍼
     const applyFilters = (q) => {
         if (sys  !== 'All') q = q.eq('system', sys);
         if (iso)            q = q.ilike('iso_dwg_no', `%${iso}%`);
         if (cat  !== 'All') q = q.ilike('category', `%${cat}%`);
-        if (item !== 'All') q = q.ilike('full_description', `%${item}%`);
+        if (item !== 'All') {
+            // MatCode prefix 기반 필터 (드롭박스 생성 기준과 동일)
+            const prefixes = ITEM_PREFIX_MAP[item];
+            if (prefixes && prefixes.length > 0) {
+                q = q.or(prefixes.map(p => `mat_code.ilike.${p}-%`).join(','));
+            } else {
+                q = q.ilike('full_description', `%${item}%`);  // fallback
+            }
+        }
         if (size !== 'All') {
             const toD = v => 'D' + Math.round(parseFloat(v) * 10).toString().padStart(3, '0');
             const dualMatch = size.match(/([\d.]+)"×([\d.]+)"/);
