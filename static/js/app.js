@@ -915,30 +915,38 @@ async function renderBomTable() {
     const item = document.getElementById('bomItemFilter')?.value || 'All';
     const size = document.getElementById('bomSizeFilter')?.value || 'All';
 
-    // bom_detail: aggregated view summing same MatCode within an ISO
-    // PAGE_SIZE+1 fetch → hasMore 감지 (count=null 시에도 Next 동작)
-    let query = supabaseClient.from('bom_detail')
-        .select('mat_code, category, system, iso_dwg_no, full_description, uom, qty', { count: 'exact' })
-        .range(currentBomPage * PAGE_SIZE, (currentBomPage + 1) * PAGE_SIZE)
-        .order('iso_dwg_no');
-
-    if (sys !== 'All') query = query.eq('system', sys);
-    if (iso) query = query.ilike('iso_dwg_no', `%${iso}%`);
-    if (cat !== 'All') query = query.ilike('category', `%${cat}%`);
-    if (item !== 'All') query = query.ilike('full_description', `%${item}%`);
-    if (size !== 'All') {
-        const toD = v => 'D' + Math.round(parseFloat(v) * 10).toString().padStart(3, '0');
-        const dualMatch = size.match(/([\d.]+)"×([\d.]+)"/);
-        if (dualMatch) {
-            // "6\"×4\"" → D060D040
-            query = query.ilike('mat_code', `%${toD(dualMatch[1])}${toD(dualMatch[2])}%`);
-        } else {
-            const single = size.match(/([\d.]+)"/);
-            if (single) query = query.ilike('mat_code', `%-${toD(single[1])}-%`);
+    // 필터를 두 쿼리(data + count)에 동일하게 적용하는 헬퍼
+    const applyFilters = (q) => {
+        if (sys  !== 'All') q = q.eq('system', sys);
+        if (iso)            q = q.ilike('iso_dwg_no', `%${iso}%`);
+        if (cat  !== 'All') q = q.ilike('category', `%${cat}%`);
+        if (item !== 'All') q = q.ilike('full_description', `%${item}%`);
+        if (size !== 'All') {
+            const toD = v => 'D' + Math.round(parseFloat(v) * 10).toString().padStart(3, '0');
+            const dualMatch = size.match(/([\d.]+)"×([\d.]+)"/);
+            if (dualMatch) {
+                q = q.ilike('mat_code', `%${toD(dualMatch[1])}${toD(dualMatch[2])}%`);
+            } else {
+                const single = size.match(/([\d.]+)"/);
+                if (single) q = q.ilike('mat_code', `%-${toD(single[1])}-%`);
+            }
         }
-    }
+        return q;
+    };
 
-    const { data: rawData, count, error } = await query;
+    // 데이터 쿼리 + COUNT 쿼리를 병렬 실행
+    const dataQ  = applyFilters(
+        supabaseClient.from('bom_detail')
+            .select('mat_code, category, system, iso_dwg_no, full_description, uom, qty')
+            .range(currentBomPage * PAGE_SIZE, (currentBomPage + 1) * PAGE_SIZE)  // +1 for hasMore
+            .order('iso_dwg_no')
+    );
+    const countQ = applyFilters(
+        supabaseClient.from('bom_detail')
+            .select('*', { count: 'exact', head: true })
+    );
+
+    const [{ data: rawData, error }, { count }] = await Promise.all([dataQ, countQ]);
     if (error) {
         tbody.innerHTML = `<tr><td colspan="10" style="color:red;text-align:center;">Error: ${error.message}</td></tr>`;
         return;
@@ -948,7 +956,7 @@ async function renderBomTable() {
     const hasMore = allFetched.length > PAGE_SIZE;
     const data = allFetched.slice(0, PAGE_SIZE);
 
-    // count가 null이면(뷰 집계 한계) hasMore 기반으로 totalCount 추정
+    // HEAD count 쿼리가 null이면 hasMore 기반 추정값 사용
     const totalCount = (count != null)
         ? count
         : (currentBomPage * PAGE_SIZE + data.length + (hasMore ? PAGE_SIZE : 0));
