@@ -972,7 +972,7 @@ async function renderBomTable() {
             .select('*', { count: 'exact', head: true })
     );
 
-    const [{ data: rawData, error }, { count, error: countError }] = await Promise.all([dataQ, countQ]);
+    const [{ data: rawData, error }, { count }] = await Promise.all([dataQ, countQ]);
     if (error) {
         tbody.innerHTML = `<tr><td colspan="10" style="color:red;text-align:center;">Error: ${error.message}</td></tr>`;
         return;
@@ -986,11 +986,6 @@ async function renderBomTable() {
     const totalCount = (count != null)
         ? count
         : (currentBomPage * PAGE_SIZE + data.length + (hasMore ? PAGE_SIZE : 0));
-
-    // DEBUG (임시) - F12 콘솔에서 확인
-    console.log('[BOM DEBUG] filters:', {sys, iso, cat, item, size});
-    console.log('[BOM DEBUG] fetched:', allFetched.length, '/ hasMore:', hasMore, '/ count(HEAD):', count, '/ countError:', countError?.message);
-    console.log('[BOM DEBUG] totalCount:', totalCount, '/ page:', currentBomPage);
 
     tbody.innerHTML = '';
     data.forEach(b => {
