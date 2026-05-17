@@ -43,6 +43,7 @@
                  <div class="nav-item" data-target="receiving"><i class="fas fa-truck"></i> Material Receiving</div>
                  <div class="nav-item" data-target="issue"><i class="fas fa-file-signature"></i> Material Requisition</div>
                  <div class="nav-item" data-target="stock_ledger"><i class="fas fa-warehouse"></i> Material Stock</div>
+                 <div class="nav-item" data-target="material_shortage"><i class="fas fa-exclamation-triangle"></i> Material Shortage</div>
                  <div class="nav-item" data-target="mr_history"><i class="fas fa-history"></i> MR History</div>
              </div>
 
@@ -748,7 +749,63 @@
                  </div>
             </section>
 
-            <!-- 7. MR History -->
+            <!-- 7. Material Shortage -->
+            <section id="material_shortage" class="view-section">
+                <div class="page-header">
+                    <div>
+                        <h1>Material Shortage</h1>
+                        <p class="subtitle">BOM 대비 미입고 자재 항목 및 부족 수량 현황.</p>
+                    </div>
+                </div>
+
+                <div class="panel filter-panel" style="margin-bottom: 20px;">
+                    <div style="display: flex; align-items: flex-end; gap: 12px;">
+                        <div class="form-group">
+                            <label>Category</label>
+                            <select id="shortCatFilter" class="form-control" style="width: 160px;">
+                                <option value="ALL">All Categories</option>
+                                <option value="Pipe">Pipe</option>
+                                <option value="Fitting">Fitting</option>
+                                <option value="Others">Others</option>
+                                <option value="Valve">Valve</option>
+                            </select>
+                        </div>
+                        <div style="padding-bottom: 1px;">
+                            <button class="btn btn-primary" onclick="renderShortageTable()" style="height: 38px; display: flex; align-items: center; gap: 8px;">
+                                <i class="fas fa-search"></i> Search
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel data-panel">
+                    <div class="panel-header">
+                        <h3><i class="fas fa-exclamation-triangle"></i> Shortage Items (BOM vs Received)</h3>
+                        <span id="shortageCount" style="font-size:13px;color:#666;"></span>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="data-table" id="shortageTable">
+                            <thead>
+                                <tr>
+                                    <th>MatCode</th>
+                                    <th>Category</th>
+                                    <th>Full Description</th>
+                                    <th>Item</th>
+                                    <th>Size (Inch)</th>
+                                    <th>Unit</th>
+                                    <th>BOM QTY</th>
+                                    <th>Receiving QTY</th>
+                                    <th>Shortage QTY</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 8. MR History -->
             <section id="mr_history" class="view-section">
                 <div class="page-header">
                     <div>

@@ -307,6 +307,7 @@ function initNavigation() {
         if(targetId === 'receiving') renderReceivingTable();
         if(targetId === 'matcode_master') renderMatCodeMaster();
         if(targetId === 'stock_ledger') renderStockTable();
+        if(targetId === 'material_shortage') renderShortageTable();
         if(targetId === 'mr_history') renderMrHistory();
     };
 
@@ -782,6 +783,82 @@ function renderStockTable() {
     if(activeCodes.length > 1000) {
         tbody.innerHTML += `<tr><td colspan="6" style="text-align:center; color:#666; font-style:italic;">Showing first 1,000 inventory items.</td></tr>`;
     }
+}
+
+// --- Material Shortage ---
+function renderShortageTable() {
+    const tbody = document.querySelector('#shortageTable tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    // Aggregate BOM qty per matCode (sum across all systems)
+    const bomMap = {};
+    db.bom.forEach(b => {
+        if (!b.matCode) return;
+        if (!bomMap[b.matCode]) bomMap[b.matCode] = { qty: 0, uom: b.uom };
+        bomMap[b.matCode].qty += b.qty;
+    });
+
+    // Aggregate Receiving qty per matCode
+    const recMap = {};
+    db.receiving.forEach(r => {
+        if (!r.matCode) return;
+        if (!recMap[r.matCode]) recMap[r.matCode] = { qty: 0, desc: r.desc, unit: r.unit };
+        recMap[r.matCode].qty += r.qty;
+    });
+
+    // masterMap for item / size / category lookup
+    const masterMap = {};
+    db.matCodeMaster.forEach(m => { masterMap[m.matCode] = m; });
+
+    const catFilter = (document.getElementById('shortCatFilter') || {}).value || 'ALL';
+
+    const shortageList = [];
+    Object.keys(bomMap).forEach(matCode => {
+        const bomQty = bomMap[matCode].qty;
+        const recQty = recMap[matCode] ? recMap[matCode].qty : 0;
+        const shortage = bomQty - recQty;
+        if (shortage <= 0.01) return;
+
+        const mData = masterMap[matCode] || {};
+        const cat = mData.category || window.getCategory(mData.itemDesc || '', matCode);
+        if (catFilter !== 'ALL' && cat !== catFilter) return;
+
+        const desc = (recMap[matCode] && recMap[matCode].desc !== '-') ? recMap[matCode].desc : (mData.itemDesc || '-');
+        const item = mData.itemDesc || '-';
+        const size = mData.size1 || window.extractSizeFromMatCode(matCode);
+        const unit = (recMap[matCode] ? recMap[matCode].unit : null) || bomMap[matCode].uom || 'EA';
+
+        shortageList.push({ matCode, cat, desc, item, size, unit, bomQty, recQty, shortage });
+    });
+
+    shortageList.sort((a, b) => {
+        if (a.cat < b.cat) return -1;
+        if (a.cat > b.cat) return 1;
+        return a.matCode.localeCompare(b.matCode);
+    });
+
+    const countEl = document.getElementById('shortageCount');
+    if (countEl) countEl.textContent = shortageList.length > 0 ? `${shortageList.length}개 항목` : '';
+
+    if (shortageList.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#666;padding:20px;">No shortage items found.</td></tr>';
+        return;
+    }
+
+    shortageList.forEach(({ matCode, cat, desc, item, size, unit, bomQty, recQty, shortage }) => {
+        tbody.innerHTML += `<tr>
+            <td style="font-weight:600;color:var(--color-primary);">${matCode}</td>
+            <td><strong>${cat}</strong></td>
+            <td>${desc}</td>
+            <td>${item}</td>
+            <td>${size}</td>
+            <td>${unit}</td>
+            <td>${bomQty.toFixed(2)}</td>
+            <td>${recQty.toFixed(2)}</td>
+            <td style="font-weight:700;color:#d32f2f;">${shortage.toFixed(2)}</td>
+        </tr>`;
+    });
 }
 
 // --- 2. MatCode Master ---
