@@ -18,6 +18,7 @@ let db = {
     matCodeMaster: [],
     bom: [],        // bom_agg: aggregated by matCode+category+system
     bomIsoList: [], // bom_iso_list: distinct system+iso_dwg_no pairs for dropdowns
+    bomDesc: {},    // bom_desc view: matCode → full_description (BOM 설계 원문)
     receiving: [],
     mrTable: [],
     issued: []
@@ -177,12 +178,13 @@ async function syncFromSupabase() {
         // bom_agg: aggregated view (~thousands of rows, 1 API call)
         // bom_iso_list: distinct ISO list (~hundreds of rows, 1 API call)
         // Replaced fetchAllRows('bom') which caused 73,397 rows / 74 API calls
-        const [matMasterRaw, bomRaw, bomIsoRaw, recvRaw, issuedRaw] = await Promise.all([
+        const [matMasterRaw, bomRaw, bomIsoRaw, recvRaw, issuedRaw, bomDescRaw] = await Promise.all([
             fetchAllRows('matcode_master'),
             supabaseClient.from('bom_agg').select('*').then(r => r.data || []),
             supabaseClient.from('bom_iso_list').select('*').then(r => r.data || []),
             fetchAllRows('receiving'),
-            fetchAllRows('issued')
+            fetchAllRows('issued'),
+            supabaseClient.from('bom_desc').select('mat_code,full_description').then(r => r.data || [])
         ]);
 
         console.log("📊 Sync Results (Full):", {
@@ -213,6 +215,11 @@ async function syncFromSupabase() {
                 qty: parseFloat(b.total_qty || b.qty) || 0
             })).filter(b => b.qty > 0 && b.matCode);
         }
+        bomDescRaw.forEach(b => {
+            if (b.mat_code && b.full_description) {
+                db.bomDesc[b.mat_code.trim().toUpperCase()] = b.full_description;
+            }
+        });
         db.bomIsoList = bomIsoRaw.map(r => ({
             system: r.system || '-',
             iso: r.iso || '-'
@@ -824,7 +831,7 @@ function renderShortageTable() {
         const cat = mData.category || window.getCategory(mData.itemDesc || '', matCode);
         if (catFilter !== 'ALL' && cat !== catFilter) return;
 
-        const desc = (recMap[matCode] && recMap[matCode].desc !== '-') ? recMap[matCode].desc : (mData.itemDesc || '-');
+        const desc = db.bomDesc[matCode] || (recMap[matCode] && recMap[matCode].desc !== '-' ? recMap[matCode].desc : null) || mData.itemDesc || '-';
         const item = mData.itemDesc || '-';
         const size = mData.size1 || window.extractSizeFromMatCode(matCode);
         const unit = (recMap[matCode] ? recMap[matCode].unit : null) || bomMap[matCode].uom || 'EA';
