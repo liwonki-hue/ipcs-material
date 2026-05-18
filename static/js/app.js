@@ -30,6 +30,43 @@ let sessionMrNo = null;
 // Cached ISO stage data for client-side re-filtering (donut chart clicks)
 let cachedIsoData = [];
 
+// Material Shortage 탭 자동 갱신 타이머
+let shortageRefreshTimer = null;
+const SHORTAGE_REFRESH_INTERVAL_MS = 60 * 1000; // 60초
+
+async function syncShortageData() {
+    if (!supabaseClient) return;
+    try {
+        const [bomRaw, recvRaw] = await Promise.all([
+            supabaseClient.from('bom_agg').select('*').then(r => r.data || []),
+            fetchAllRows('receiving')
+        ]);
+        if (bomRaw.length > 0) {
+            db.bom = bomRaw.map(b => ({
+                matCode: (b.mat_code || '').trim().toUpperCase(),
+                category: b.category || '-',
+                system: b.system, tag: b.tag || '-',
+                uom: b.uom || 'EA',
+                qty: parseFloat(b.total_qty || b.qty) || 0
+            })).filter(b => b.qty > 0 && b.matCode);
+        }
+        if (recvRaw.length > 0) {
+            db.receiving = recvRaw.map(r => ({
+                matCode: (r.mat_code || '').trim().toUpperCase(),
+                category: r.category || '-',
+                docNo: r.doc_no || '-',
+                plNo: r.pkg_no || '-',
+                desc: r.full_description || '-',
+                unit: r.unit || 'EA',
+                qty: parseFloat(r.qty) || 0
+            })).filter(r => r.qty > 0 && r.matCode);
+        }
+        renderShortageTable();
+    } catch (e) {
+        console.error('syncShortageData error:', e);
+    }
+}
+
 // --- Helper Functions (Globally Available) ---
 window.getCategory = function(desc, matCode) {
     if (!desc && !matCode) return 'Others';
@@ -314,8 +351,20 @@ function initNavigation() {
         if(targetId === 'receiving') renderReceivingTable();
         if(targetId === 'matcode_master') renderMatCodeMaster();
         if(targetId === 'stock_ledger') renderStockTable();
-        if(targetId === 'material_shortage') renderShortageTable();
         if(targetId === 'mr_history') renderMrHistory();
+
+        // Material Shortage 탭: 진입 시 즉시 싱크 + 폴링 시작, 이탈 시 정리
+        if (targetId === 'material_shortage') {
+            syncShortageData();
+            if (!shortageRefreshTimer) {
+                shortageRefreshTimer = setInterval(syncShortageData, SHORTAGE_REFRESH_INTERVAL_MS);
+            }
+        } else {
+            if (shortageRefreshTimer) {
+                clearInterval(shortageRefreshTimer);
+                shortageRefreshTimer = null;
+            }
+        }
     };
 
     navItems.forEach(item => {
@@ -993,11 +1042,12 @@ async function renderBomTable() {
     if(!tbody) return;
     tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
 
-    const iso  = (document.getElementById('bomIsoSearch')?.value || '').trim();
-    const sys  = document.getElementById('bomSystemFilter')?.value || 'All';
-    const cat  = document.getElementById('bomCategoryFilter')?.value || 'All';
-    const item = document.getElementById('bomItemFilter')?.value || 'All';
-    const size = document.getElementById('bomSizeFilter')?.value || 'All';
+    const iso     = (document.getElementById('bomIsoSearch')?.value || '').trim();
+    const sys     = document.getElementById('bomSystemFilter')?.value || 'All';
+    const cat     = document.getElementById('bomCategoryFilter')?.value || 'All';
+    const item    = document.getElementById('bomItemFilter')?.value || 'All';
+    const size    = document.getElementById('bomSizeFilter')?.value || 'All';
+    const matCode = (document.getElementById('bomMatCodeSearch')?.value || '').trim();
 
     // Item명 → MatCode prefix 역매핑 (extractItemFromMatCode와 동일 기준)
     const ITEM_PREFIX_MAP = {
@@ -1041,6 +1091,7 @@ async function renderBomTable() {
                 if (single) q = q.ilike('mat_code', `%-${toD(single[1])}-%`);
             }
         }
+        if (matCode) q = q.ilike('mat_code', `%${matCode}%`);
         return q;
     };
 
@@ -1713,6 +1764,34 @@ function attachEventListeners() {
     const btnFilterBom = document.getElementById('btnFilterBom');
     if(btnFilterBom) {
         btnFilterBom.addEventListener('click', () => {
+            currentBomPage = 0;
+            renderBomTable();
+        });
+    }
+
+    // BOM Mat Code Search - Enter key
+    const bomMatCodeSearch = document.getElementById('bomMatCodeSearch');
+    if (bomMatCodeSearch) {
+        bomMatCodeSearch.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { currentBomPage = 0; renderBomTable(); }
+        });
+    }
+
+    // BOM Clear Filters Button
+    const btnClearBomFilters = document.getElementById('btnClearBomFilters');
+    if (btnClearBomFilters) {
+        btnClearBomFilters.addEventListener('click', () => {
+            const bomIsoSearch = document.getElementById('bomIsoSearch');
+            if (bomIsoSearch) bomIsoSearch.value = '';
+            const bomSystemFilter = document.getElementById('bomSystemFilter');
+            if (bomSystemFilter) bomSystemFilter.value = 'All';
+            const bomCategoryFilter = document.getElementById('bomCategoryFilter');
+            if (bomCategoryFilter) bomCategoryFilter.value = 'All';
+            const bomItemFilter = document.getElementById('bomItemFilter');
+            if (bomItemFilter) bomItemFilter.value = 'All';
+            const bomSizeFilter = document.getElementById('bomSizeFilter');
+            if (bomSizeFilter) bomSizeFilter.value = 'All';
+            if (bomMatCodeSearch) bomMatCodeSearch.value = '';
             currentBomPage = 0;
             renderBomTable();
         });
