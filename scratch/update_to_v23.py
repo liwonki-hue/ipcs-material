@@ -60,6 +60,7 @@ PIPE_KEYWORDS = {'PIPE SEAMLESS','PIPE WELDED','PIPE WELDED/SEAMLESS','PIPE SMLS
 SMALL_BORE_DN = {15, 20, 25, 32, 40, 50}
 MATL_ALIASES  = {
     'A182-F316H': 'A182-F316',  # H suffix = High Temp, 동일 자재
+    'A312-TP316H': 'A312-TP316',
     'A234-WPC':   'A234-WPB',   # WPC ≡ WPB (carbon steel 동급)
 }
 
