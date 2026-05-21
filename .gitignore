@@ -18,3 +18,9 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# Generated large data files (already executed in Supabase)
+scratch/02_bom_insert_*.sql
+scratch/matcode_master_dump.json
+scratch/verify_bom_260420_result.txt
+processed_data.json

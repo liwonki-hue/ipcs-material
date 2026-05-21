@@ -1,0 +1,17 @@
+=== 미매핑 아이템 리포트 (matcode=NULL) ===
+
+--- Piping&Fitting 미매핑 ---
+     20건: [NO_MATL_CODE] ELBOW LR 90D|A182-F92
+      8건: [NO_ITEM_CODE] TRANSITION PIECE
+      8건: [NO_ITEM_CODE] ELBOW 30D
+      8건: [NO_MATL_CODE] COUPLING-FULL|A182-F92
+      8건: [NO_MATL_CODE] SWAGE-CON|
+      4건: [NO_MATL_CODE] ELBOW 45D|A182-F92
+      2건: [NO_ITEM_CODE] ELBOW LR 72D
+      2건: [NO_ITEM_CODE] NOZZLE, A182-F22 CL.3,
+      1건: [NO_MATL_CODE] CAP|
+      1건: [NO_ITEM_CODE] ELBOW SR 55D
+      1건: [NO_ITEM_CODE] ELBOW LR 55D
+
+총 NULL matcode: 65건 / 45763건
+matcode 할당 성공: 45698건 (99%)
