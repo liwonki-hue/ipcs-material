@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EPC Piping Material Management System</title>
     <!-- CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260527p">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260527q">
     <!-- FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Google Fonts: Inter -->
@@ -971,19 +971,43 @@
                     </div>
                     <div class="panel" style="padding:16px;text-align:center;">
                         <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">On-Site</div>
-                        <div style="font-size:28px;font-weight:700;color:#2e7d32;" id="sc_onsite">—</div>
+                        <div style="display:flex;align-items:baseline;justify-content:center;gap:6px;margin:4px 0 2px;">
+                            <span style="font-size:28px;font-weight:700;color:#2e7d32;" id="sc_onsite_pl">—</span>
+                            <span style="font-size:13px;color:#888;">PL</span>
+                            <span style="font-size:18px;color:#ccc;">/</span>
+                            <span style="font-size:28px;font-weight:700;color:#2e7d32;" id="sc_onsite">—</span>
+                            <span style="font-size:13px;color:#888;">PKG</span>
+                        </div>
                     </div>
                     <div class="panel" style="padding:16px;text-align:center;">
                         <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Custom Cleared</div>
-                        <div style="font-size:28px;font-weight:700;color:#1565c0;" id="sc_cleared">—</div>
+                        <div style="display:flex;align-items:baseline;justify-content:center;gap:6px;margin:4px 0 2px;">
+                            <span style="font-size:28px;font-weight:700;color:#1565c0;" id="sc_cleared_pl">—</span>
+                            <span style="font-size:13px;color:#888;">PL</span>
+                            <span style="font-size:18px;color:#ccc;">/</span>
+                            <span style="font-size:28px;font-weight:700;color:#1565c0;" id="sc_cleared">—</span>
+                            <span style="font-size:13px;color:#888;">PKG</span>
+                        </div>
                     </div>
                     <div class="panel" style="padding:16px;text-align:center;">
                         <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Issued</div>
-                        <div style="font-size:28px;font-weight:700;color:#6a1b9a;" id="sc_issued">—</div>
+                        <div style="display:flex;align-items:baseline;justify-content:center;gap:6px;margin:4px 0 2px;">
+                            <span style="font-size:28px;font-weight:700;color:#6a1b9a;" id="sc_issued_pl">—</span>
+                            <span style="font-size:13px;color:#888;">PL</span>
+                            <span style="font-size:18px;color:#ccc;">/</span>
+                            <span style="font-size:28px;font-weight:700;color:#6a1b9a;" id="sc_issued">—</span>
+                            <span style="font-size:13px;color:#888;">PKG</span>
+                        </div>
                     </div>
                     <div class="panel" style="padding:16px;text-align:center;">
                         <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Pending</div>
-                        <div style="font-size:28px;font-weight:700;color:#c62828;" id="sc_pending">—</div>
+                        <div style="display:flex;align-items:baseline;justify-content:center;gap:6px;margin:4px 0 2px;">
+                            <span style="font-size:28px;font-weight:700;color:#c62828;" id="sc_pending_pl">—</span>
+                            <span style="font-size:13px;color:#888;">PL</span>
+                            <span style="font-size:18px;color:#ccc;">/</span>
+                            <span style="font-size:28px;font-weight:700;color:#c62828;" id="sc_pending">—</span>
+                            <span style="font-size:13px;color:#888;">PKG</span>
+                        </div>
                     </div>
                 </div>
 
@@ -1247,6 +1271,6 @@
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
     <!-- Preloaded backend data (Removed large data.js) -->
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260527p"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260527q"></script>
 </body>
 </html>
