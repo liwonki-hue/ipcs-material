@@ -2827,16 +2827,18 @@ function renderShippingTable(rows) {
     });
 
     const allMerged = _shippingFilteredRows.map(mergeRow);
-    const total   = allMerged.length;
-    const onsite  = allMerged.filter(r => r.status === 'On-Site').length;
-    const cleared = allMerged.filter(r => r.custom_clear).length;
-    const issued  = allMerged.filter(r => r.issue_date).length;
-    const pending = total - onsite;
-    document.getElementById('sc_total').textContent   = total.toLocaleString();
-    document.getElementById('sc_onsite').textContent  = onsite.toLocaleString();
-    document.getElementById('sc_cleared').textContent = cleared.toLocaleString();
-    document.getElementById('sc_issued').textContent  = issued.toLocaleString();
-    document.getElementById('sc_pending').textContent = pending.toLocaleString();
+    const total    = allMerged.length;
+    const plCount  = new Set(allMerged.map(r => r.packing)).size;
+    const onsite   = allMerged.filter(r => r.status === 'On-Site').length;
+    const cleared  = allMerged.filter(r => r.custom_clear).length;
+    const issued   = allMerged.filter(r => r.issue_date).length;
+    const pending  = total - onsite;
+    document.getElementById('sc_pl_count').textContent = plCount.toLocaleString();
+    document.getElementById('sc_total').textContent    = total.toLocaleString();
+    document.getElementById('sc_onsite').textContent   = onsite.toLocaleString();
+    document.getElementById('sc_cleared').textContent  = cleared.toLocaleString();
+    document.getElementById('sc_issued').textContent   = issued.toLocaleString();
+    document.getElementById('sc_pending').textContent  = pending.toLocaleString();
     document.getElementById('shippingTotalBadge').textContent = `${total.toLocaleString()} packages`;
     document.getElementById('shippingCountLabel').textContent = `(${total.toLocaleString()} items)`;
 

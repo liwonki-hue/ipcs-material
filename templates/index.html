@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EPC Piping Material Management System</title>
     <!-- CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260527i">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260527j">
     <!-- FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Google Fonts: Inter -->
@@ -927,8 +927,14 @@
                 <!-- Summary Cards -->
                 <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:20px;" id="shippingCards">
                     <div class="panel" style="padding:16px;text-align:center;">
-                        <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Total Packages</div>
-                        <div style="font-size:28px;font-weight:700;color:#0A2540;" id="sc_total">—</div>
+                        <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Packing Lists / Packages</div>
+                        <div style="display:flex;align-items:baseline;justify-content:center;gap:6px;margin:4px 0 2px;">
+                            <span style="font-size:28px;font-weight:700;color:#0A2540;" id="sc_pl_count">—</span>
+                            <span style="font-size:13px;color:#888;">PL</span>
+                            <span style="font-size:18px;color:#ccc;">/</span>
+                            <span style="font-size:28px;font-weight:700;color:#0A2540;" id="sc_total">—</span>
+                            <span style="font-size:13px;color:#888;">PKG</span>
+                        </div>
                     </div>
                     <div class="panel" style="padding:16px;text-align:center;">
                         <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">On-Site</div>
@@ -1208,6 +1214,6 @@
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
     <!-- Preloaded backend data (Removed large data.js) -->
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260527i"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260527j"></script>
 </body>
 </html>
