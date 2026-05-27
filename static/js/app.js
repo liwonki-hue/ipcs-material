@@ -892,7 +892,7 @@ function renderShortageTable() {
         if (catFilter !== 'ALL' && cat !== catFilter) return;
 
         const desc = db.bomDesc[matCode] || (recMap[matCode] && recMap[matCode].desc !== '-' ? recMap[matCode].desc : null) || mData.itemDesc || '-';
-        const item = mData.itemDesc || '-';
+        const item = (mData.itemDesc && mData.itemDesc !== '-') ? mData.itemDesc : window.extractItemFromDesc(desc);
         const _sc = window.extractSizeFromMatCode(matCode);
         const size = (_sc && _sc !== '-') ? _sc : (mData.size1 || '-');
         const unit = (recMap[matCode] ? recMap[matCode].unit : null) || bomMap[matCode].uom || 'EA';
