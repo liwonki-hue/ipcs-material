@@ -20,11 +20,11 @@ ITEM_PREFIX = {
 }
 
 ITEM_DESC = {
-    'GATE':       'VALVE GATE',
-    'GLOBE':      'VALVE GLOBE',
-    'CHECK':      'VALVE CHECK',
-    'BALL':       'VALVE BALL',
-    'BUTTERFLY':  'VALVE BUTTERFLY',
+    'GATE':       'GATE VALVE',
+    'GLOBE':      'GLOBE VALVE',
+    'CHECK':      'CHECK VALVE',
+    'BALL':       'BALL VALVE',
+    'BUTTERFLY':  'BUTTERFLY VALVE',
 }
 
 # Body Mat'l → matl code (matcode_master 기준)
