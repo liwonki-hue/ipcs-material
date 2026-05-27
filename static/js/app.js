@@ -1195,10 +1195,10 @@ async function renderBomTable() {
         const size = window.extractSizeFromMatCode(b.mat_code);
         const item = window.extractItemFromDesc(desc);
         tbody.innerHTML += `<tr>
+            <td style="text-align:center;"><span class="status-badge ${badgeClass}">${b.mat_code}</span></td>
             <td style="text-align:center;">${b.system || '-'}</td>
             <td style="text-align:center;">${b.iso_dwg_no || '-'}</td>
             <td style="text-align:center;"><strong>${displayCat}</strong></td>
-            <td style="text-align:center;"><span class="status-badge ${badgeClass}">${b.mat_code}</span></td>
             <td style="text-align:center;" title="${desc}">${desc.length > 50 ? desc.substring(0,47)+'...' : desc}</td>
             <td style="text-align:center;">${b.tag || '-'}</td>
             <td style="text-align:center;font-weight:600;">${item}</td>
