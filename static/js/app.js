@@ -2817,14 +2817,26 @@ async function loadPlUpdates() {
 }
 
 async function initShipping() {
-    if (_shippingData) { renderShippingTable(getShippingFiltered()); return; }
+    // db.receiving 기반으로 매번 재빌드 — 새 수령 데이터 등록 시 자동 반영
     document.getElementById('shippingTbody').innerHTML =
         '<tr><td colspan="11" style="text-align:center;color:#888;padding:30px;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
     try {
-        const [res] = await Promise.all([fetch('/api/pl_summary'), loadPlUpdates()]);
-        _shippingData = await res.json();
+        await loadPlUpdates();
+        _shippingData = db.receiving.map(r => ({
+            packing:      r.docNo,
+            pkg_no:       r.plNo,
+            description:  r.desc,
+            qty:          r.qty,
+            unit:         r.unit,
+            status:       '',
+            on_site:      '',
+            custom_clear: '',
+            issue_date:   '',
+            request_date: '',
+            remark:       '',
+        }));
         buildShippingGroupFilter(_shippingData);
-        renderShippingTable(_shippingData);
+        renderShippingTable(getShippingFiltered());
     } catch(e) {
         document.getElementById('shippingTbody').innerHTML =
             '<tr><td colspan="11" style="text-align:center;color:#e53935;padding:30px;">Failed to load data.</td></tr>';
