@@ -928,7 +928,7 @@ function renderShortageTable() {
     tbody.innerHTML = pageRows.map(({ matCode, cat, desc, item, size, unit, bomQty, recQty, shortage }) => `<tr>
             <td style="text-align:center;font-weight:600;color:var(--color-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${matCode}</td>
             <td style="text-align:center;"><strong>${cat}</strong></td>
-            <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${desc}">${desc}</td>
+            <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${desc}">${desc}</td>
             <td style="text-align:center;">${item}</td>
             <td style="text-align:center;">${size}</td>
             <td style="text-align:center;">${unit}</td>
