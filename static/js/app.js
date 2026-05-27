@@ -58,7 +58,8 @@ async function syncShortageData() {
                 plNo: r.pkg_no || '-',
                 desc: r.full_description || '-',
                 unit: r.unit || 'EA',
-                qty: parseFloat(r.qty) || 0
+                qty: parseFloat(r.qty) || 0,
+                tag: r.tag || '-',
             })).filter(r => r.qty > 0 && r.matCode);
         }
         renderShortageTable();
@@ -139,6 +140,9 @@ window.extractItemFromMatCode = function(matCode) {
         'WOL':'WELDOLET', 'SOL':'SOCKOLET', 'TOL':'THREADOLET',
         'VLV':'VALVE', 'VBL':'BALL VALVE', 'VGA':'GATE VALVE', 'VGL':'GLOBE VALVE',
         'VCH':'CHECK VALVE', 'CHV':'CHECK VALVE', 'VBF':'BUTTERFLY VALVE',
+        'BAV':'BALL VALVE', 'GTV':'GATE VALVE', 'GLV':'GLOBE VALVE',
+        'BFV':'BUTTERFLY VALVE', 'PLV':'PLUG VALVE', 'PSV':'SAFETY VALVE', 'PRV':'RELIEF VALVE',
+        'STB':'STUD BOLT',
         'GSKT':'GASKET', 'GSK':'GASKET',
         'STD':'STUD', 'NUT':'NUT', 'BOL':'BOLT',
         'UNI':'UNION', 'PLG':'PLUG', 'BUS':'BUSHING',
@@ -270,7 +274,8 @@ async function syncFromSupabase() {
                 plNo: r.pkg_no || '-',
                 desc: r.full_description || '-',
                 unit: r.unit || 'EA',
-                qty: parseFloat(r.qty) || 0
+                qty: parseFloat(r.qty) || 0,
+                tag: r.tag || '-',
             })).filter(r => r.qty > 0 && r.matCode);
         }
         
@@ -1270,6 +1275,7 @@ function renderReceivingTable() {
             <td><span class="status-badge ok">${r.matCode}</span></td>
             <td><span class="status-badge ${catBadge}">${displayCat}</span></td>
             <td title="${descDisplay}">${shortDesc}</td>
+            <td style="text-align:center;">${r.tag || '-'}</td>
             <td style="font-weight:600;">${item}</td>
             <td style="font-weight:600;">${size}</td>
             <td>${r.unit || 'EA'}</td>
