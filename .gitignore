@@ -23,4 +23,9 @@ Thumbs.db
 scratch/02_bom_insert_*.sql
 scratch/matcode_master_dump.json
 scratch/verify_bom_260420_result.txt
+scratch/pl_db_comparison.xlsx
+scratch/BOM_*.xlsx
 processed_data.json
+
+# Claude memory
+.claude/

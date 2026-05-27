@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EPC Piping Material Management System</title>
     <!-- CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260503e">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260527i">
     <!-- FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Google Fonts: Inter -->
@@ -18,6 +18,9 @@
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
     <!-- Supabase JS Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- flatpickr date picker (English UI) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 </head>
 <body>
     <!-- Global Loader Overlay -->
@@ -45,6 +48,9 @@
                  <div class="nav-item" data-target="stock_ledger"><i class="fas fa-warehouse"></i> Material Stock</div>
                  <div class="nav-item" data-target="material_shortage"><i class="fas fa-exclamation-triangle"></i> Material Shortage</div>
                  <div class="nav-item" data-target="mr_history"><i class="fas fa-history"></i> MR History</div>
+
+                 <div class="section-title">Logistics</div>
+                 <div class="nav-item" data-target="shipping"><i class="fas fa-ship"></i> Shipping / Custom Clearance</div>
              </div>
 
              <!-- How to Use Button -->
@@ -906,6 +912,124 @@
                 </div>
             </section>
 
+            <!-- ── Shipping / Custom Clearance ──────────────────────────── -->
+            <section id="shipping" class="view-section">
+                <div class="page-header">
+                    <div>
+                        <h1><i class="fas fa-ship" style="color:#0A2540;margin-right:10px;"></i>Shipping / Custom Clearance</h1>
+                        <p class="subtitle">Packing List Summary — Package tracking &amp; clearance status</p>
+                    </div>
+                    <div style="display:flex;gap:10px;align-items:center;">
+                        <span id="shippingTotalBadge" style="background:#0A2540;color:#fff;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:600;">— packages</span>
+                    </div>
+                </div>
+
+                <!-- Summary Cards -->
+                <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:20px;" id="shippingCards">
+                    <div class="panel" style="padding:16px;text-align:center;">
+                        <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Total Packages</div>
+                        <div style="font-size:28px;font-weight:700;color:#0A2540;" id="sc_total">—</div>
+                    </div>
+                    <div class="panel" style="padding:16px;text-align:center;">
+                        <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">On-Site</div>
+                        <div style="font-size:28px;font-weight:700;color:#2e7d32;" id="sc_onsite">—</div>
+                    </div>
+                    <div class="panel" style="padding:16px;text-align:center;">
+                        <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Custom Cleared</div>
+                        <div style="font-size:28px;font-weight:700;color:#1565c0;" id="sc_cleared">—</div>
+                    </div>
+                    <div class="panel" style="padding:16px;text-align:center;">
+                        <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Issued</div>
+                        <div style="font-size:28px;font-weight:700;color:#6a1b9a;" id="sc_issued">—</div>
+                    </div>
+                    <div class="panel" style="padding:16px;text-align:center;">
+                        <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Pending</div>
+                        <div style="font-size:28px;font-weight:700;color:#c62828;" id="sc_pending">—</div>
+                    </div>
+                </div>
+
+                <!-- Filter Panel -->
+                <div class="panel filter-panel" style="margin-bottom:20px;max-width:70%;">
+                    <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:nowrap;">
+                        <div class="form-group" style="flex:3;margin-bottom:0;">
+                            <label style="display:block;margin-bottom:4px;font-size:12px;">Search (Package No. / Description)</label>
+                            <input type="text" id="shippingSearch" class="form-control" placeholder="e.g. BOP-PIP-001 or GATE Valve...">
+                        </div>
+                        <div class="form-group" style="flex:2;margin-bottom:0;">
+                            <label style="display:block;margin-bottom:4px;font-size:12px;">Packing List</label>
+                            <select id="shippingGroupFilter" class="form-control">
+                                <option value="">All</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" id="btnShippingFilter" style="height:38px;white-space:nowrap;flex-shrink:0;">
+                            <i class="fas fa-search"></i> Search
+                        </button>
+                        <button class="btn btn-outline" id="btnShippingReset" style="height:38px;white-space:nowrap;flex-shrink:0;">
+                            <i class="fas fa-redo"></i> Reset
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Main Table -->
+                <div class="panel data-panel">
+                    <div class="panel-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+                        <h3 style="margin:0;"><i class="fas fa-list-alt"></i> Package List
+                            <span id="shippingCountLabel" style="font-size:13px;font-weight:400;color:#888;margin-left:10px;"></span>
+                        </h3>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <button id="btnExportPL" class="btn btn-outline" style="height:34px;padding:0 14px;font-size:13px;">
+                                <i class="fas fa-file-excel"></i> Export
+                            </button>
+                            <button id="btnPrintPL" class="btn btn-outline" style="height:34px;padding:0 14px;font-size:13px;">
+                                <i class="fas fa-print"></i> Print
+                            </button>
+                            <span id="plSaveStatus" style="font-size:12px;color:#888;"></span>
+                            <button id="btnSavePL" class="btn btn-primary" style="height:34px;padding:0 18px;font-size:13px;">
+                                <i class="fas fa-save"></i> Save
+                            </button>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="data-table" id="shippingTable" style="table-layout:fixed;width:100%;">
+                            <colgroup>
+                                <col style="width:175px;">
+                                <col style="width:175px;">
+                                <col>
+                                <col style="width:65px;">
+                                <col style="width:55px;">
+                                <col style="width:105px;">
+                                <col style="width:112px;">
+                                <col style="width:112px;">
+                                <col style="width:105px;">
+                                <col style="width:112px;">
+                                <col style="width:200px;">
+                            </colgroup>
+                            <thead>
+                                <tr>
+                                    <th style="text-align:center;">Packing</th>
+                                    <th style="text-align:center;">Package No.</th>
+                                    <th style="text-align:center;">Description</th>
+                                    <th style="text-align:center;">Q'ty</th>
+                                    <th style="text-align:center;">Unit</th>
+                                    <th style="text-align:center;">Status</th>
+                                    <th style="text-align:center;">On-Site Date</th>
+                                    <th style="text-align:center;">Custom Clear</th>
+                                    <th style="text-align:center;">Request Date</th>
+                                    <th style="text-align:center;">Issue Date</th>
+                                    <th style="text-align:center;">Remark</th>
+                                </tr>
+                            </thead>
+                            <tbody id="shippingTbody">
+                                <tr><td colspan="11" style="text-align:center;color:#888;padding:30px;">
+                                    <i class="fas fa-spinner fa-spin"></i> Loading...
+                                </td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="shippingPagination"></div>
+                </div>
+            </section>
+
         </main>
     </div>
 
@@ -1084,6 +1208,6 @@
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
     <!-- Preloaded backend data (Removed large data.js) -->
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260503e"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260527i"></script>
 </body>
 </html>

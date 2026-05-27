@@ -352,6 +352,7 @@ function initNavigation() {
         if(targetId === 'matcode_master') renderMatCodeMaster();
         if(targetId === 'stock_ledger') renderStockTable();
         if(targetId === 'mr_history') renderMrHistory();
+        if(targetId === 'shipping') initShipping();
 
         // Material Shortage 탭: 진입 시 즉시 싱크 + 폴링 시작, 이탈 시 정리
         if (targetId === 'material_shortage') {
@@ -711,11 +712,11 @@ function updateCategoryCharts() {
 
         // Helper: render KPI card (big number = total, subtitle = breakdown)
         function setKpi(valueId, subId, pipeVal, otherVal) {
-            const total = pipeVal + otherVal;
+            const total = Math.round(pipeVal + otherVal);
             const elVal = document.getElementById(valueId);
             if (elVal) elVal.innerHTML = `${total.toLocaleString()} <span class="unit">M/EA</span>`;
             const elSub = document.getElementById(subId);
-            if (elSub) elSub.textContent = `Pipe: ${pipeVal.toLocaleString()} M | Others: ${otherVal.toLocaleString()} EA`;
+            if (elSub) elSub.textContent = `Pipe: ${Math.round(pipeVal).toLocaleString()} M | Others: ${Math.round(otherVal).toLocaleString()} EA`;
         }
 
         setKpi('kpi-bom',      'kpi-bom-sub',      pipeBom,  otherBom);
@@ -910,9 +911,9 @@ function renderShortageTable() {
             <td>${item}</td>
             <td>${size}</td>
             <td>${unit}</td>
-            <td>${bomQty.toFixed(2)}</td>
-            <td>${recQty.toFixed(2)}</td>
-            <td style="font-weight:700;color:#d32f2f;">${shortage.toFixed(2)}</td>
+            <td>${Math.round(bomQty).toLocaleString()}</td>
+            <td>${Math.round(recQty).toLocaleString()}</td>
+            <td style="font-weight:700;color:#d32f2f;">${Math.round(shortage).toLocaleString()}</td>
         </tr>`;
     });
 }
@@ -2724,3 +2725,343 @@ window.showReceivingDetail = function(matCode) {
 
     modal.style.display = 'flex';
 };
+
+
+// ── Shipping / Custom Clearance ────────────────────────────────────────
+let _shippingData        = null;
+let _shippingFilteredRows = [];
+let _shippingPage        = 1;
+const PL_PAGE_SIZE       = 20;
+let _plUpdatesCache   = {};  // pkg_no → {status, on_site, custom_clear, issue_date, remark}
+let _plChanges        = {};  // dirty rows
+let _packingToPkgNos  = {};  // packing → [pkg_no, ...]  (전체 필터 기준)
+let _pkgNoToPacking   = {};  // pkg_no  → packing
+// Packing 단위로 공통 관리되는 필드
+const PACKING_LEVEL_FIELDS = ['status', 'on_site', 'custom_clear'];
+
+const PL_EDIT_HEADERS = {
+    'apikey': SUPABASE_KEY,
+    'Authorization': `Bearer ${SUPABASE_KEY}`,
+    'Content-Type': 'application/json',
+    'Accept-Profile': 'material',
+    'Content-Profile': 'material',
+};
+
+async function loadPlUpdates() {
+    try {
+        const r = await fetch(`${SUPABASE_URL}/rest/v1/pl_updates?select=*`, {
+            headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Accept-Profile': 'material' }
+        });
+        const rows = await r.json();
+        if (Array.isArray(rows)) rows.forEach(row => { _plUpdatesCache[row.pkg_no] = row; });
+    } catch(e) { /* pl_updates 테이블 미존재 시 무시 */ }
+}
+
+async function initShipping() {
+    if (_shippingData) { renderShippingTable(getShippingFiltered()); return; }
+    document.getElementById('shippingTbody').innerHTML =
+        '<tr><td colspan="11" style="text-align:center;color:#888;padding:30px;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+    try {
+        const [res] = await Promise.all([fetch('/api/pl_summary'), loadPlUpdates()]);
+        _shippingData = await res.json();
+        buildShippingGroupFilter(_shippingData);
+        renderShippingTable(_shippingData);
+    } catch(e) {
+        document.getElementById('shippingTbody').innerHTML =
+            '<tr><td colspan="11" style="text-align:center;color:#e53935;padding:30px;">Failed to load data.</td></tr>';
+    }
+}
+
+function buildShippingGroupFilter(data) {
+    const groups = [...new Set(data.map(r => r.packing))].sort();
+    const sel = document.getElementById('shippingGroupFilter');
+    sel.innerHTML = '<option value="">All</option>';
+    groups.forEach(g => {
+        const opt = document.createElement('option');
+        opt.value = g; opt.textContent = g;
+        sel.appendChild(opt);
+    });
+}
+
+function getShippingFiltered() {
+    const group  = document.getElementById('shippingGroupFilter').value;
+    const search = document.getElementById('shippingSearch').value.trim().toLowerCase();
+    return (_shippingData || []).filter(r => {
+        if (group  && r.packing !== group) return false;
+        if (search && !r.pkg_no.toLowerCase().includes(search)
+                   && !r.description.toLowerCase().includes(search)) return false;
+        return true;
+    });
+}
+
+const PL_INPUT_CSS = 'width:100%;box-sizing:border-box;border:1px solid #dde3ee;border-radius:4px;padding:3px 5px;font-size:12px;background:#fff;color:#0A2540;';
+
+function mergeRow(r) {
+    const upd = _plUpdatesCache[r.pkg_no] || {};
+    const chg = _plChanges[r.pkg_no]      || {};
+    return {
+        ...r,
+        status:        chg.status        ?? upd.status        ?? r.status        ?? '',
+        on_site:       chg.on_site       ?? upd.on_site       ?? r.on_site       ?? '',
+        custom_clear:  chg.custom_clear  ?? upd.custom_clear  ?? r.custom_clear  ?? '',
+        request_date:  chg.request_date  ?? upd.request_date  ?? r.request_date  ?? '',
+        issue_date:    chg.issue_date    ?? upd.issue_date    ?? r.issue_date    ?? '',
+        remark:        chg.remark        !== undefined ? chg.remark
+                     : upd.remark        !== undefined ? upd.remark
+                    : (r.remark || ''),
+    };
+}
+
+function renderShippingTable(rows) {
+    _shippingFilteredRows = rows || [];
+    const totalPages = Math.max(1, Math.ceil(_shippingFilteredRows.length / PL_PAGE_SIZE));
+    if (_shippingPage > totalPages) _shippingPage = totalPages;
+
+    // packing ↔ pkg_no 매핑 재구성 (전체 필터 행 기준)
+    _packingToPkgNos = {};
+    _pkgNoToPacking  = {};
+    _shippingFilteredRows.forEach(r => {
+        if (!_packingToPkgNos[r.packing]) _packingToPkgNos[r.packing] = [];
+        _packingToPkgNos[r.packing].push(r.pkg_no);
+        _pkgNoToPacking[r.pkg_no] = r.packing;
+    });
+
+    const allMerged = _shippingFilteredRows.map(mergeRow);
+    const total   = allMerged.length;
+    const onsite  = allMerged.filter(r => r.status === 'On-Site').length;
+    const cleared = allMerged.filter(r => r.custom_clear).length;
+    const issued  = allMerged.filter(r => r.issue_date).length;
+    const pending = total - onsite;
+    document.getElementById('sc_total').textContent   = total.toLocaleString();
+    document.getElementById('sc_onsite').textContent  = onsite.toLocaleString();
+    document.getElementById('sc_cleared').textContent = cleared.toLocaleString();
+    document.getElementById('sc_issued').textContent  = issued.toLocaleString();
+    document.getElementById('sc_pending').textContent = pending.toLocaleString();
+    document.getElementById('shippingTotalBadge').textContent = `${total.toLocaleString()} packages`;
+    document.getElementById('shippingCountLabel').textContent = `(${total.toLocaleString()} items)`;
+
+    const start  = (_shippingPage - 1) * PL_PAGE_SIZE;
+    const merged = allMerged.slice(start, start + PL_PAGE_SIZE);
+
+    const tbody = document.getElementById('shippingTbody');
+    if (!merged.length) {
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#888;padding:30px;">No data found.</td></tr>';
+        renderShippingPagination(0);
+        return;
+    }
+
+    let prevPacking = null;
+    tbody.innerHTML = merged.map(r => {
+        const newGroup = r.packing !== prevPacking;
+        prevPacking = r.packing;
+        const packingCell = newGroup
+            ? `<td style="text-align:center;font-weight:700;color:#0A2540;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:2px solid #e0e7ef;" title="${r.packing}">${r.packing}</td>`
+            : `<td style="text-align:center;color:#ccc;border-top:none;white-space:nowrap;">↳</td>`;
+        const qtyDisplay = r.qty !== '' ? Number(r.qty).toLocaleString() : '—';
+        const pkg = r.pkg_no.replace(/'/g, "\\'");
+
+        const statusOpts = ['', 'Shipping', 'On-Site'].map(v =>
+            `<option value="${v}"${r.status === v ? ' selected' : ''}>${v || '—'}</option>`
+        ).join('');
+
+        const roStyle = 'text-align:center;font-size:12px;color:#888;background:#f8fafc;';
+
+        // Packing 레벨 필드: 그룹 첫 행만 editable, 나머지는 read-only 표시
+        const statusCell = newGroup
+            ? `<td style="text-align:center;padding:3px;"><select style="${PL_INPUT_CSS}" data-pkg="${pkg}" data-field="status" data-packing="${r.packing}">${statusOpts}</select></td>`
+            : `<td style="${roStyle}" data-pkg-ro="${pkg}" data-field-ro="status">${r.status || '—'}</td>`;
+        const onSiteCell = newGroup
+            ? `<td style="text-align:center;padding:3px;"><input type="text" class="pl-datepicker" style="${PL_INPUT_CSS}" data-pkg="${pkg}" data-field="on_site" data-packing="${r.packing}" value="${r.on_site}" placeholder="YYYY-MM-DD"></td>`
+            : `<td style="${roStyle}" data-pkg-ro="${pkg}" data-field-ro="on_site">${r.on_site || '—'}</td>`;
+        const customClearCell = newGroup
+            ? `<td style="text-align:center;padding:3px;"><input type="text" class="pl-datepicker" style="${PL_INPUT_CSS}" data-pkg="${pkg}" data-field="custom_clear" data-packing="${r.packing}" value="${r.custom_clear}" placeholder="YYYY-MM-DD"></td>`
+            : `<td style="${roStyle}" data-pkg-ro="${pkg}" data-field-ro="custom_clear">${r.custom_clear || '—'}</td>`;
+
+        return `<tr${newGroup ? ' style="background:#f8fafc;"' : ''}>
+            ${packingCell}
+            <td style="text-align:center;font-family:monospace;font-size:11px;color:#1565c0;overflow:hidden;text-overflow:ellipsis;" title="${r.pkg_no}">${r.pkg_no}</td>
+            <td style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.description}">${r.description}</td>
+            <td style="text-align:center;font-weight:600;">${qtyDisplay}</td>
+            <td style="text-align:center;color:#555;">${r.unit || '—'}</td>
+            ${statusCell}
+            ${onSiteCell}
+            ${customClearCell}
+            <td style="text-align:center;padding:3px;">
+                <input type="text" class="pl-datepicker" style="${PL_INPUT_CSS}" data-pkg="${pkg}" data-field="request_date" value="${r.request_date}" placeholder="YYYY-MM-DD">
+            </td>
+            <td style="text-align:center;padding:3px;">
+                <input type="text" class="pl-datepicker" style="${PL_INPUT_CSS}" data-pkg="${pkg}" data-field="issue_date" value="${r.issue_date}" placeholder="YYYY-MM-DD">
+            </td>
+            <td style="padding:3px;">
+                <textarea style="${PL_INPUT_CSS}resize:vertical;min-height:32px;max-height:80px;" data-pkg="${pkg}" data-field="remark" rows="1">${r.remark}</textarea>
+            </td>
+        </tr>`;
+    }).join('');
+
+    document.querySelectorAll('#shippingTbody .pl-datepicker').forEach(el => {
+        flatpickr(el, {
+            dateFormat: 'Y-m-d',
+            allowInput: true,
+            locale: { firstDayOfWeek: 1 },
+            onChange: (_dates, dateStr, instance) => {
+                instance.element.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        });
+    });
+    renderShippingPagination(total);
+}
+
+function renderShippingPagination(total) {
+    const container = document.getElementById('shippingPagination');
+    if (!container) return;
+    const totalPages = Math.ceil(total / PL_PAGE_SIZE);
+    if (totalPages <= 1) { container.innerHTML = ''; return; }
+
+    const s = Math.max(1, _shippingPage - 2);
+    const e = Math.min(totalPages, _shippingPage + 2);
+    let html = `<div style="display:flex;align-items:center;justify-content:center;gap:5px;padding:14px 0;font-size:13px;flex-wrap:wrap;">`;
+    html += `<button class="btn btn-outline" style="height:30px;padding:0 10px;" onclick="goShippingPage(${_shippingPage-1})" ${_shippingPage===1?'disabled':''}>‹ Prev</button>`;
+    if (s > 1) { html += `<button class="btn btn-outline" style="height:30px;min-width:32px;" onclick="goShippingPage(1)">1</button>`; if (s > 2) html += `<span style="color:#aaa;">…</span>`; }
+    for (let p = s; p <= e; p++) html += `<button class="btn ${p===_shippingPage?'btn-primary':'btn-outline'}" style="height:30px;min-width:32px;" onclick="goShippingPage(${p})">${p}</button>`;
+    if (e < totalPages) { if (e < totalPages-1) html += `<span style="color:#aaa;">…</span>`; html += `<button class="btn btn-outline" style="height:30px;min-width:32px;" onclick="goShippingPage(${totalPages})">${totalPages}</button>`; }
+    html += `<button class="btn btn-outline" style="height:30px;padding:0 10px;" onclick="goShippingPage(${_shippingPage+1})" ${_shippingPage===totalPages?'disabled':''}>Next ›</button>`;
+    html += `<span style="color:#888;margin-left:8px;">${(((_shippingPage-1)*PL_PAGE_SIZE)+1).toLocaleString()}–${Math.min(_shippingPage*PL_PAGE_SIZE,total).toLocaleString()} / ${total.toLocaleString()}</span>`;
+    html += `</div>`;
+    container.innerHTML = html;
+}
+
+function goShippingPage(p) {
+    const totalPages = Math.ceil(_shippingFilteredRows.length / PL_PAGE_SIZE);
+    if (p < 1 || p > totalPages) return;
+    _shippingPage = p;
+    renderShippingTable(_shippingFilteredRows);
+}
+
+function exportShippingExcel() {
+    const data = _shippingFilteredRows.map(mergeRow).map(r => ({
+        'Packing':      r.packing,
+        'Package No.':  r.pkg_no,
+        'Description':  r.description,
+        "Q'ty":         r.qty,
+        'Unit':         r.unit || '',
+        'Status':       r.status || '',
+        'On-Site Date': r.on_site || '',
+        'Custom Clear': r.custom_clear || '',
+        'Request Date': r.request_date || '',
+        'Issue Date':   r.issue_date || '',
+        'Remark':       r.remark || ''
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Package List');
+    XLSX.writeFile(wb, `PackageList_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+async function savePlUpdates() {
+    const btn = document.getElementById('btnSavePL');
+    const statusEl = document.getElementById('plSaveStatus');
+    const dirty = Object.entries(_plChanges);
+    if (!dirty.length) { statusEl.textContent = '변경 사항 없음.'; setTimeout(() => statusEl.textContent='', 2000); return; }
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+    statusEl.textContent = '';
+
+    try {
+        const DATE_FIELDS = ['on_site', 'custom_clear', 'request_date', 'issue_date'];
+        const upserts = dirty.map(([pkg_no, fields]) => {
+            const base = { pkg_no, ...(_plUpdatesCache[pkg_no] || {}), ...fields, updated_at: new Date().toISOString() };
+            DATE_FIELDS.forEach(f => { if (base[f] === '') base[f] = null; });
+            delete base.updated_at; // let DB default
+            base.updated_at = new Date().toISOString();
+            return base;
+        });
+
+        const r = await fetch(`${SUPABASE_URL}/rest/v1/pl_updates`, {
+            method: 'POST',
+            headers: { ...PL_EDIT_HEADERS, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+            body: JSON.stringify(upserts)
+        });
+
+        if (r.ok || r.status === 201 || r.status === 204) {
+            upserts.forEach(u => { _plUpdatesCache[u.pkg_no] = u; });
+            Object.keys(_plChanges).forEach(k => delete _plChanges[k]);
+            statusEl.style.color = '#2e7d32';
+            statusEl.textContent = `${upserts.length}건 저장 완료.`;
+        } else {
+            const msg = await r.text();
+            statusEl.style.color = '#e53935';
+            statusEl.textContent = `저장 실패: ${msg.slice(0,80)}`;
+        }
+    } catch(e) {
+        statusEl.style.color = '#e53935';
+        statusEl.textContent = `오류: ${e.message}`;
+    }
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-save"></i> Save';
+    setTimeout(() => { statusEl.textContent = ''; statusEl.style.color = '#888'; }, 4000);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const btnFilter = document.getElementById('btnShippingFilter');
+    const btnReset  = document.getElementById('btnShippingReset');
+    const btnSave   = document.getElementById('btnSavePL');
+    const btnExport = document.getElementById('btnExportPL');
+    const btnPrint  = document.getElementById('btnPrintPL');
+    const searchBox = document.getElementById('shippingSearch');
+    if (btnFilter) btnFilter.addEventListener('click', () => { _shippingPage = 1; renderShippingTable(getShippingFiltered()); });
+    if (btnReset)  btnReset.addEventListener('click', () => {
+        document.getElementById('shippingGroupFilter').value = '';
+        document.getElementById('shippingSearch').value = '';
+        _shippingPage = 1;
+        if (_shippingData) renderShippingTable(_shippingData);
+    });
+    if (searchBox) searchBox.addEventListener('keyup', e => {
+        if (e.key === 'Enter') { _shippingPage = 1; renderShippingTable(getShippingFiltered()); }
+    });
+    if (btnSave)   btnSave.addEventListener('click', savePlUpdates);
+    if (btnExport) btnExport.addEventListener('click', exportShippingExcel);
+    if (btnPrint)  btnPrint.addEventListener('click', () => window.print());
+
+    // 편집 셀 change 이벤트 위임
+    const tbody = document.getElementById('shippingTbody');
+    if (tbody) {
+        tbody.addEventListener('change', e => {
+            const el = e.target;
+            const pkg = el.dataset.pkg;
+            const field = el.dataset.field;
+            if (!pkg || !field) return;
+
+            if (PACKING_LEVEL_FIELDS.includes(field)) {
+                // Packing 레벨: 동일 packing의 모든 pkg_no에 전파
+                const packing = _pkgNoToPacking[pkg] || el.dataset.packing;
+                const siblings = _packingToPkgNos[packing] || [pkg];
+                siblings.forEach(sibPkg => {
+                    if (!_plChanges[sibPkg]) _plChanges[sibPkg] = {};
+                    _plChanges[sibPkg][field] = el.value;
+                    // 현재 페이지에 있는 read-only 셀 즉시 업데이트
+                    if (sibPkg !== pkg) {
+                        const roCell = tbody.querySelector(`[data-pkg-ro="${sibPkg}"][data-field-ro="${field}"]`);
+                        if (roCell) roCell.textContent = el.value || '—';
+                    }
+                });
+            } else {
+                if (!_plChanges[pkg]) _plChanges[pkg] = {};
+                _plChanges[pkg][field] = el.value;
+            }
+            document.getElementById('plSaveStatus').style.color = '#e65100';
+            document.getElementById('plSaveStatus').textContent = '저장되지 않은 변경 사항 있음.';
+        });
+        tbody.addEventListener('input', e => {
+            const el = e.target;
+            if (el.tagName !== 'TEXTAREA') return;
+            const pkg = el.dataset.pkg;
+            const field = el.dataset.field;
+            if (!pkg || !field) return;
+            if (!_plChanges[pkg]) _plChanges[pkg] = {};
+            _plChanges[pkg][field] = el.value;
+            document.getElementById('plSaveStatus').style.color = '#e65100';
+            document.getElementById('plSaveStatus').textContent = '저장되지 않은 변경 사항 있음.';
+        });
+    }
+});
