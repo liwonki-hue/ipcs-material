@@ -60,7 +60,7 @@ async function syncShortageData() {
                 unit: r.unit || 'EA',
                 qty: parseFloat(r.qty) || 0,
                 tag: r.tag || '-',
-            })).filter(r => r.qty > 0 && r.matCode);
+            })).filter(r => r.qty > 0 && (r.matCode || r.category === 'Accessory'));
         }
         renderShortageTable();
     } catch (e) {
@@ -276,7 +276,7 @@ async function syncFromSupabase() {
                 unit: r.unit || 'EA',
                 qty: parseFloat(r.qty) || 0,
                 tag: r.tag || '-',
-            })).filter(r => r.qty > 0 && r.matCode);
+            })).filter(r => r.qty > 0 && (r.matCode || r.category === 'Accessory'));
         }
         
         if (issuedRaw.length > 0) {
