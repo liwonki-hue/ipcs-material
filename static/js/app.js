@@ -818,7 +818,8 @@ function renderStockTable() {
         }
 
         let item = mData.itemDesc;
-        let size = mData.size1 !== '-' ? mData.size1 : window.extractSizeFromMatCode(matCode);
+        const _sizeFromCode = window.extractSizeFromMatCode(matCode);
+        let size = (_sizeFromCode && _sizeFromCode !== '-') ? _sizeFromCode : (mData.size1 || '-');
 
         let badge = stock > 0 ? '<span class="status-badge ok">In Stock</span>' : '<span class="status-badge err">Out of Stock</span>';
         let unitStr = bomLookup[matCode] ? bomLookup[matCode].unit : 'EA';
@@ -892,7 +893,8 @@ function renderShortageTable() {
 
         const desc = db.bomDesc[matCode] || (recMap[matCode] && recMap[matCode].desc !== '-' ? recMap[matCode].desc : null) || mData.itemDesc || '-';
         const item = mData.itemDesc || '-';
-        const size = mData.size1 || window.extractSizeFromMatCode(matCode);
+        const _sc = window.extractSizeFromMatCode(matCode);
+        const size = (_sc && _sc !== '-') ? _sc : (mData.size1 || '-');
         const unit = (recMap[matCode] ? recMap[matCode].unit : null) || bomMap[matCode].uom || 'EA';
 
         if (itemFilter !== 'ALL' && item !== itemFilter) return;
