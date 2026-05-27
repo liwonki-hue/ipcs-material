@@ -892,7 +892,8 @@ function renderShortageTable() {
         if (catFilter !== 'ALL' && cat !== catFilter) return;
 
         const desc = db.bomDesc[matCode] || (recMap[matCode] && recMap[matCode].desc !== '-' ? recMap[matCode].desc : null) || mData.itemDesc || '-';
-        const item = (mData.itemDesc && mData.itemDesc !== '-') ? mData.itemDesc : window.extractItemFromDesc(desc);
+        const _itemMc = window.extractItemFromMatCode(matCode);
+        const item = (_itemMc && _itemMc !== '-') ? _itemMc : window.extractItemFromDesc(desc);
         const _sc = window.extractSizeFromMatCode(matCode);
         const size = (_sc && _sc !== '-') ? _sc : (mData.size1 || '-');
         const unit = (recMap[matCode] ? recMap[matCode].unit : null) || bomMap[matCode].uom || 'EA';
@@ -1033,12 +1034,12 @@ function initFilterOptions() {
         if(bomSizeF) bomSizeF.innerHTML = '<option value="All">All Sizes</option>' + bomSizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
     }
 
-    // Shortage Filters
+    // Shortage Filters — db.bom 기반으로 실제 존재하는 항목만 표시
     const sItem = document.getElementById('shortItemFilter');
     const sSize = document.getElementById('shortSizeFilter');
-    if (sItem && db.matCodeMaster.length > 0) {
-        const items = [...new Set(db.matCodeMaster.map(m => m.itemDesc).filter(v => v && v !== '-'))].sort();
-        const sizes = [...new Set(db.matCodeMaster.map(m => m.size1 || window.extractSizeFromMatCode(m.matCode)).filter(v => v && v !== '-'))].sort((a, b) => parseFloat(a) - parseFloat(b));
+    if (sItem && db.bom.length > 0) {
+        const items = [...new Set(db.bom.map(b => window.extractItemFromMatCode(b.matCode)).filter(v => v && v !== '-'))].sort();
+        const sizes = [...new Set(db.bom.map(b => window.extractSizeFromMatCode(b.matCode)).filter(v => v && v !== '-'))].sort((a, b) => parseFloat(a) - parseFloat(b));
         sItem.innerHTML = '<option value="ALL">All Items</option>' + items.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
         sSize.innerHTML = '<option value="ALL">All Sizes</option>' + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
     }
