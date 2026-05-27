@@ -2901,7 +2901,7 @@ function renderShippingTable(rows) {
     const total    = allMerged.length;
     const plCount  = new Set(allMerged.map(r => r.packing)).size;
     const onsiteRows   = allMerged.filter(r => r.status === 'On-Site');
-    const clearedRows  = allMerged.filter(r => r.custom_clear);
+    const clearedRows  = allMerged.filter(r => r.custom_clear === 'Cleared');
     const issuedRows   = allMerged.filter(r => r.issue_date);
     const pendingRows  = allMerged.filter(r => r.status !== 'On-Site');
     const onsite  = onsiteRows.length;
@@ -2954,8 +2954,11 @@ function renderShippingTable(rows) {
         const onSiteCell = newGroup
             ? `<td style="text-align:center;padding:3px;"><input type="text" class="pl-datepicker" style="${PL_INPUT_CSS}" data-pkg="${pkg}" data-field="on_site" data-packing="${r.packing}" value="${r.on_site}" placeholder="YYYY-MM-DD"></td>`
             : `<td style="${roStyle}" data-pkg-ro="${pkg}" data-field-ro="on_site">${r.on_site || '—'}</td>`;
+        const clearOpts = ['', 'Waiting', 'Cleared'].map(v =>
+            `<option value="${v}"${r.custom_clear === v ? ' selected' : ''}>${v || '—'}</option>`
+        ).join('');
         const customClearCell = newGroup
-            ? `<td style="text-align:center;padding:3px;"><input type="text" class="pl-datepicker" style="${PL_INPUT_CSS}" data-pkg="${pkg}" data-field="custom_clear" data-packing="${r.packing}" value="${r.custom_clear}" placeholder="YYYY-MM-DD"></td>`
+            ? `<td style="text-align:center;padding:3px;"><select style="${PL_INPUT_CSS}" data-pkg="${pkg}" data-field="custom_clear" data-packing="${r.packing}">${clearOpts}</select></td>`
             : `<td style="${roStyle}" data-pkg-ro="${pkg}" data-field-ro="custom_clear">${r.custom_clear || '—'}</td>`;
 
         return `<tr${newGroup ? ' style="background:#f8fafc;"' : ''}>
