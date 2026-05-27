@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EPC Piping Material Management System</title>
     <!-- CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260527j">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260527m">
     <!-- FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Google Fonts: Inter -->
@@ -774,10 +774,14 @@
                 </div>
 
                 <div class="panel filter-panel" style="margin-bottom: 20px;">
-                    <div style="display: flex; align-items: flex-end; gap: 12px;">
+                    <div style="display: flex; align-items: flex-end; gap: 12px; flex-wrap: nowrap;">
+                        <div class="form-group" style="flex: 0 0 220px;">
+                            <label>Search</label>
+                            <input type="text" id="shortSearch" class="form-control" placeholder="MatCode / Description / Item / Size" style="width:100%;">
+                        </div>
                         <div class="form-group">
                             <label>Category</label>
-                            <select id="shortCatFilter" class="form-control" style="width: 160px;">
+                            <select id="shortCatFilter" class="form-control" style="width: 145px;">
                                 <option value="ALL">All Categories</option>
                                 <option value="Pipe">Pipe</option>
                                 <option value="Fitting">Fitting</option>
@@ -785,9 +789,24 @@
                                 <option value="Valve">Valve</option>
                             </select>
                         </div>
-                        <div style="padding-bottom: 1px;">
-                            <button class="btn btn-primary" onclick="renderShortageTable()" style="height: 38px; display: flex; align-items: center; gap: 8px;">
+                        <div class="form-group">
+                            <label>Item</label>
+                            <select id="shortItemFilter" class="form-control" style="width: 145px;">
+                                <option value="ALL">All Items</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Size</label>
+                            <select id="shortSizeFilter" class="form-control" style="width: 120px;">
+                                <option value="ALL">All Sizes</option>
+                            </select>
+                        </div>
+                        <div style="padding-bottom: 1px; display: flex; gap: 8px;">
+                            <button class="btn btn-primary" onclick="_shortagePage=1;renderShortageTable();" style="height: 38px; display: flex; align-items: center; gap: 8px;">
                                 <i class="fas fa-search"></i> Search
+                            </button>
+                            <button class="btn btn-outline" onclick="document.getElementById('shortSearch').value='';document.getElementById('shortCatFilter').value='ALL';document.getElementById('shortItemFilter').value='ALL';document.getElementById('shortSizeFilter').value='ALL';_shortagePage=1;renderShortageTable();" style="height: 38px;">
+                                Reset
                             </button>
                         </div>
                     </div>
@@ -799,24 +818,36 @@
                         <span id="shortageCount" style="font-size:13px;color:#666;"></span>
                     </div>
                     <div class="table-responsive">
-                        <table class="data-table" id="shortageTable">
+                        <table class="data-table" id="shortageTable" style="table-layout:fixed;width:100%;">
+                            <colgroup>
+                                <col style="width:155px;">
+                                <col style="width:90px;">
+                                <col>
+                                <col style="width:130px;">
+                                <col style="width:80px;">
+                                <col style="width:55px;">
+                                <col style="width:90px;">
+                                <col style="width:100px;">
+                                <col style="width:100px;">
+                            </colgroup>
                             <thead>
                                 <tr>
-                                    <th>MatCode</th>
-                                    <th>Category</th>
-                                    <th>Full Description</th>
-                                    <th>Item</th>
-                                    <th>Size (Inch)</th>
-                                    <th>Unit</th>
-                                    <th>BOM QTY</th>
-                                    <th>Receiving QTY</th>
-                                    <th>Shortage QTY</th>
+                                    <th style="text-align:center;">MatCode</th>
+                                    <th style="text-align:center;">Category</th>
+                                    <th style="text-align:center;">Full Description</th>
+                                    <th style="text-align:center;">Item</th>
+                                    <th style="text-align:center;">Size (Inch)</th>
+                                    <th style="text-align:center;">Unit</th>
+                                    <th style="text-align:center;">BOM QTY</th>
+                                    <th style="text-align:center;">Receiving QTY</th>
+                                    <th style="text-align:center;">Shortage QTY</th>
                                 </tr>
                             </thead>
                             <tbody>
                             </tbody>
                         </table>
                     </div>
+                    <div id="shortagePagination"></div>
                 </div>
             </section>
 
@@ -998,17 +1029,17 @@
                     <div class="table-responsive">
                         <table class="data-table" id="shippingTable" style="table-layout:fixed;width:100%;">
                             <colgroup>
-                                <col style="width:175px;">
-                                <col style="width:175px;">
-                                <col>
+                                <col style="width:155px;">
+                                <col style="width:185px;">
+                                <col style="width:260px;">
                                 <col style="width:65px;">
                                 <col style="width:55px;">
-                                <col style="width:105px;">
-                                <col style="width:112px;">
-                                <col style="width:112px;">
-                                <col style="width:105px;">
-                                <col style="width:112px;">
-                                <col style="width:200px;">
+                                <col style="width:118px;">
+                                <col style="width:122px;">
+                                <col style="width:122px;">
+                                <col style="width:118px;">
+                                <col style="width:122px;">
+                                <col>
                             </colgroup>
                             <thead>
                                 <tr>
@@ -1214,6 +1245,6 @@
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
     <!-- Preloaded backend data (Removed large data.js) -->
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260527j"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260527m"></script>
 </body>
 </html>

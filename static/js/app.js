@@ -843,6 +843,12 @@ function renderStockTable() {
 }
 
 // --- Material Shortage ---
+let _shortagePage = 1;
+const SHORTAGE_PAGE_SIZE = 30;
+let _shortageList = [];
+
+const CAT_ORDER = { 'Pipe': 0, 'Fitting': 1, 'Valve': 2, 'Others': 3, 'Speciality': 4 };
+
 function renderShortageTable() {
     const tbody = document.querySelector('#shortageTable tbody');
     if (!tbody) return;
@@ -868,7 +874,10 @@ function renderShortageTable() {
     const masterMap = {};
     db.matCodeMaster.forEach(m => { masterMap[m.matCode] = m; });
 
-    const catFilter = (document.getElementById('shortCatFilter') || {}).value || 'ALL';
+    const catFilter  = (document.getElementById('shortCatFilter')  || {}).value || 'ALL';
+    const itemFilter = (document.getElementById('shortItemFilter') || {}).value || 'ALL';
+    const sizeFilter = (document.getElementById('shortSizeFilter') || {}).value || 'ALL';
+    const searchQ    = ((document.getElementById('shortSearch')    || {}).value || '').toUpperCase();
 
     const shortageList = [];
     Object.keys(bomMap).forEach(matCode => {
@@ -886,36 +895,76 @@ function renderShortageTable() {
         const size = mData.size1 || window.extractSizeFromMatCode(matCode);
         const unit = (recMap[matCode] ? recMap[matCode].unit : null) || bomMap[matCode].uom || 'EA';
 
+        if (itemFilter !== 'ALL' && item !== itemFilter) return;
+        if (sizeFilter !== 'ALL' && size !== sizeFilter) return;
+        if (searchQ && !matCode.toUpperCase().includes(searchQ) && !desc.toUpperCase().includes(searchQ) && !item.toUpperCase().includes(searchQ) && !size.toUpperCase().includes(searchQ)) return;
+
         shortageList.push({ matCode, cat, desc, item, size, unit, bomQty, recQty, shortage });
     });
 
+    // Pipe 우선, 이후 카테고리 순, 동일 카테고리 내 matCode 순
     shortageList.sort((a, b) => {
-        if (a.cat < b.cat) return -1;
-        if (a.cat > b.cat) return 1;
+        const oa = CAT_ORDER[a.cat] ?? 9;
+        const ob = CAT_ORDER[b.cat] ?? 9;
+        if (oa !== ob) return oa - ob;
         return a.matCode.localeCompare(b.matCode);
     });
+
+    _shortageList = shortageList;
+    _shortagePage = Math.min(_shortagePage, Math.max(1, Math.ceil(shortageList.length / SHORTAGE_PAGE_SIZE)));
 
     const countEl = document.getElementById('shortageCount');
     if (countEl) countEl.textContent = shortageList.length > 0 ? `${shortageList.length}개 항목` : '';
 
     if (shortageList.length === 0) {
         tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#666;padding:20px;">No shortage items found.</td></tr>';
+        renderShortagePagination(0);
         return;
     }
 
-    shortageList.forEach(({ matCode, cat, desc, item, size, unit, bomQty, recQty, shortage }) => {
-        tbody.innerHTML += `<tr>
-            <td style="font-weight:600;color:var(--color-primary);">${matCode}</td>
-            <td><strong>${cat}</strong></td>
-            <td>${desc}</td>
-            <td>${item}</td>
-            <td>${size}</td>
-            <td>${unit}</td>
-            <td>${Math.round(bomQty).toLocaleString()}</td>
-            <td>${Math.round(recQty).toLocaleString()}</td>
-            <td style="font-weight:700;color:#d32f2f;">${Math.round(shortage).toLocaleString()}</td>
-        </tr>`;
-    });
+    const start = (_shortagePage - 1) * SHORTAGE_PAGE_SIZE;
+    const pageRows = shortageList.slice(start, start + SHORTAGE_PAGE_SIZE);
+
+    tbody.innerHTML = pageRows.map(({ matCode, cat, desc, item, size, unit, bomQty, recQty, shortage }) => `<tr>
+            <td style="text-align:center;font-weight:600;color:var(--color-primary);">${matCode}</td>
+            <td style="text-align:center;"><strong>${cat}</strong></td>
+            <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${desc}">${desc}</td>
+            <td style="text-align:center;">${item}</td>
+            <td style="text-align:center;">${size}</td>
+            <td style="text-align:center;">${unit}</td>
+            <td style="text-align:center;">${Math.round(bomQty).toLocaleString()}</td>
+            <td style="text-align:center;">${Math.round(recQty).toLocaleString()}</td>
+            <td style="text-align:center;font-weight:700;color:#d32f2f;">${Math.round(shortage).toLocaleString()}</td>
+        </tr>`).join('');
+
+    renderShortagePagination(shortageList.length);
+}
+
+function renderShortagePagination(total) {
+    const container = document.getElementById('shortagePagination');
+    if (!container) return;
+    const totalPages = Math.ceil(total / SHORTAGE_PAGE_SIZE);
+    if (totalPages <= 1) { container.innerHTML = ''; return; }
+
+    const s = Math.max(1, _shortagePage - 2);
+    const e = Math.min(totalPages, _shortagePage + 2);
+    let html = `<div style="display:flex;align-items:center;justify-content:center;gap:5px;padding:14px 0;font-size:13px;flex-wrap:wrap;">`;
+    html += `<button class="btn btn-outline" style="height:30px;padding:0 10px;" onclick="goShortagePage(${_shortagePage-1})" ${_shortagePage===1?'disabled':''}>‹ Prev</button>`;
+    if (s > 1) { html += `<button class="btn btn-outline" style="height:30px;min-width:32px;" onclick="goShortagePage(1)">1</button>`; if (s > 2) html += `<span style="color:#aaa;">…</span>`; }
+    for (let p = s; p <= e; p++) html += `<button class="btn ${p===_shortagePage?'btn-primary':'btn-outline'}" style="height:30px;min-width:32px;" onclick="goShortagePage(${p})">${p}</button>`;
+    if (e < totalPages) { if (e < totalPages-1) html += `<span style="color:#aaa;">…</span>`; html += `<button class="btn btn-outline" style="height:30px;min-width:32px;" onclick="goShortagePage(${totalPages})">${totalPages}</button>`; }
+    html += `<button class="btn btn-outline" style="height:30px;padding:0 10px;" onclick="goShortagePage(${_shortagePage+1})" ${_shortagePage===totalPages?'disabled':''}>Next ›</button>`;
+    const pageStart = (_shortagePage - 1) * SHORTAGE_PAGE_SIZE + 1;
+    html += `<span style="color:#888;margin-left:8px;">${pageStart.toLocaleString()}–${Math.min(_shortagePage*SHORTAGE_PAGE_SIZE,total).toLocaleString()} / ${total.toLocaleString()}</span>`;
+    html += `</div>`;
+    container.innerHTML = html;
+}
+
+function goShortagePage(p) {
+    const totalPages = Math.ceil(_shortageList.length / SHORTAGE_PAGE_SIZE);
+    if (p < 1 || p > totalPages) return;
+    _shortagePage = p;
+    renderShortageTable();
 }
 
 // --- 2. MatCode Master ---
@@ -980,6 +1029,16 @@ function initFilterOptions() {
         bomIsoData.innerHTML = isos.map(i => `<option value="${i}">`).join('');
         if(bomItemF) bomItemF.innerHTML = '<option value="All">All Items</option>' + bomItems.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
         if(bomSizeF) bomSizeF.innerHTML = '<option value="All">All Sizes</option>' + bomSizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
+    }
+
+    // Shortage Filters
+    const sItem = document.getElementById('shortItemFilter');
+    const sSize = document.getElementById('shortSizeFilter');
+    if (sItem && db.matCodeMaster.length > 0) {
+        const items = [...new Set(db.matCodeMaster.map(m => m.itemDesc).filter(v => v && v !== '-'))].sort();
+        const sizes = [...new Set(db.matCodeMaster.map(m => m.size1 || window.extractSizeFromMatCode(m.matCode)).filter(v => v && v !== '-'))].sort((a, b) => parseFloat(a) - parseFloat(b));
+        sItem.innerHTML = '<option value="ALL">All Items</option>' + items.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
+        sSize.innerHTML = '<option value="ALL">All Sizes</option>' + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
     }
 
     // MatCode Master Filters (BOM/Receiving과 동일하게 MatCode 파싱 함수 사용)
