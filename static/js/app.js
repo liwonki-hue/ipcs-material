@@ -2853,7 +2853,7 @@ function getShippingFiltered() {
     });
 }
 
-const PL_INPUT_CSS = 'width:100%;box-sizing:border-box;border:1px solid #dde3ee;border-radius:4px;padding:3px 5px;font-size:12px;background:#fff;color:#0A2540;';
+const PL_INPUT_CSS = 'width:100%;box-sizing:border-box;border:1px solid #dde3ee;border-radius:4px;padding:3px 5px;font-size:12px;background:#fff;color:#0A2540;text-align:center;';
 
 function mergeRow(r) {
     const upd = _plUpdatesCache[r.pkg_no] || {};
