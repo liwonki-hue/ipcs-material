@@ -1102,7 +1102,7 @@ function renderTablePagination(total, current, pageSize, infoId, btnPrevId, btnN
 async function renderBomTable() {
     let tbody = document.querySelector('#bomTable tbody');
     if(!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
 
     const search  = (document.getElementById('bomIsoSearch')?.value || '').trim();
     const sys     = document.getElementById('bomSystemFilter')?.value || 'All';
@@ -1158,7 +1158,7 @@ async function renderBomTable() {
     // 데이터 쿼리 + COUNT 쿼리를 병렬 실행
     const dataQ  = applyFilters(
         supabaseClient.from('bom_detail')
-            .select('mat_code, category, system, iso_dwg_no, tag, full_description, uom, qty')
+            .select('mat_code, category, system, iso_dwg_no, line_no, tag, full_description, uom, qty')
             .range(currentBomPage * PAGE_SIZE, (currentBomPage + 1) * PAGE_SIZE)  // +1 for hasMore
             .order('iso_dwg_no')
     );
@@ -1196,9 +1196,10 @@ async function renderBomTable() {
         const item = window.extractItemFromDesc(desc);
         tbody.innerHTML += `<tr>
             <td style="text-align:center;"><span class="status-badge ${badgeClass}">${b.mat_code}</span></td>
+            <td style="text-align:center;"><strong>${displayCat}</strong></td>
             <td style="text-align:center;">${b.system || '-'}</td>
             <td style="text-align:center;">${b.iso_dwg_no || '-'}</td>
-            <td style="text-align:center;"><strong>${displayCat}</strong></td>
+            <td style="text-align:center;">${b.line_no || '-'}</td>
             <td style="text-align:center;" title="${desc}">${desc.length > 50 ? desc.substring(0,47)+'...' : desc}</td>
             <td style="text-align:center;">${b.tag || '-'}</td>
             <td style="text-align:center;font-weight:600;">${item}</td>
