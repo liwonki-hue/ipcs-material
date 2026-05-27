@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EPC Piping Material Management System</title>
     <!-- CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260527m">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260527n">
     <!-- FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Google Fonts: Inter -->
@@ -45,9 +45,11 @@
                  <div class="section-title">Operations</div>
                  <div class="nav-item" data-target="receiving"><i class="fas fa-truck"></i> Material Receiving</div>
                  <div class="nav-item" data-target="issue"><i class="fas fa-file-signature"></i> Material Requisition</div>
+                 <div class="nav-item" data-target="mr_history"><i class="fas fa-history"></i> MR History</div>
+
+                 <div class="section-title">Reports</div>
                  <div class="nav-item" data-target="stock_ledger"><i class="fas fa-warehouse"></i> Material Stock</div>
                  <div class="nav-item" data-target="material_shortage"><i class="fas fa-exclamation-triangle"></i> Material Shortage</div>
-                 <div class="nav-item" data-target="mr_history"><i class="fas fa-history"></i> MR History</div>
 
                  <div class="section-title">Logistics</div>
                  <div class="nav-item" data-target="shipping"><i class="fas fa-ship"></i> Shipping / Custom Clearance</div>
@@ -769,7 +771,7 @@
                 <div class="page-header">
                     <div>
                         <h1>Material Shortage</h1>
-                        <p class="subtitle">BOM 대비 미입고 자재 항목 및 부족 수량 현황.</p>
+                        <p class="subtitle">Items with insufficient receiving quantity compared to BOM.</p>
                     </div>
                 </div>
 
@@ -820,15 +822,15 @@
                     <div class="table-responsive">
                         <table class="data-table" id="shortageTable" style="table-layout:fixed;width:100%;">
                             <colgroup>
-                                <col style="width:155px;">
-                                <col style="width:90px;">
+                                <col style="width:185px;">
+                                <col style="width:110px;">
                                 <col>
-                                <col style="width:130px;">
-                                <col style="width:80px;">
-                                <col style="width:55px;">
+                                <col style="width:150px;">
                                 <col style="width:90px;">
-                                <col style="width:100px;">
-                                <col style="width:100px;">
+                                <col style="width:65px;">
+                                <col style="width:105px;">
+                                <col style="width:115px;">
+                                <col style="width:115px;">
                             </colgroup>
                             <thead>
                                 <tr>
@@ -1245,6 +1247,6 @@
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
     <!-- Preloaded backend data (Removed large data.js) -->
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260527m"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260527n"></script>
 </body>
 </html>

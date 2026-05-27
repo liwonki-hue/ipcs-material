@@ -914,7 +914,7 @@ function renderShortageTable() {
     _shortagePage = Math.min(_shortagePage, Math.max(1, Math.ceil(shortageList.length / SHORTAGE_PAGE_SIZE)));
 
     const countEl = document.getElementById('shortageCount');
-    if (countEl) countEl.textContent = shortageList.length > 0 ? `${shortageList.length}개 항목` : '';
+    if (countEl) countEl.textContent = shortageList.length > 0 ? `${shortageList.length} items` : '';
 
     if (shortageList.length === 0) {
         tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#666;padding:20px;">No shortage items found.</td></tr>';
@@ -926,7 +926,7 @@ function renderShortageTable() {
     const pageRows = shortageList.slice(start, start + SHORTAGE_PAGE_SIZE);
 
     tbody.innerHTML = pageRows.map(({ matCode, cat, desc, item, size, unit, bomQty, recQty, shortage }) => `<tr>
-            <td style="text-align:center;font-weight:600;color:var(--color-primary);">${matCode}</td>
+            <td style="text-align:center;font-weight:600;color:var(--color-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${matCode}</td>
             <td style="text-align:center;"><strong>${cat}</strong></td>
             <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${desc}">${desc}</td>
             <td style="text-align:center;">${item}</td>
@@ -3022,7 +3022,7 @@ async function savePlUpdates() {
     const btn = document.getElementById('btnSavePL');
     const statusEl = document.getElementById('plSaveStatus');
     const dirty = Object.entries(_plChanges);
-    if (!dirty.length) { statusEl.textContent = '변경 사항 없음.'; setTimeout(() => statusEl.textContent='', 2000); return; }
+    if (!dirty.length) { statusEl.textContent = 'No changes.'; setTimeout(() => statusEl.textContent='', 2000); return; }
 
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
@@ -3048,15 +3048,15 @@ async function savePlUpdates() {
             upserts.forEach(u => { _plUpdatesCache[u.pkg_no] = u; });
             Object.keys(_plChanges).forEach(k => delete _plChanges[k]);
             statusEl.style.color = '#2e7d32';
-            statusEl.textContent = `${upserts.length}건 저장 완료.`;
+            statusEl.textContent = `${upserts.length} record(s) saved.`;
         } else {
             const msg = await r.text();
             statusEl.style.color = '#e53935';
-            statusEl.textContent = `저장 실패: ${msg.slice(0,80)}`;
+            statusEl.textContent = `Save failed: ${msg.slice(0,80)}`;
         }
     } catch(e) {
         statusEl.style.color = '#e53935';
-        statusEl.textContent = `오류: ${e.message}`;
+        statusEl.textContent = `Error: ${e.message}`;
     }
     btn.disabled = false;
     btn.innerHTML = '<i class="fas fa-save"></i> Save';
@@ -3111,7 +3111,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 _plChanges[pkg][field] = el.value;
             }
             document.getElementById('plSaveStatus').style.color = '#e65100';
-            document.getElementById('plSaveStatus').textContent = '저장되지 않은 변경 사항 있음.';
+            document.getElementById('plSaveStatus').textContent = 'Unsaved changes.';
         });
         tbody.addEventListener('input', e => {
             const el = e.target;
@@ -3122,7 +3122,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!_plChanges[pkg]) _plChanges[pkg] = {};
             _plChanges[pkg][field] = el.value;
             document.getElementById('plSaveStatus').style.color = '#e65100';
-            document.getElementById('plSaveStatus').textContent = '저장되지 않은 변경 사항 있음.';
+            document.getElementById('plSaveStatus').textContent = 'Unsaved changes.';
         });
     }
 });
