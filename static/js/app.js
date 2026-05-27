@@ -1102,12 +1102,11 @@ async function renderBomTable() {
     if(!tbody) return;
     tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
 
-    const iso     = (document.getElementById('bomIsoSearch')?.value || '').trim();
+    const search  = (document.getElementById('bomIsoSearch')?.value || '').trim();
     const sys     = document.getElementById('bomSystemFilter')?.value || 'All';
     const cat     = document.getElementById('bomCategoryFilter')?.value || 'All';
     const item    = document.getElementById('bomItemFilter')?.value || 'All';
     const size    = document.getElementById('bomSizeFilter')?.value || 'All';
-    const matCode = (document.getElementById('bomMatCodeSearch')?.value || '').trim();
 
     // Item명 → MatCode prefix 역매핑 (extractItemFromMatCode와 동일 기준)
     const ITEM_PREFIX_MAP = {
@@ -1129,7 +1128,7 @@ async function renderBomTable() {
     // 필터를 두 쿼리(data + count)에 동일하게 적용하는 헬퍼
     const applyFilters = (q) => {
         if (sys  !== 'All') q = q.eq('system', sys);
-        if (iso)            q = q.ilike('iso_dwg_no', `%${iso}%`);
+        if (search) q = q.or(`iso_dwg_no.ilike.%${search}%,mat_code.ilike.%${search}%,full_description.ilike.%${search}%`);
         if (cat  !== 'All') q = q.ilike('category', `%${cat}%`);
         if (item !== 'All') {
             // MatCode prefix 기반 필터 (드롭박스 생성 기준과 동일)
@@ -1151,7 +1150,6 @@ async function renderBomTable() {
                 if (single) q = q.ilike('mat_code', `%-${toD(single[1])}-%`);
             }
         }
-        if (matCode) q = q.ilike('mat_code', `%${matCode}%`);
         return q;
     };
 
@@ -1830,14 +1828,6 @@ function attachEventListeners() {
         });
     }
 
-    // BOM Mat Code Search - Enter key
-    const bomMatCodeSearch = document.getElementById('bomMatCodeSearch');
-    if (bomMatCodeSearch) {
-        bomMatCodeSearch.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') { currentBomPage = 0; renderBomTable(); }
-        });
-    }
-
     // BOM Clear Filters Button
     const btnClearBomFilters = document.getElementById('btnClearBomFilters');
     if (btnClearBomFilters) {
@@ -1852,7 +1842,6 @@ function attachEventListeners() {
             if (bomItemFilter) bomItemFilter.value = 'All';
             const bomSizeFilter = document.getElementById('bomSizeFilter');
             if (bomSizeFilter) bomSizeFilter.value = 'All';
-            if (bomMatCodeSearch) bomMatCodeSearch.value = '';
             currentBomPage = 0;
             renderBomTable();
         });
@@ -1873,7 +1862,7 @@ function attachEventListeners() {
             btnExportBom.disabled = true;
             btnExportBom.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exporting...';
             try {
-                const iso = (document.getElementById('bomIsoSearch')?.value || '').trim();
+                const search = (document.getElementById('bomIsoSearch')?.value || '').trim();
                 const sys = document.getElementById('bomSystemFilter')?.value || 'All';
                 const cat = document.getElementById('bomCategoryFilter')?.value || 'All';
 
@@ -1881,7 +1870,7 @@ function attachEventListeners() {
                     .select('system, iso_dwg_no, category, mat_code, full_description, uom, qty')
                     .order('iso_dwg_no');
                 if (sys !== 'All') query = query.eq('system', sys);
-                if (iso) query = query.ilike('iso_dwg_no', `%${iso}%`);
+                if (search) query = query.or(`iso_dwg_no.ilike.%${search}%,mat_code.ilike.%${search}%,full_description.ilike.%${search}%`);
                 if (cat !== 'All') query = query.ilike('category', `%${cat}%`);
 
                 const { data, error } = await query;

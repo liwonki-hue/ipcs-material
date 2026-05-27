@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EPC Piping Material Management System</title>
     <!-- CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260527s">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260527t">
     <!-- FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Google Fonts: Inter -->
@@ -421,57 +421,43 @@
                  </div>
 
                  <div class="panel filter-panel" style="margin-bottom: 20px;">
-                      <!-- Row 1: ISO / System / Category / Item / Size + Export/Upload -->
-                      <div style="display: flex; align-items: flex-end; justify-content: space-between; width: 100%; margin-bottom: 10px;">
-                          <div style="display: flex; align-items: flex-end; gap: 12px; flex: 1;">
-                              <div class="form-group" style="flex: 2;">
-                                  <label>ISO Drawing (Search & Select)</label>
-                                  <input type="text" id="bomIsoSearch" class="form-control" style="width: 100%;" placeholder="Type to search ISO Drawing..." list="bomIsoDatalist">
+                      <div style="display: flex; align-items: flex-end; justify-content: space-between; width: 100%; gap: 10px; flex-wrap: nowrap;">
+                          <div style="display: flex; align-items: flex-end; gap: 10px; flex: 1; min-width: 0;">
+                              <div class="form-group" style="flex: 2; min-width: 0; margin-bottom: 0;">
+                                  <label>Search (ISO / MatCode / Description)</label>
+                                  <input type="text" id="bomIsoSearch" class="form-control" style="width: 100%;" placeholder="ISO Drawing, MatCode, Description..." list="bomIsoDatalist">
                                   <datalist id="bomIsoDatalist"></datalist>
                               </div>
-                              <div class="form-group" style="flex: 1;">
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
                                   <label>System</label>
                                   <select id="bomSystemFilter" class="form-control" style="width: 100%;"><option value="All">All Systems</option></select>
                               </div>
-                              <div class="form-group" style="flex: 1;">
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
                                   <label>Category</label>
                                   <select id="bomCategoryFilter" class="form-control" style="width: 100%;">
                                       <option value="All">All Categories</option>
                                       <option value="Pipe">Pipe</option>
                                       <option value="Fitting">Fitting</option>
-                                      <option value="Flange">Flange</option>
                                       <option value="Valve">Valve</option>
-                                      <option value="Gasket">Gasket</option>
-                                      <option value="Bolt">Bolt</option>
-                                      <option value="Instrument">Instrument</option>
-                                      <option value="Support">Support</option>
+                                      <option value="Others">Others</option>
                                   </select>
                               </div>
-                              <div class="form-group" style="flex: 1;">
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
                                   <label>Item</label>
                                   <select id="bomItemFilter" class="form-control" style="width: 100%;"><option value="All">All Items</option></select>
                               </div>
-                              <div class="form-group" style="flex: 1;">
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
                                   <label>Size</label>
                                   <select id="bomSizeFilter" class="form-control" style="width: 100%;"><option value="All">All Sizes</option></select>
                               </div>
+                              <div style="padding-bottom: 1px; display: flex; gap: 8px; flex-shrink: 0;">
+                                  <button class="btn btn-primary" id="btnFilterBom" style="height: 38px; white-space: nowrap;"><i class="fas fa-search"></i> Search</button>
+                                  <button class="btn btn-outline" id="btnClearBomFilters" style="height: 38px; white-space: nowrap;">Clear</button>
+                              </div>
                           </div>
-                          <div style="padding-bottom: 1px; display: flex; gap: 8px; flex-shrink: 0; margin-left: 12px;">
-                              <button class="btn btn-outline" id="btnExportBom" style="height: 38px; white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export Excel</button>
-                              <button class="btn btn-outline" id="btnUploadBom" style="height: 38px; white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-upload" style="color:#1565c0;"></i> Upload & Update BOM</button>
-                          </div>
-                      </div>
-                      <!-- Row 2: Mat Code search -->
-                      <div style="display: flex; align-items: flex-end; gap: 12px;">
-                          <div class="form-group" style="flex: 3;">
-                              <label>Mat Code Search</label>
-                              <input type="text" id="bomMatCodeSearch" class="form-control" style="width: 100%;" placeholder="e.g. RDE-SS04, D080D040, EL9L-CS05 ...">
-                          </div>
-                          <div style="padding-bottom: 1px;">
-                              <button class="btn btn-primary" id="btnFilterBom" style="height: 38px; white-space: nowrap; display: flex; align-items: center; gap: 8px;"><i class="fas fa-search"></i> Search BOM</button>
-                          </div>
-                          <div style="padding-bottom: 1px;">
-                              <button class="btn btn-outline" id="btnClearBomFilters" style="height: 38px; white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-times"></i> Clear</button>
+                          <div style="padding-bottom: 1px; display: flex; gap: 8px; flex-shrink: 0;">
+                              <button class="btn btn-outline" id="btnExportBom" style="height: 38px; white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export</button>
+                              <button class="btn btn-outline" id="btnUploadBom" style="height: 38px; white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-upload" style="color:#1565c0;"></i> Upload</button>
                           </div>
                       </div>
                   </div>
@@ -1272,6 +1258,6 @@
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
     <!-- Preloaded backend data (Removed large data.js) -->
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260527s"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260527t"></script>
 </body>
 </html>
