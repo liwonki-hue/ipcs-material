@@ -62,7 +62,7 @@ async function syncShortageData() {
                 qty:      parseFloat(r.qty) || 0,
                 tag:      r.tag || '-',
                 purpose:  r.purpose || '',
-            })).filter(r => r.qty > 0 && (r.matCode || r.category === 'Accessory'));
+            })).filter(r => r.qty > 0);
         }
         renderShortageTable();
     } catch (e) {
@@ -280,7 +280,7 @@ async function syncFromSupabase() {
                 qty:      parseFloat(r.qty) || 0,
                 tag:      r.tag || '-',
                 purpose:  r.purpose || '',
-            })).filter(r => r.qty > 0 && (r.matCode || r.category === 'Accessory'));
+            })).filter(r => r.qty > 0);
         }
         
         if (issuedRaw.length > 0) {
@@ -540,7 +540,10 @@ function updateDashboard() {
         const summary = Array.isArray(summaryRes.data) ? summaryRes.data[0] : summaryRes.data;
         if (summary) {
             const totalBom = parseFloat(summary.global_bom_qty || 0);
-            const totalRec = parseFloat(summary.global_rec_qty || 0);
+            // Received KPI: Permanent 또는 미분류 항목만 집계
+            const totalRec = db.receiving
+                .filter(r => r.purpose === 'Permanent' || r.purpose === '')
+                .reduce((s, r) => s + r.qty, 0);
             const totalIss = parseFloat(summary.global_issued_qty || 0);
             const prog = totalBom > 0 ? (totalRec / totalBom * 100).toFixed(1) : 0;
             const kpiMap = {
@@ -872,13 +875,15 @@ function renderShortageTable() {
         bomMap[b.matCode].qty += b.qty;
     });
 
-    // Aggregate Receiving qty per matCode
+    // Aggregate Receiving qty per matCode — Purpose=Permanent 또는 미분류만 BOM 비교 대상
     const recMap = {};
-    db.receiving.forEach(r => {
-        if (!r.matCode) return;
-        if (!recMap[r.matCode]) recMap[r.matCode] = { qty: 0, desc: r.desc, unit: r.unit };
-        recMap[r.matCode].qty += r.qty;
-    });
+    db.receiving
+        .filter(r => r.purpose === 'Permanent' || r.purpose === '')
+        .forEach(r => {
+            if (!r.matCode) return;
+            if (!recMap[r.matCode]) recMap[r.matCode] = { qty: 0, desc: r.desc, unit: r.unit };
+            recMap[r.matCode].qty += r.qty;
+        });
 
     // masterMap for item / size / category lookup
     const masterMap = {};
@@ -2881,7 +2886,7 @@ async function initShipping() {
                     unit:     r.unit || 'EA',
                     qty:      parseFloat(r.qty) || 0,
                     tag:      r.tag || '-',
-                })).filter(r => r.qty > 0 && (r.matCode || r.category === 'Accessory'));
+                })).filter(r => r.qty > 0);
             }
         }
         await loadPlUpdates();
