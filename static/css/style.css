@@ -154,10 +154,10 @@ ul { list-style: none; }
 #plTable th:nth-child(2), #plTable td:nth-child(2) { width: 160px; min-width: 160px; white-space: nowrap; }
 #plTable th:nth-child(3), #plTable td:nth-child(3) { width: 160px; min-width: 160px; white-space: nowrap; }
 /* Purpose: 최소 너비 */
-#plTable th:nth-child(12), #plTable td:nth-child(12) { width: 110px; min-width: 110px; }
+#plTable th:nth-child(12), #plTable td:nth-child(12) { width: 115px; min-width: 115px; }
 #plTable th:nth-child(4), #plTable td:nth-child(4) { width: 70px;  min-width: 70px;  }
 /* Full Description: 전체 표시, 가운데 정렬 */
-#plTable th:nth-child(5), #plTable td:nth-child(5) { text-align: center; min-width: 200px; }
+#plTable th:nth-child(5), #plTable td:nth-child(5) { text-align: center; min-width: 195px; }
 /* TAG NO: 한 줄 표시 */
 #plTable th:nth-child(6), #plTable td:nth-child(6) { min-width: 100px; white-space: nowrap; }
 
