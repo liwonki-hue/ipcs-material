@@ -1238,7 +1238,7 @@ function renderReceivingTable() {
     const cat    = document.getElementById('plCategoryFilter')?.value || 'All';
     const itemF  = document.getElementById('plItemFilter')?.value || 'All';
     const sizeF  = document.getElementById('plSizeFilter')?.value || 'All';
-    const typeF  = (document.getElementById('plTypeFilter')?.value || '').trim().toUpperCase();
+    const typeF  = (document.getElementById('plTypeFilter')?.value || '').trim();
 
     let data = db.receiving.filter(r => {
         const matchSearch = !search || r.matCode.toUpperCase().includes(search) || r.plNo.toUpperCase().includes(search) || (r.category||'').toUpperCase().includes(search) || r.desc.toUpperCase().includes(search);
@@ -1249,7 +1249,7 @@ function renderReceivingTable() {
         const matchSizeF = sizeF === 'All' || window.extractSizeFromMatCode(r.matCode) === sizeF;
         const et = (r.matCode || '').split('-').pop().toUpperCase();
         const ftype = (window.extractItemFromMatCode(r.matCode) === 'FLANGE' && (et === 'FF' || et === 'RF')) ? 'WN' + et : '-';
-        const matchType = !typeF || ftype.includes(typeF);
+        const matchType = !typeF || ftype === typeF;
         return matchSearch && matchDoc && matchPkg && matchCat && matchItemF && matchSizeF && matchType;
     });
     
