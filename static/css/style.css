@@ -150,9 +150,9 @@ ul { list-style: none; }
 /* Receiving (PL) table center alignment */
 #plTable th, #plTable td { text-align: center; }
 /* DOC NO / PKG NO / MatCode / Category 너비 축소 */
-#plTable th:nth-child(1), #plTable td:nth-child(1) { width: 110px; min-width: 110px; white-space: nowrap; }
-#plTable th:nth-child(2), #plTable td:nth-child(2) { width: 180px; min-width: 180px; white-space: nowrap; }
-#plTable th:nth-child(3), #plTable td:nth-child(3) { width: 180px; min-width: 180px; white-space: nowrap; }
+#plTable th:nth-child(1), #plTable td:nth-child(1) { width: 130px; min-width: 130px; white-space: nowrap; }
+#plTable th:nth-child(2), #plTable td:nth-child(2) { width: 200px; min-width: 200px; white-space: nowrap; }
+#plTable th:nth-child(3), #plTable td:nth-child(3) { width: 200px; min-width: 200px; white-space: nowrap; }
 /* Purpose: 최소 너비 */
 #plTable th:nth-child(12), #plTable td:nth-child(12) { width: 125px; min-width: 125px; }
 #plTable th:nth-child(4), #plTable td:nth-child(4) { width: 70px;  min-width: 70px;  }
