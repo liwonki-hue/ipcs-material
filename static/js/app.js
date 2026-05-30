@@ -3005,9 +3005,12 @@ function renderShippingTable(rows) {
     }
 
     let prevPacking = null;
+    let prevPkg = null;
     tbody.innerHTML = merged.map(r => {
-        const newGroup = r.packing !== prevPacking;
+        const newGroup  = r.packing !== prevPacking;  // packing 셀 표시 기준
+        const newPkg    = r.pkg_no  !== prevPkg;      // Status/Custom Clear 편집 기준
         prevPacking = r.packing;
+        prevPkg     = r.pkg_no;
         const packingCell = newGroup
             ? `<td style="text-align:center;font-weight:700;color:#0A2540;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:2px solid #e0e7ef;" title="${r.packing}">${r.packing}</td>`
             : `<td style="text-align:center;color:#ccc;border-top:none;white-space:nowrap;">↳</td>`;
@@ -3020,19 +3023,19 @@ function renderShippingTable(rows) {
 
         const roStyle = 'text-align:center;font-size:12px;color:#888;background:#f8fafc;';
 
-        // Packing 레벨 필드: 그룹 첫 행만 editable, 나머지는 read-only 표시
-        const statusCell = newGroup
+        // PKG NO 첫 행만 editable, 동일 PKG NO 내 중복 행은 값만 표시
+        const statusCell = newPkg
             ? `<td style="text-align:center;padding:3px;"><select style="${PL_INPUT_CSS}" data-pkg="${pkg}" data-field="status" data-packing="${r.packing}">${statusOpts}</select></td>`
-            : `<td style="${roStyle}" data-pkg-ro="${pkg}" data-field-ro="status">${r.status || '—'}</td>`;
-        const onSiteCell = newGroup
+            : `<td style="${roStyle}">${r.status || '—'}</td>`;
+        const onSiteCell = newPkg
             ? `<td style="text-align:center;padding:3px;"><input type="text" class="pl-datepicker" style="${PL_INPUT_CSS}" data-pkg="${pkg}" data-field="on_site" data-packing="${r.packing}" value="${r.on_site}" placeholder="YYYY-MM-DD"></td>`
-            : `<td style="${roStyle}" data-pkg-ro="${pkg}" data-field-ro="on_site">${r.on_site || '—'}</td>`;
+            : `<td style="${roStyle}">${r.on_site || '—'}</td>`;
         const clearOpts = ['', 'Pending', 'Cleared'].map(v =>
             `<option value="${v}"${r.custom_clear === v ? ' selected' : ''}>${v || '—'}</option>`
         ).join('');
-        const customClearCell = newGroup
+        const customClearCell = newPkg
             ? `<td style="text-align:center;padding:3px;"><select style="${PL_INPUT_CSS}" data-pkg="${pkg}" data-field="custom_clear" data-packing="${r.packing}">${clearOpts}</select></td>`
-            : `<td style="${roStyle}" data-pkg-ro="${pkg}" data-field-ro="custom_clear">${r.custom_clear || '—'}</td>`;
+            : `<td style="${roStyle}">${r.custom_clear || '—'}</td>`;
 
         return `<tr${newGroup ? ' style="background:#f8fafc;"' : ''}>
             ${packingCell}
