@@ -1305,7 +1305,7 @@ function renderReceivingTable() {
             <td>${r.plNo}</td>
             <td><span class="status-badge ok">${r.matCode}</span></td>
             <td><span class="status-badge ${catBadge}">${displayCat}</span></td>
-            <td style="text-align:left;">${descDisplay}</td>
+            <td>${descDisplay}</td>
             <td style="text-align:center;white-space:nowrap;">${r.tag || '-'}</td>
             <td style="font-weight:600;">${item}</td>
             <td style="text-align:center;font-weight:600;color:${flangeType!=='-'?'#1565c0':'#aaa'};">${flangeType}</td>
