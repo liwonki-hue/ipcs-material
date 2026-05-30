@@ -2925,12 +2925,14 @@ function buildShippingGroupFilter(data) {
 function getShippingFiltered() {
     const group  = document.getElementById('shippingGroupFilter').value;
     const search = document.getElementById('shippingSearch').value.trim().toLowerCase();
-    return (_shippingData || []).filter(r => {
-        if (group  && r.packing !== group) return false;
-        if (search && !r.pkg_no.toLowerCase().includes(search)
-                   && !r.description.toLowerCase().includes(search)) return false;
-        return true;
-    });
+    return (_shippingData || [])
+        .filter(r => {
+            if (group  && r.packing !== group) return false;
+            if (search && !r.pkg_no.toLowerCase().includes(search)
+                       && !r.description.toLowerCase().includes(search)) return false;
+            return true;
+        })
+        .sort((a, b) => a.packing.localeCompare(b.packing) || a.pkg_no.localeCompare(b.pkg_no));
 }
 
 const PL_INPUT_CSS = 'width:100%;box-sizing:border-box;border:1px solid #dde3ee;border-radius:4px;padding:3px 5px;font-size:12px;background:#fff;color:#0A2540;text-align:center;';
