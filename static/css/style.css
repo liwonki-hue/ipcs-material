@@ -155,11 +155,11 @@ ul { list-style: none; }
 #plTable th:nth-child(3), #plTable td:nth-child(3) { width: 250px; min-width: 250px; white-space: nowrap; }
 /* Purpose: 최소 너비 */
 #plTable th:nth-child(12), #plTable td:nth-child(12) { width: 125px; min-width: 125px; }
-#plTable th:nth-child(4),  #plTable td:nth-child(4)  { width: 20px;  min-width: 20px;  }
-/* Size / Unit / Qty +10px */
-#plTable th:nth-child(9),  #plTable td:nth-child(9)  { width: 60px;  min-width: 60px;  }
-#plTable th:nth-child(10), #plTable td:nth-child(10) { width: 50px;  min-width: 50px;  }
-#plTable th:nth-child(11), #plTable td:nth-child(11) { width: 55px;  min-width: 55px;  }
+#plTable th:nth-child(4),  #plTable td:nth-child(4)  { display: none; }
+/* Size / Unit / Qty */
+#plTable th:nth-child(9),  #plTable td:nth-child(9)  { width: 70px;  min-width: 70px;  }
+#plTable th:nth-child(10), #plTable td:nth-child(10) { width: 60px;  min-width: 60px;  }
+#plTable th:nth-child(11), #plTable td:nth-child(11) { width: 65px;  min-width: 65px;  }
 /* Item +25px, Type +25px */
 #plTable th:nth-child(7), #plTable td:nth-child(7) { width: 145px; min-width: 145px; }
 #plTable th:nth-child(8), #plTable td:nth-child(8) { width: 90px;  min-width: 90px;  }
