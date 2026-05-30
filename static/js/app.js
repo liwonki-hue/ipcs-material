@@ -2895,20 +2895,28 @@ async function initShipping() {
             }
         }
         await loadPlUpdates();
-        _shippingData = db.receiving.map(r => ({
-            packing:      r.docNo,
-            pkg_no:       r.plNo,
-            description:  r.desc,
-            qty:          r.qty,
-            unit:         r.unit,
-            purpose:      r.purpose || '',
-            status:       '',
-            on_site:      '',
-            custom_clear: '',
-            issue_date:   '',
-            request_date: '',
-            remark:       '',
-        }));
+        // PKG NO당 1행만 표시 (밸브+악세사리 중복 방지) — 첫 번째 항목 기준
+        const pkgSeen = new Set();
+        _shippingData = db.receiving
+            .filter(r => {
+                if (pkgSeen.has(r.plNo)) return false;
+                pkgSeen.add(r.plNo);
+                return true;
+            })
+            .map(r => ({
+                packing:      r.docNo,
+                pkg_no:       r.plNo,
+                description:  r.desc,
+                qty:          r.qty,
+                unit:         r.unit,
+                purpose:      r.purpose || '',
+                status:       '',
+                on_site:      '',
+                custom_clear: '',
+                issue_date:   '',
+                request_date: '',
+                remark:       '',
+            }));
         buildShippingGroupFilter(_shippingData);
         renderShippingTable(getShippingFiltered());
     } catch(e) {
