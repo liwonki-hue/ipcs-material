@@ -2874,13 +2874,14 @@ async function loadPlUpdates() {
 
 async function initShipping() {
     document.getElementById('shippingTbody').innerHTML =
-        '<tr><td colspan="11" style="text-align:center;color:#888;padding:30px;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        '<tr><td colspan="12" style="text-align:center;color:#888;padding:30px;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
     try {
         // Supabase에서 최신 receiving 데이터 직접 조회 → 신규 등록 즉시 반영
         if (supabaseClient) {
             const { data: fresh } = await supabaseClient.schema('material').from('receiving').select('*');
             if (Array.isArray(fresh) && fresh.length > 0) {
                 db.receiving = fresh.map(r => ({
+                    id:       r.id,
                     matCode:  (r.mat_code || '').trim().toUpperCase(),
                     category: r.category || '-',
                     docNo:    r.doc_no || '-',
@@ -2889,6 +2890,7 @@ async function initShipping() {
                     unit:     r.unit || 'EA',
                     qty:      parseFloat(r.qty) || 0,
                     tag:      r.tag || '-',
+                    purpose:  r.purpose || '',
                 })).filter(r => r.qty > 0);
             }
         }
@@ -2899,6 +2901,7 @@ async function initShipping() {
             description:  r.desc,
             qty:          r.qty,
             unit:         r.unit,
+            purpose:      r.purpose || '',
             status:       '',
             on_site:      '',
             custom_clear: '',
@@ -2910,7 +2913,7 @@ async function initShipping() {
         renderShippingTable(getShippingFiltered());
     } catch(e) {
         document.getElementById('shippingTbody').innerHTML =
-            '<tr><td colspan="11" style="text-align:center;color:#e53935;padding:30px;">Failed to load data.</td></tr>';
+            '<tr><td colspan="12" style="text-align:center;color:#e53935;padding:30px;">Failed to load data.</td></tr>';
     }
 }
 
@@ -2999,7 +3002,7 @@ function renderShippingTable(rows) {
 
     const tbody = document.getElementById('shippingTbody');
     if (!merged.length) {
-        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#888;padding:30px;">No data found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:#888;padding:30px;">No data found.</td></tr>';
         renderShippingPagination(0);
         return;
     }
@@ -3052,6 +3055,7 @@ function renderShippingTable(rows) {
             <td style="text-align:center;padding:3px;">
                 <input type="text" class="pl-datepicker" style="${PL_INPUT_CSS}" data-pkg="${pkg}" data-field="issue_date" value="${r.issue_date}" placeholder="YYYY-MM-DD">
             </td>
+            <td style="text-align:center;font-size:12px;color:#1565c0;font-weight:600;">${r.purpose || '—'}</td>
             <td style="padding:3px;">
                 <textarea style="${PL_INPUT_CSS}resize:vertical;min-height:32px;max-height:80px;" data-pkg="${pkg}" data-field="remark" rows="1">${r.remark || ''}</textarea>
             </td>
