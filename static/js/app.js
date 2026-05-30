@@ -919,11 +919,14 @@ function renderShortageTable() {
         shortageList.push({ matCode, cat, desc, item, size, unit, bomQty, recQty, shortage });
     });
 
-    // Pipe 우선, 이후 카테고리 순, 동일 카테고리 내 matCode 순
+    // Pipe 우선, 이후 카테고리 순, 동일 카테고리 내 Size 오름차순
     shortageList.sort((a, b) => {
         const oa = CAT_ORDER[a.cat] ?? 9;
         const ob = CAT_ORDER[b.cat] ?? 9;
         if (oa !== ob) return oa - ob;
+        const sa = parseFloat((a.size || '0').replace(/[^0-9.]/g, '')) || 0;
+        const sb = parseFloat((b.size || '0').replace(/[^0-9.]/g, '')) || 0;
+        if (sa !== sb) return sa - sb;
         return a.matCode.localeCompare(b.matCode);
     });
 
@@ -1267,7 +1270,7 @@ function renderReceivingTable() {
         const ftype = (window.extractItemFromMatCode(r.matCode) === 'FLANGE' && (et === 'FF' || et === 'RF')) ? 'WN' + et : '-';
         const matchType = !typeF || ftype === typeF;
         return matchSearch && matchDoc && matchPkg && matchCat && matchItemF && matchSizeF && matchType;
-    }).sort((a, b) => b.docNo.localeCompare(a.docNo) || b.plNo.localeCompare(a.plNo));
+    }).sort((a, b) => a.docNo.localeCompare(b.docNo) || a.plNo.localeCompare(b.plNo));
     
     let slicedPl = data.slice(currentPlPage * PAGE_SIZE, (currentPlPage + 1) * PAGE_SIZE); 
     
@@ -3047,7 +3050,7 @@ function renderShippingTable(rows) {
                 <input type="text" class="pl-datepicker" style="${PL_INPUT_CSS}" data-pkg="${pkg}" data-field="issue_date" value="${r.issue_date}" placeholder="YYYY-MM-DD">
             </td>
             <td style="padding:3px;">
-                <textarea style="${PL_INPUT_CSS}resize:vertical;min-height:32px;max-height:80px;" data-pkg="${pkg}" data-field="remark" rows="1">${r.remark}</textarea>
+                <textarea style="${PL_INPUT_CSS}resize:vertical;min-height:32px;max-height:80px;" data-pkg="${pkg}" data-field="remark" rows="1">${r.remark || ''}</textarea>
             </td>
         </tr>`;
     }).join('');
