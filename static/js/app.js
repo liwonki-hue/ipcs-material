@@ -3052,7 +3052,7 @@ async function savePlUpdates() {
     statusEl.textContent = '';
 
     try {
-        const DATE_FIELDS = ['on_site', 'custom_clear', 'request_date', 'issue_date'];
+        const DATE_FIELDS = ['on_site', 'request_date', 'issue_date'];
         const upserts = dirty.map(([pkg_no, fields]) => {
             const base = { pkg_no, ...(_plUpdatesCache[pkg_no] || {}), ...fields, updated_at: new Date().toISOString() };
             DATE_FIELDS.forEach(f => { if (base[f] === '') base[f] = null; });
