@@ -1068,17 +1068,24 @@ function initFilterOptions() {
     const plCat = document.getElementById('plCategoryFilter');
     const plItemF = document.getElementById('plItemFilter');
     const plSizeF = document.getElementById('plSizeFilter');
+    const plTypeF = document.getElementById('plTypeFilter');
     if(plDoc && plPkg) {
         const docs = [...new Set(db.receiving.map(r => r.docNo))].sort();
         const pkgs = [...new Set(db.receiving.map(r => r.plNo))].sort();
         const cats = [...new Set(db.receiving.map(r => r.category).filter(Boolean))].sort();
         const items = [...new Set(db.receiving.map(r => window.extractItemFromMatCode(r.matCode)).filter(v => v && v !== '-'))].sort();
         const sizes = [...new Set(db.receiving.map(r => window.extractSizeFromMatCode(r.matCode)).filter(v => v && v !== '-'))].sort();
+        const types = [...new Set(db.receiving.map(r => {
+            const et = (r.matCode || '').split('-').pop().toUpperCase();
+            const item = window.extractItemFromMatCode(r.matCode);
+            return (item === 'FLANGE' && (et === 'FF' || et === 'RF')) ? 'WN' + et : null;
+        }).filter(Boolean))].sort();
         plDoc.innerHTML = '<option value="All">All DOCs</option>' + docs.map(d => `<option value="${d}">${d}</option>`).join('');
         plPkg.innerHTML = '<option value="All">All PKGs</option>' + pkgs.map(p => `<option value="${p}">${p}</option>`).join('');
         if(plCat) plCat.innerHTML = '<option value="All">All Categories</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
         if(plItemF) plItemF.innerHTML = '<option value="All">All Items</option>' + items.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
         if(plSizeF) plSizeF.innerHTML = '<option value="All">All Sizes</option>' + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
+        if(plTypeF) plTypeF.innerHTML = '<option value="">All Types</option>' + types.map(t => `<option value="${t}">${t}</option>`).join('');
     }
 }
 
