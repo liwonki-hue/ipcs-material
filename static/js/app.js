@@ -1269,6 +1269,9 @@ function renderReceivingTable() {
         const size = window.extractSizeFromMatCode(r.matCode);
         const item = window.extractItemFromMatCode(r.matCode);
         const safeCode = r.matCode.replace(/'/g, "\\'");
+        const etPart = (r.matCode || '').split('-').pop().toUpperCase();
+        const flangeType = (item === 'FLANGE' && (etPart === 'FF' || etPart === 'RF'))
+            ? 'WN' + etPart : '-';
         let tr = `<tr>
             <td>${r.docNo}</td>
             <td>${r.plNo}</td>
@@ -1277,6 +1280,7 @@ function renderReceivingTable() {
             <td title="${descDisplay}">${shortDesc}</td>
             <td style="text-align:center;">${r.tag || '-'}</td>
             <td style="font-weight:600;">${item}</td>
+            <td style="text-align:center;font-weight:600;color:${flangeType!=='-'?'#1565c0':'#aaa'};">${flangeType}</td>
             <td style="font-weight:600;">${size}</td>
             <td>${r.unit || 'EA'}</td>
             <td>${r.qty.toFixed(2)}</td>
