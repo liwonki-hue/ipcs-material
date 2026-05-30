@@ -2,7 +2,7 @@
 import openpyxl, sys, io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
-BOM_PATH = 'Raw File/Speciality BOM.xlsx'
+BOM_PATH = 'Raw File/BOM Data/Speciality BOM.xlsx'
 OUT_MC   = 'scratch/insert_speciality_matcodes.sql'
 OUT_BOM  = 'scratch/insert_speciality_bom.sql'
 
