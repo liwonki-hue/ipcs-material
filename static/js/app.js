@@ -52,14 +52,16 @@ async function syncShortageData() {
         }
         if (recvRaw.length > 0) {
             db.receiving = recvRaw.map(r => ({
-                matCode: (r.mat_code || '').trim().toUpperCase(),
+                id:       r.id,
+                matCode:  (r.mat_code || '').trim().toUpperCase(),
                 category: r.category || '-',
-                docNo: r.doc_no || '-',
-                plNo: r.pkg_no || '-',
-                desc: r.full_description || '-',
-                unit: r.unit || 'EA',
-                qty: parseFloat(r.qty) || 0,
-                tag: r.tag || '-',
+                docNo:    r.doc_no || '-',
+                plNo:     r.pkg_no || '-',
+                desc:     r.full_description || '-',
+                unit:     r.unit || 'EA',
+                qty:      parseFloat(r.qty) || 0,
+                tag:      r.tag || '-',
+                purpose:  r.purpose || '',
             })).filter(r => r.qty > 0 && (r.matCode || r.category === 'Accessory'));
         }
         renderShortageTable();
@@ -268,14 +270,16 @@ async function syncFromSupabase() {
         
         if (recvRaw.length > 0) {
             db.receiving = recvRaw.map(r => ({
-                matCode: (r.mat_code || '').trim().toUpperCase(),
+                id:       r.id,
+                matCode:  (r.mat_code || '').trim().toUpperCase(),
                 category: r.category || '-',
-                docNo: r.doc_no || '-',
-                plNo: r.pkg_no || '-',
-                desc: r.full_description || '-',
-                unit: r.unit || 'EA',
-                qty: parseFloat(r.qty) || 0,
-                tag: r.tag || '-',
+                docNo:    r.doc_no || '-',
+                plNo:     r.pkg_no || '-',
+                desc:     r.full_description || '-',
+                unit:     r.unit || 'EA',
+                qty:      parseFloat(r.qty) || 0,
+                tag:      r.tag || '-',
+                purpose:  r.purpose || '',
             })).filter(r => r.qty > 0 && (r.matCode || r.category === 'Accessory'));
         }
         
@@ -1279,10 +1283,16 @@ function renderReceivingTable() {
 
         const size = window.extractSizeFromMatCode(r.matCode);
         const item = window.extractItemFromMatCode(r.matCode);
-        const safeCode = r.matCode.replace(/'/g, "\\'");
         const etPart = (r.matCode || '').split('-').pop().toUpperCase();
         const flangeType = (item === 'FLANGE' && (etPart === 'FF' || etPart === 'RF'))
             ? 'WN' + etPart : '-';
+        const PURPOSE_OPTS = ['', 'Permanent', 'Temporary', 'Repair', 'Spare', 'Commissioning', 'Accessory', 'Other'];
+        const purposeOpts = PURPOSE_OPTS.map(v =>
+            `<option value="${v}"${r.purpose === v ? ' selected' : ''}>${v || '—'}</option>`
+        ).join('');
+        const purposeSel = `<select class="pl-purpose-sel" data-recv-id="${r.id}"
+            style="width:100%;border:1px solid #dde3ee;border-radius:4px;padding:2px 4px;font-size:11px;background:#fff;color:#0A2540;text-align:center;">
+            ${purposeOpts}</select>`;
         let tr = `<tr>
             <td>${r.docNo}</td>
             <td>${r.plNo}</td>
@@ -1295,7 +1305,7 @@ function renderReceivingTable() {
             <td style="font-weight:600;">${size}</td>
             <td>${r.unit || 'EA'}</td>
             <td>${r.qty.toFixed(2)}</td>
-            <td><button class="btn-small btn-outline" onclick="window.showReceivingDetail('${safeCode}')">Detail</button></td>
+            <td style="padding:3px;">${purposeSel}</td>
         </tr>`;
         tbody.innerHTML += tr;
     });
@@ -1950,6 +1960,29 @@ function attachEventListeners() {
             });
             currentPlPage = 0;
             renderReceivingTable();
+        });
+    }
+
+    // Purpose 드롭박스 자동저장 (이벤트 위임)
+    const plTbody = document.querySelector('#plTable tbody');
+    if (plTbody) {
+        plTbody.addEventListener('change', async e => {
+            const sel = e.target.closest('.pl-purpose-sel');
+            if (!sel) return;
+            const recvId  = sel.dataset.recvId;
+            const purpose = sel.value;
+            if (!recvId || !supabaseClient) return;
+            sel.disabled = true;
+            const { error } = await supabaseClient.schema('material').from('receiving')
+                .update({ purpose })
+                .eq('id', recvId);
+            sel.disabled = false;
+            if (error) {
+                alert('저장 실패: ' + error.message);
+            } else {
+                const rec = db.receiving.find(r => String(r.id) === String(recvId));
+                if (rec) rec.purpose = purpose;
+            }
         });
     }
 
