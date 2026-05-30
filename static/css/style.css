@@ -149,9 +149,15 @@ ul { list-style: none; }
 
 /* Receiving (PL) table center alignment */
 #plTable th, #plTable td { text-align: center; }
-/* TAG NO(6번째) +20px / Full Description(5번째) -20px */
-#plTable th:nth-child(6), #plTable td:nth-child(6) { min-width: 100px; width: 100px; }
-#plTable th:nth-child(5), #plTable td:nth-child(5) { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* DOC NO / PKG NO / MatCode / Category 너비 축소 */
+#plTable th:nth-child(1), #plTable td:nth-child(1) { width: 90px;  min-width: 90px;  white-space: nowrap; }
+#plTable th:nth-child(2), #plTable td:nth-child(2) { width: 160px; min-width: 160px; white-space: nowrap; }
+#plTable th:nth-child(3), #plTable td:nth-child(3) { width: 140px; min-width: 140px; }
+#plTable th:nth-child(4), #plTable td:nth-child(4) { width: 70px;  min-width: 70px;  }
+/* Full Description: 제한 없이 전체 표시 */
+#plTable th:nth-child(5), #plTable td:nth-child(5) { text-align: left; min-width: 200px; }
+/* TAG NO: 한 줄 표시 */
+#plTable th:nth-child(6), #plTable td:nth-child(6) { min-width: 100px; white-space: nowrap; }
 
 .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; display: inline-block; }
 .status-badge.ok { background-color: rgba(46, 125, 50, 0.1); color: var(--color-success); }

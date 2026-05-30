@@ -1287,7 +1287,6 @@ function renderReceivingTable() {
 
         let catBadge = {Pipe:'info', Fitting:'ok', Valve:'warn', Speciality:'warn', Other:'err'}[catForBadge] || 'ok';
         const descDisplay = (r.desc || '').replace(/_/g, '-');
-        let shortDesc = descDisplay.length > 60 ? descDisplay.substring(0, 57) + '...' : descDisplay;
 
         const size = window.extractSizeFromMatCode(r.matCode);
         const item = window.extractItemFromMatCode(r.matCode);
@@ -1306,8 +1305,8 @@ function renderReceivingTable() {
             <td>${r.plNo}</td>
             <td><span class="status-badge ok">${r.matCode}</span></td>
             <td><span class="status-badge ${catBadge}">${displayCat}</span></td>
-            <td title="${descDisplay}">${shortDesc}</td>
-            <td style="text-align:center;">${r.tag || '-'}</td>
+            <td style="text-align:left;">${descDisplay}</td>
+            <td style="text-align:center;white-space:nowrap;">${r.tag || '-'}</td>
             <td style="font-weight:600;">${item}</td>
             <td style="text-align:center;font-weight:600;color:${flangeType!=='-'?'#1565c0':'#aaa'};">${flangeType}</td>
             <td style="font-weight:600;">${size}</td>
