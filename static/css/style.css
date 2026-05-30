@@ -155,7 +155,9 @@ ul { list-style: none; }
 #plTable th:nth-child(3), #plTable td:nth-child(3) { width: 250px; min-width: 250px; white-space: nowrap; }
 /* Purpose: 최소 너비 */
 #plTable th:nth-child(12), #plTable td:nth-child(12) { width: 125px; min-width: 125px; }
-#plTable th:nth-child(4), #plTable td:nth-child(4) { width: 70px;  min-width: 70px;  }
+#plTable th:nth-child(4), #plTable td:nth-child(4) { width: 50px;  min-width: 50px;  }
+/* Item +30px */
+#plTable th:nth-child(7), #plTable td:nth-child(7) { width: 120px; min-width: 120px; }
 /* Full Description: 전체 표시, 가운데 정렬 */
 #plTable th:nth-child(5), #plTable td:nth-child(5) { text-align: center; min-width: 185px; }
 /* TAG NO: 한 줄 표시 */
