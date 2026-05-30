@@ -1267,7 +1267,7 @@ function renderReceivingTable() {
         const ftype = (window.extractItemFromMatCode(r.matCode) === 'FLANGE' && (et === 'FF' || et === 'RF')) ? 'WN' + et : '-';
         const matchType = !typeF || ftype === typeF;
         return matchSearch && matchDoc && matchPkg && matchCat && matchItemF && matchSizeF && matchType;
-    });
+    }).sort((a, b) => b.docNo.localeCompare(a.docNo) || b.plNo.localeCompare(a.plNo));
     
     let slicedPl = data.slice(currentPlPage * PAGE_SIZE, (currentPlPage + 1) * PAGE_SIZE); 
     
