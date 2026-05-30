@@ -1291,7 +1291,7 @@ function renderReceivingTable() {
             `<option value="${v}"${r.purpose === v ? ' selected' : ''}>${v || '—'}</option>`
         ).join('');
         const purposeSel = `<select class="pl-purpose-sel" data-recv-id="${r.id}"
-            style="width:100%;border:1px solid #dde3ee;border-radius:4px;padding:2px 4px;font-size:11px;background:#fff;color:#0A2540;text-align:center;">
+            style="width:100%;border:1px solid #dde3ee;border-radius:4px;padding:3px 6px;font-size:13px;background:#fff;color:#0A2540;text-align:center;">
             ${purposeOpts}</select>`;
         let tr = `<tr>
             <td>${r.docNo}</td>
