@@ -2941,7 +2941,7 @@ function renderShippingTable(rows) {
         const qtyDisplay = r.qty !== '' ? Number(r.qty).toLocaleString() : '—';
         const pkg = r.pkg_no.replace(/'/g, "\\'");
 
-        const statusOpts = ['', 'Shipping', 'On-Site'].map(v =>
+        const statusOpts = ['', 'Preparing', 'Shipping', 'On-Site'].map(v =>
             `<option value="${v}"${r.status === v ? ' selected' : ''}>${v || '—'}</option>`
         ).join('');
 
@@ -2954,7 +2954,7 @@ function renderShippingTable(rows) {
         const onSiteCell = newGroup
             ? `<td style="text-align:center;padding:3px;"><input type="text" class="pl-datepicker" style="${PL_INPUT_CSS}" data-pkg="${pkg}" data-field="on_site" data-packing="${r.packing}" value="${r.on_site}" placeholder="YYYY-MM-DD"></td>`
             : `<td style="${roStyle}" data-pkg-ro="${pkg}" data-field-ro="on_site">${r.on_site || '—'}</td>`;
-        const clearOpts = ['', 'Waiting', 'Cleared'].map(v =>
+        const clearOpts = ['', 'Pending', 'Cleared'].map(v =>
             `<option value="${v}"${r.custom_clear === v ? ' selected' : ''}>${v || '—'}</option>`
         ).join('');
         const customClearCell = newGroup
@@ -3070,6 +3070,7 @@ async function savePlUpdates() {
         if (r.ok || r.status === 201 || r.status === 204) {
             upserts.forEach(u => { _plUpdatesCache[u.pkg_no] = u; });
             Object.keys(_plChanges).forEach(k => delete _plChanges[k]);
+            renderShippingTable(getShippingFiltered());
             statusEl.style.color = '#2e7d32';
             statusEl.textContent = `${upserts.length} record(s) saved.`;
         } else {
