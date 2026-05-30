@@ -2832,10 +2832,25 @@ async function loadPlUpdates() {
 }
 
 async function initShipping() {
-    // db.receiving 기반으로 매번 재빌드 — 새 수령 데이터 등록 시 자동 반영
     document.getElementById('shippingTbody').innerHTML =
         '<tr><td colspan="11" style="text-align:center;color:#888;padding:30px;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
     try {
+        // Supabase에서 최신 receiving 데이터 직접 조회 → 신규 등록 즉시 반영
+        if (supabaseClient) {
+            const { data: fresh } = await supabaseClient.schema('material').from('receiving').select('*');
+            if (Array.isArray(fresh) && fresh.length > 0) {
+                db.receiving = fresh.map(r => ({
+                    matCode:  (r.mat_code || '').trim().toUpperCase(),
+                    category: r.category || '-',
+                    docNo:    r.doc_no || '-',
+                    plNo:     r.pkg_no || '-',
+                    desc:     r.full_description || '-',
+                    unit:     r.unit || 'EA',
+                    qty:      parseFloat(r.qty) || 0,
+                    tag:      r.tag || '-',
+                })).filter(r => r.qty > 0 && (r.matCode || r.category === 'Accessory'));
+            }
+        }
         await loadPlUpdates();
         _shippingData = db.receiving.map(r => ({
             packing:      r.docNo,
@@ -2978,7 +2993,7 @@ function renderShippingTable(rows) {
 
         return `<tr${newGroup ? ' style="background:#f8fafc;"' : ''}>
             ${packingCell}
-            <td style="text-align:center;font-family:monospace;font-size:11px;color:#1565c0;overflow:hidden;text-overflow:ellipsis;" title="${r.pkg_no}">${r.pkg_no}</td>
+            <td style="text-align:center;font-weight:700;font-size:13px;color:#1565c0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.pkg_no}">${r.pkg_no}</td>
             <td style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.description}">${r.description}</td>
             <td style="text-align:center;font-weight:600;">${qtyDisplay}</td>
             <td style="text-align:center;color:#555;">${r.unit || '—'}</td>
