@@ -149,24 +149,25 @@ ul { list-style: none; }
 
 /* Receiving (PL) table center alignment */
 #plTable th, #plTable td { text-align: center; }
-/* DOC NO / PKG NO / MatCode / Category 너비 축소 */
+/* Stock table center alignment & column widths */
+#stockTable th, #stockTable td { text-align: center; }
+#stockTable th:nth-child(1), #stockTable td:nth-child(1) { width: 180px; min-width: 180px; white-space: nowrap; }
+#stockTable th:nth-child(2), #stockTable td:nth-child(2) { width: 250px; min-width: 250px; white-space: nowrap; }
+#stockTable th:nth-child(5), #stockTable td:nth-child(5) { width: 170px; min-width: 170px; }
+#stockTable th:nth-child(12), #stockTable td:nth-child(12) { width: 110px; min-width: 110px; }
+
 #plTable th:nth-child(1), #plTable td:nth-child(1) { width: 130px; min-width: 130px; white-space: nowrap; }
 #plTable th:nth-child(2), #plTable td:nth-child(2) { width: 200px; min-width: 200px; white-space: nowrap; }
 #plTable th:nth-child(3), #plTable td:nth-child(3) { width: 250px; min-width: 250px; white-space: nowrap; }
-/* Purpose: 최소 너비 */
-#plTable th:nth-child(12), #plTable td:nth-child(12) { width: 125px; min-width: 125px; }
-#plTable th:nth-child(4),  #plTable td:nth-child(4)  { display: none; }
-/* Size / Unit / Qty */
+#plTable th:nth-child(4),  #plTable td:nth-child(4)  { width: 30px; min-width: 30px; }
+#plTable th:nth-child(5), #plTable td:nth-child(5) { text-align: center; min-width: 135px; }
+#plTable th:nth-child(6), #plTable td:nth-child(6) { min-width: 100px; white-space: nowrap; }
+#plTable th:nth-child(7), #plTable td:nth-child(7) { width: 145px; min-width: 145px; }
+#plTable th:nth-child(8), #plTable td:nth-child(8) { width: 90px;  min-width: 90px;  }
 #plTable th:nth-child(9),  #plTable td:nth-child(9)  { width: 70px;  min-width: 70px;  }
 #plTable th:nth-child(10), #plTable td:nth-child(10) { width: 60px;  min-width: 60px;  }
 #plTable th:nth-child(11), #plTable td:nth-child(11) { width: 65px;  min-width: 65px;  }
-/* Item +25px, Type +25px */
-#plTable th:nth-child(7), #plTable td:nth-child(7) { width: 145px; min-width: 145px; }
-#plTable th:nth-child(8), #plTable td:nth-child(8) { width: 90px;  min-width: 90px;  }
-/* Full Description: 전체 표시, 가운데 정렬 */
-#plTable th:nth-child(5), #plTable td:nth-child(5) { text-align: center; min-width: 135px; }
-/* TAG NO: 한 줄 표시 */
-#plTable th:nth-child(6), #plTable td:nth-child(6) { min-width: 100px; white-space: nowrap; }
+#plTable th:nth-child(12), #plTable td:nth-child(12) { width: 125px; min-width: 125px; }
 
 .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; display: inline-block; }
 .status-badge.ok { background-color: rgba(46, 125, 50, 0.1); color: var(--color-success); }

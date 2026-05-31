@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EPC Piping Material Management System</title>
     <!-- CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260527b2">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260530a">
     <!-- FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Google Fonts: Inter -->
@@ -516,7 +516,7 @@
                                   <input type="text" id="plItemSearch" class="form-control" style="width: 100%;" placeholder="Search by Item name...">
                               </div>
                               <div class="form-group" style="flex: 1;">
-                                  <label>DOC NO</label>
+                                  <label>PKG</label>
                                   <select id="plDocFilter" class="form-control" style="width: 100%;"><option value="All">All DOCs</option></select>
                               </div>
                               <div class="form-group" style="flex: 1;">
@@ -561,7 +561,7 @@
                              <table class="data-table" id="plTable">
                                  <thead>
                                      <tr>
-                                         <th>DOC NO</th>
+                                         <th>PKG</th>
                                          <th>PKG NO</th>
                                          <th>MatCode</th>
                                          <th>Category</th>
@@ -605,7 +605,7 @@
                              <table class="data-table" id="plReviewTable">
                                  <thead>
                                      <tr>
-                                         <th>DOC NO</th>
+                                         <th>PKG</th>
                                          <th>PKG NO</th>
                                          <th style="min-width:260px;">Full Description</th>
                                          <th>Unit</th>
@@ -733,19 +733,66 @@
                          <p class="subtitle">Overview of all material stock changes (Receiving vs Issue).</p>
                      </div>
                  </div>
-                 
+
+                 <!-- Stock Filter Panel -->
+                 <div class="panel filter-panel" style="margin-bottom: 20px;">
+                     <div style="display: flex; align-items: flex-end; justify-content: space-between; width: 100%;">
+                         <div style="display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap;">
+                             <div class="form-group" style="flex: 2; min-width: 160px;">
+                                 <label>Search</label>
+                                 <input type="text" id="stockSearch" class="form-control" placeholder="MatCode / Description...">
+                             </div>
+                             <div class="form-group" style="flex: 1; min-width: 120px;">
+                                 <label>PKG</label>
+                                 <select id="stockDocFilter" class="form-control"><option value="All">All DOCs</option></select>
+                             </div>
+                             <div class="form-group" style="flex: 1; min-width: 120px;">
+                                 <label>PKG NO</label>
+                                 <select id="stockPkgFilter" class="form-control"><option value="All">All PKGs</option></select>
+                             </div>
+                             <div class="form-group" style="flex: 1; min-width: 110px;">
+                                 <label>Category</label>
+                                 <select id="stockCatFilter" class="form-control"><option value="All">All Categories</option></select>
+                             </div>
+                             <div class="form-group" style="flex: 1; min-width: 110px;">
+                                 <label>Item</label>
+                                 <select id="stockItemFilter" class="form-control"><option value="All">All Items</option></select>
+                             </div>
+                             <div class="form-group" style="flex: 1; min-width: 100px;">
+                                 <label>Size</label>
+                                 <select id="stockSizeFilter" class="form-control"><option value="All">All Sizes</option></select>
+                             </div>
+                             <div style="padding-bottom: 1px;">
+                                 <button class="btn btn-primary" id="btnStockSearch" style="height:38px; white-space:nowrap; display:flex; align-items:center; gap:8px;">
+                                     <i class="fas fa-search"></i> Search
+                                 </button>
+                             </div>
+                             <div style="padding-bottom: 1px;">
+                                 <button class="btn btn-outline" id="btnStockClear" style="height:38px; white-space:nowrap;">Clear</button>
+                             </div>
+                         </div>
+                         <div style="display: flex; gap: 8px; align-items: flex-end; padding-bottom: 1px;">
+                             <button class="btn btn-outline" id="btnExportStock" style="height:38px; white-space:nowrap; display:flex; align-items:center; gap:6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export Excel</button>
+                         </div>
+                     </div>
+                 </div>
+
                  <div class="panel data-panel">
                      <div class="panel-header">
                          <h3><i class="fas fa-warehouse"></i> Current Inventory Logs</h3>
+                         <span id="stockCountLabel" style="font-size:13px; color:#666;"></span>
                      </div>
                      <div class="table-responsive">
                          <table class="data-table" id="stockTable">
                              <thead>
                                  <tr>
+                                     <th>PKG</th>
+                                     <th>PKG NO</th>
                                      <th>MatCode</th>
                                      <th>Category</th>
+                                     <th>Full Description</th>
                                      <th>Item</th>
-                                     <th>Size (Inch)</th>
+                                     <th>Size</th>
                                      <th>Unit</th>
                                      <th>Total Received</th>
                                      <th>Total Issued</th>
@@ -770,14 +817,26 @@
                 </div>
 
                 <div class="panel filter-panel" style="margin-bottom: 20px;">
-                    <div style="display: flex; align-items: flex-end; gap: 12px; flex-wrap: nowrap;">
-                        <div class="form-group" style="flex: 0 0 320px;">
+                    <div style="display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap;">
+                        <div class="form-group" style="flex: 0 0 260px;">
                             <label>Search</label>
                             <input type="text" id="shortSearch" class="form-control" placeholder="MatCode / Description / Item / Size" style="width:100%;">
                         </div>
                         <div class="form-group">
+                            <label>PKG</label>
+                            <select id="shortDocFilter" class="form-control" style="width: 145px;">
+                                <option value="ALL">All DOCs</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>PKG NO</label>
+                            <select id="shortPkgFilter" class="form-control" style="width: 200px;">
+                                <option value="ALL">All PKGs</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
                             <label>Category</label>
-                            <select id="shortCatFilter" class="form-control" style="width: 145px;">
+                            <select id="shortCatFilter" class="form-control" style="width: 130px;">
                                 <option value="ALL">All Categories</option>
                                 <option value="Pipe">Pipe</option>
                                 <option value="Fitting">Fitting</option>
@@ -787,13 +846,13 @@
                         </div>
                         <div class="form-group">
                             <label>Item</label>
-                            <select id="shortItemFilter" class="form-control" style="width: 145px;">
+                            <select id="shortItemFilter" class="form-control" style="width: 130px;">
                                 <option value="ALL">All Items</option>
                             </select>
                         </div>
                         <div class="form-group">
                             <label>Size</label>
-                            <select id="shortSizeFilter" class="form-control" style="width: 120px;">
+                            <select id="shortSizeFilter" class="form-control" style="width: 110px;">
                                 <option value="ALL">All Sizes</option>
                             </select>
                         </div>
@@ -801,7 +860,7 @@
                             <button class="btn btn-primary" onclick="_shortagePage=1;renderShortageTable();" style="height: 38px; display: flex; align-items: center; gap: 8px;">
                                 <i class="fas fa-search"></i> Search
                             </button>
-                            <button class="btn btn-outline" onclick="document.getElementById('shortSearch').value='';document.getElementById('shortCatFilter').value='ALL';document.getElementById('shortItemFilter').value='ALL';document.getElementById('shortSizeFilter').value='ALL';_shortagePage=1;renderShortageTable();" style="height: 38px;">
+                            <button class="btn btn-outline" onclick="['shortSearch','shortDocFilter','shortPkgFilter','shortCatFilter','shortItemFilter','shortSizeFilter'].forEach(function(id){var el=document.getElementById(id);if(el)el.value=el.tagName==='SELECT'?'ALL':''});_shortagePage=1;renderShortageTable();" style="height: 38px;">
                                 Reset
                             </button>
                         </div>
@@ -1006,16 +1065,40 @@
                 </div>
 
                 <!-- Filter Panel -->
-                <div class="panel filter-panel" style="margin-bottom:20px;max-width:70%;">
-                    <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:nowrap;">
-                        <div class="form-group" style="flex:3;margin-bottom:0;">
+                <div class="panel filter-panel" style="margin-bottom:20px;">
+                    <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;">
+                        <div class="form-group" style="flex:3;min-width:200px;margin-bottom:0;">
                             <label style="display:block;margin-bottom:4px;font-size:12px;">Search (Package No. / Description)</label>
                             <input type="text" id="shippingSearch" class="form-control" placeholder="e.g. BOP-PIP-001 or GATE Valve...">
                         </div>
-                        <div class="form-group" style="flex:2;margin-bottom:0;">
+                        <div class="form-group" style="flex:2;min-width:140px;margin-bottom:0;">
                             <label style="display:block;margin-bottom:4px;font-size:12px;">Packing List</label>
                             <select id="shippingGroupFilter" class="form-control">
                                 <option value="">All</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex:2;min-width:160px;margin-bottom:0;">
+                            <label style="display:block;margin-bottom:4px;font-size:12px;">Package No.</label>
+                            <select id="shippingPkgFilter" class="form-control">
+                                <option value="">All</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex:1;min-width:130px;margin-bottom:0;">
+                            <label style="display:block;margin-bottom:4px;font-size:12px;">Status</label>
+                            <select id="shippingStatusFilter" class="form-control">
+                                <option value="">All</option>
+                                <option value="Preparing">Preparing</option>
+                                <option value="Shipping">Shipping</option>
+                                <option value="On-Site">On-Site</option>
+                                <option value="__none__">Not Set</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex:1;min-width:130px;margin-bottom:0;">
+                            <label style="display:block;margin-bottom:4px;font-size:12px;">Custom Clearance</label>
+                            <select id="shippingCustomFilter" class="form-control">
+                                <option value="">All</option>
+                                <option value="Cleared">Cleared</option>
+                                <option value="Pending">Pending</option>
                             </select>
                         </div>
                         <button class="btn btn-primary" id="btnShippingFilter" style="height:38px;white-space:nowrap;flex-shrink:0;">
@@ -1248,7 +1331,7 @@
                 <table class="data-table" style="font-size:12px;">
                     <thead>
                         <tr>
-                            <th>DOC NO</th>
+                            <th>PKG</th>
                             <th>PKG NO</th>
                             <th>Qty</th>
                             <th>Unit</th>
@@ -1267,6 +1350,6 @@
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
     <!-- Preloaded backend data (Removed large data.js) -->
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260530r"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260530u"></script>
 </body>
 </html>
