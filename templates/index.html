@@ -352,17 +352,29 @@
                          <h3>MatCode Rules & Reference Table</h3>
                      </div>
                      <div class="table-responsive">
-                         <table class="data-table" id="matCodeTable">
+                         <table class="data-table" id="matCodeTable" style="table-layout:fixed;width:100%;">
+                             <colgroup>
+                                 <col style="width:195px;">
+                                 <col style="width:100px;">
+                                 <col style="width:280px;">
+                                 <col style="width:160px;">
+                                 <col style="width:130px;">
+                                 <col style="width:95px;">
+                                 <col style="width:95px;">
+                                 <col style="width:90px;">
+                                 <col style="width:90px;">
+                             </colgroup>
                              <thead>
                                  <tr>
-                                     <th>MatCode</th>
-                                     <th>Category</th>
-                                     <th>Item</th>
-                                     <th>Material</th>
-                                     <th>Size (Inch)</th>
-                                     <th>Size (DN)</th>
-                                     <th>Class</th>
-                                     <th>End Type</th>
+                                     <th style="text-align:center;">MatCode</th>
+                                     <th style="text-align:center;">Category</th>
+                                     <th style="text-align:center;">Full Description</th>
+                                     <th style="text-align:center;">Item</th>
+                                     <th style="text-align:center;">Material</th>
+                                     <th style="text-align:center;">Size (Inch)</th>
+                                     <th style="text-align:center;">Size (DN)</th>
+                                     <th style="text-align:center;">Class</th>
+                                     <th style="text-align:center;">End Type</th>
                                  </tr>
                              </thead>
                              <tbody>
@@ -824,18 +836,6 @@
                             <input type="text" id="shortSearch" class="form-control" placeholder="MatCode / Description / Item / Size" style="width:100%;">
                         </div>
                         <div class="form-group">
-                            <label>PKG</label>
-                            <select id="shortDocFilter" class="form-control" style="width: 145px;">
-                                <option value="ALL">All DOCs</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>PKG NO</label>
-                            <select id="shortPkgFilter" class="form-control" style="width: 200px;">
-                                <option value="ALL">All PKGs</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
                             <label>Category</label>
                             <select id="shortCatFilter" class="form-control" style="width: 130px;">
                                 <option value="ALL">All Categories</option>
@@ -861,7 +861,7 @@
                             <button class="btn btn-primary" onclick="_shortagePage=1;renderShortageTable();" style="height: 38px; display: flex; align-items: center; gap: 8px;">
                                 <i class="fas fa-search"></i> Search
                             </button>
-                            <button class="btn btn-outline" onclick="['shortSearch','shortDocFilter','shortPkgFilter','shortCatFilter','shortItemFilter','shortSizeFilter'].forEach(function(id){var el=document.getElementById(id);if(el)el.value=el.tagName==='SELECT'?'ALL':''});_shortagePage=1;renderShortageTable();" style="height: 38px;">
+                            <button class="btn btn-outline" onclick="['shortSearch','shortCatFilter','shortItemFilter','shortSizeFilter'].forEach(function(id){var el=document.getElementById(id);if(el)el.value=el.tagName==='SELECT'?'ALL':''});_shortagePage=1;renderShortageTable();" style="height: 38px;">
                                 Reset
                             </button>
                         </div>
@@ -876,7 +876,7 @@
                     <div class="table-responsive">
                         <table class="data-table" id="shortageTable" style="table-layout:fixed;width:100%;">
                             <colgroup>
-                                <col style="width:235px;">
+                                <col style="width:280px;">
                                 <col style="width:135px;">
                                 <col>
                                 <col style="width:175px;">

@@ -2,6 +2,7 @@ from flask import Flask, render_template, make_response, jsonify
 import os, json
 
 app = Flask(__name__)
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
 PL_SUMMARY_PATH = os.path.join(os.path.dirname(__file__), 'static', 'data', 'pl_summary.json')
 

@@ -26,6 +26,18 @@ scratch/verify_bom_260420_result.txt
 scratch/pl_db_comparison.xlsx
 scratch/BOM_*.xlsx
 processed_data.json
+scratch/insert_260530_receiving.py
+scratch/insert_260530_receiving.sql
+scratch/insert_260530_receiving_notag.py
+scratch/insert_260530_receiving_notag.sql
+scratch/insert_new_pl_receiving.py
+scratch/insert_new_pl_receiving.sql
+scratch/fix_087_to_0087.sql
+scratch/fix_atp_item_desc.sql
+scratch/fix_qty_tag_rows.sql
+scratch/fix_speciality_bom_system_iso.sql
+scratch/gen_speciality_matcode_sql.py
+scratch/assign_speciality_matcodes.sql
 
 # Claude memory
 .claude/

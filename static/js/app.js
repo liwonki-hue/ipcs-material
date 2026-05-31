@@ -146,7 +146,7 @@ window.extractItemFromMatCode = function(matCode) {
         'RDC':'RED-CON', 'RDE':'RED-ECC',
         'CAP':'CAP',
         'CPH':'COUPLING', 'CPU':'COUPLING',
-        'SWC':'SWAGE', 'SWE':'SWAGE',
+        'SWC':'SWAGE-CON', 'SWE':'SWAGE-ECC',
         'WOL':'WELDOLET', 'SOL':'SOCKOLET', 'TOL':'THREADOLET',
         'VLV':'VALVE', 'VBL':'BALL VALVE', 'VGA':'GATE VALVE', 'VGL':'GLOBE VALVE',
         'VCH':'CHECK VALVE', 'CHV':'CHECK VALVE', 'VBF':'BUTTERFLY VALVE',
@@ -976,16 +976,7 @@ let _shortageList = [];
 const CAT_ORDER = { 'Pipe': 0, 'Fitting': 1, 'Valve': 2, 'Others': 3, 'Speciality': 4 };
 
 function initShortageFilters() {
-    const docs = [...new Set(db.receiving.map(r => r.docNo).filter(Boolean))].sort();
-    const pkgs = [...new Set(db.receiving.map(r => r.plNo).filter(Boolean))].sort();
-    const sel  = (id, opts, all) => {
-        const el = document.getElementById(id); if (!el) return;
-        const curr = el.value;
-        el.innerHTML = `<option value="ALL">${all}</option>` + opts.map(o => `<option value="${o}">${o}</option>`).join('');
-        if (opts.includes(curr)) el.value = curr;
-    };
-    sel('shortDocFilter', docs, 'All DOCs');
-    sel('shortPkgFilter', pkgs, 'All PKGs');
+    // PKG / PKG NO 필터 제거됨 — Category/Item/Size만 유지
 }
 
 function renderShortageTable() {
@@ -1001,15 +992,10 @@ function renderShortageTable() {
         bomMap[b.matCode].qty += b.qty;
     });
 
-    const docFilter  = (document.getElementById('shortDocFilter')  || {}).value || 'ALL';
-    const pkgFilter  = (document.getElementById('shortPkgFilter')  || {}).value || 'ALL';
-
     // Aggregate Receiving qty per matCode — On-Site 도착 + Permanent/미분류만 BOM 비교 대상
     const recMap = {};
     db.receiving
-        .filter(r => (r.purpose === 'Permanent' || r.purpose === '') && isReceivingActive(r.plNo)
-            && (docFilter === 'ALL' || r.docNo === docFilter)
-            && (pkgFilter === 'ALL' || r.plNo  === pkgFilter))
+        .filter(r => (r.purpose === 'Permanent' || r.purpose === '') && isReceivingActive(r.plNo))
         .forEach(r => {
             if (!r.matCode) return;
             if (!recMap[r.matCode]) recMap[r.matCode] = { qty: 0, desc: r.desc, unit: r.unit };
@@ -1077,7 +1063,7 @@ function renderShortageTable() {
     const pageRows = shortageList.slice(start, start + SHORTAGE_PAGE_SIZE);
 
     tbody.innerHTML = pageRows.map(({ matCode, cat, desc, item, size, unit, bomQty, recQty, shortage }) => `<tr>
-            <td style="text-align:center;font-weight:600;color:var(--color-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${matCode}</td>
+            <td style="text-align:center;font-weight:600;color:var(--color-primary);white-space:nowrap;">${matCode}</td>
             <td style="text-align:center;"><strong>${cat}</strong></td>
             <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${desc}">${desc}</td>
             <td style="text-align:center;">${item}</td>
@@ -1123,7 +1109,7 @@ function renderMatCodeMaster() {
     let tbody = document.querySelector('#matCodeTable tbody');
     if (!tbody) return;
     if (db.matCodeMaster.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#888;">No Master Data available.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:#888;">No Master Data available.</td></tr>';
         return;
     }
     const q    = (document.getElementById('masterSearch')?.value || '').toUpperCase();
@@ -1143,12 +1129,20 @@ function renderMatCodeMaster() {
     const BADGE = {Pipe:'info', Fitting:'ok', Valve:'warn', Speciality:'warn', Other:'err'};
     tbody.innerHTML = data.map(m => {
         const cb = BADGE[m.category] || 'ok';
+        const fullDesc = db.bomDesc[m.matCode.trim().toUpperCase()]
+            || db.receiving.find(r => r.matCode === m.matCode)?.desc
+            || [m.itemDesc, m.matlDesc, m.size2, m.classDesc, m.etDesc].filter(v => v && v !== '-').join(', ')
+            || '-';
         return `<tr>
-            <td><strong><span class="status-badge ok">${m.matCode}</span></strong></td>
-            <td><span class="status-badge ${cb}">${m.category}</span></td>
-            <td>${m.itemDesc}</td><td>${m.matlDesc}</td>
-            <td>${m.size1}</td><td>${m.size2}</td>
-            <td>${m.classDesc}</td><td>${m.etDesc}</td>
+            <td style="text-align:center;"><strong><span class="status-badge ok">${m.matCode}</span></strong></td>
+            <td style="text-align:center;"><span class="status-badge ${cb}">${m.category}</span></td>
+            <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${fullDesc}">${fullDesc}</td>
+            <td style="text-align:center;">${m.itemDesc}</td>
+            <td style="text-align:center;">${m.matlDesc}</td>
+            <td style="text-align:center;">${m.size1}</td>
+            <td style="text-align:center;">${m.size2}</td>
+            <td style="text-align:center;">${m.classDesc}</td>
+            <td style="text-align:center;">${m.etDesc}</td>
         </tr>`;
     }).join('');
 
@@ -3197,7 +3191,7 @@ function renderShippingTable(rows) {
         return `<tr${newGroup ? ' style="background:#f8fafc;"' : ''}>
             ${packingCell}
             <td style="text-align:center;font-weight:700;font-size:13px;color:#1565c0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.pkg_no}">${r.pkg_no}</td>
-            <td style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.description}">${r.description}</td>
+            <td style="text-align:center;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.description}">${r.description}</td>
             <td style="text-align:center;font-weight:600;">${qtyDisplay}</td>
             <td style="text-align:center;color:#555;">${r.unit || '—'}</td>
             ${statusCell}
