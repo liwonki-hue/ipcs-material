@@ -1284,7 +1284,7 @@ async function renderBomTable() {
     // 필터를 두 쿼리(data + count)에 동일하게 적용하는 헬퍼
     const applyFilters = (q) => {
         if (sys  !== 'All') q = q.eq('system', sys);
-        if (search) q = q.or(`iso_dwg_no.ilike.%${search}%,mat_code.ilike.%${search}%,full_description.ilike.%${search}%`);
+        if (search) q = q.or(`iso_dwg_no.ilike.%${search}%,mat_code.ilike.%${search}%,category.ilike.%${search}%,full_description.ilike.%${search}%`);
         if (cat  !== 'All') q = q.ilike('category', `%${cat}%`);
         if (item !== 'All') {
             // MatCode prefix 기반 필터 (드롭박스 생성 기준과 동일)
@@ -2037,7 +2037,7 @@ function attachEventListeners() {
                     .select('system, iso_dwg_no, category, mat_code, full_description, uom, qty')
                     .order('iso_dwg_no');
                 if (sys !== 'All') query = query.eq('system', sys);
-                if (search) query = query.or(`iso_dwg_no.ilike.%${search}%,mat_code.ilike.%${search}%,full_description.ilike.%${search}%`);
+                if (search) query = query.or(`iso_dwg_no.ilike.%${search}%,mat_code.ilike.%${search}%,category.ilike.%${search}%,full_description.ilike.%${search}%`);
                 if (cat !== 'All') query = query.ilike('category', `%${cat}%`);
 
                 const { data, error } = await query;
