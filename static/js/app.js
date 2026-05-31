@@ -1275,8 +1275,9 @@ async function renderBomTable() {
         'COUPLING':['CPH','CPU'],
         'SWAGE':['SWC','SWE'],
         'WELDOLET':['WOL'], 'SOCKOLET':['SOL'], 'THREADOLET':['TOL'],
-        'VALVE':['VLV'], 'BALL VALVE':['VBL'], 'GATE VALVE':['VGA'],
-        'GLOBE VALVE':['VGL'], 'CHECK VALVE':['VCH','CHV'], 'BUTTERFLY VALVE':['VBF'],
+        'GATE VALVE':['GTV'], 'GLOBE VALVE':['GLV'], 'CHECK VALVE':['CHV'],
+        'BUTTERFLY VALVE':['BFV'], 'BALL VALVE':['BAV'], 'PLUG VALVE':['PLV'],
+        'SAFETY VALVE':['PSV','PRV'], 'VALVE':['GTV','GLV','CHV','BFV','BAV','PLV','PSV','PRV'],
         'GASKET':['GSKT','GSK'], 'STUD':['STD'], 'NUT':['NUT'], 'BOLT':['BOL'],
         'UNION':['UNI'], 'PLUG':['PLG'], 'BUSHING':['BUS'],
     };
