@@ -352,6 +352,8 @@ function initNavigation() {
         if(targetId === 'stock_ledger') { initStockFilters(); renderStockTable(); }
         if(targetId === 'mr_history') renderMrHistory();
         if(targetId === 'shipping') initShipping();
+        if(targetId === 'spool_bom') initSpoolBom();
+        if(targetId === 'spool_receiving') initSpoolReceiving();
 
         // Material Shortage 탭: 진입 시 즉시 싱크 + 폴링 시작, 이탈 시 정리
         if (targetId === 'material_shortage') {
@@ -675,16 +677,21 @@ function updateExpediteAlerts() {
 function updateCategoryCharts() {
     if (!supabaseClient) return;
 
-    // Fetch category summary + Valve/Speciality tag-based receiving (직접 쿼리)
+    // Fetch category summary + Valve/Speciality tag-based receiving + Spool counts
     Promise.all([
         supabaseClient.from('v_category_readiness').select('*'),
-        supabaseClient.from('receiving').select('category, qty').not('tag', 'is', null).in('category', ['Valve', 'Speciality']).limit(5000)
-    ]).then(([catRes, tagRecRes]) => {
+        supabaseClient.from('receiving').select('category, qty').not('tag', 'is', null).in('category', ['Valve', 'Speciality']).limit(5000),
+        supabaseClient.from('spool_bom').select('id', { count: 'exact', head: true }),
+        supabaseClient.from('spool_receiving').select('id', { count: 'exact', head: true })
+    ]).then(([catRes, tagRecRes, spoolBomRes, spoolRecRes]) => {
         const data = catRes.data;
         if (catRes.error || !data) {
             console.error("❌ Chart Sync Error:", catRes.error);
             return;
         }
+
+        const spoolBomCount = spoolBomRes.count || 0;
+        const spoolRecCount = spoolRecRes.count || 0;
 
         const catLabels = ['Pipe', 'Fitting', 'Valve', 'Speciality', 'Support', 'Others'];
         const bomDataArr = catLabels.map(l => {
@@ -714,8 +721,8 @@ function updateCategoryCharts() {
         const pipeData  = data.find(d => d.category === 'Pipe');
         const pipeBom   = pipeData ? parseFloat(pipeData.total_bom) : 0;
         const pipeRec   = activeRecByCategory['Pipe'] || 0;
-        const otherBom  = bomDataArr.slice(1).reduce((s, v) => s + v, 0);
-        const otherRec  = catLabels.slice(1).reduce((s, l) => s + (activeRecByCategory[l] || 0), 0);
+        const otherBom  = bomDataArr.slice(1).reduce((s, v) => s + v, 0) + spoolBomCount;
+        const otherRec  = catLabels.slice(1).reduce((s, l) => s + (activeRecByCategory[l] || 0), 0) + spoolRecCount;
 
         // Issued breakdown by category using matCodeMaster lookup
         let pipeIss = 0, otherIss = 0;
@@ -746,13 +753,20 @@ function updateCategoryCharts() {
         if (window.myChart) window.myChart.destroy();
         const ctxBar = document.getElementById('progressChart');
         if (ctxBar && typeof Chart !== 'undefined') {
+            // Spool을 Support 앞(index 4) 위치에 삽입
+            const chartLabels = catLabels.map(l => l === 'Pipe' ? 'Pipe (M)' : `${l} (EA)`);
+            chartLabels.splice(4, 0, 'Spool (EA)');
+            const chartBom = [...bomDataArr];
+            chartBom.splice(4, 0, spoolBomCount);
+            const chartRec = [...recDataArr];
+            chartRec.splice(4, 0, spoolRecCount);
             window.myChart = new Chart(ctxBar, {
                 type: 'bar',
                 data: {
-                    labels: catLabels.map(l => l === 'Pipe' ? 'Pipe (M)' : `${l} (EA)`),
+                    labels: chartLabels,
                     datasets: [
-                        { label: 'Total BOM Req', data: bomDataArr, backgroundColor: 'rgba(2, 136, 209, 0.7)' },
-                        { label: 'Total Received', data: recDataArr, backgroundColor: 'rgba(46, 125, 50, 0.7)' }
+                        { label: 'Total BOM Req', data: chartBom, backgroundColor: 'rgba(2, 136, 209, 0.7)' },
+                        { label: 'Total Received', data: chartRec, backgroundColor: 'rgba(46, 125, 50, 0.7)' }
                     ]
                 },
                 options: {
@@ -3008,6 +3022,39 @@ async function initShipping() {
             }
         }
         await loadPlUpdates();
+
+        // spool_receiving PKG NO별 첫 번째 행만 추출
+        let spoolShipping = [];
+        if (supabaseClient) {
+            const { data: spoolRows } = await supabaseClient
+                .from('spool_receiving')
+                .select('pkg_seq,pkg_no,description,qty,unit,purpose,system')
+                .order('pkg_seq', { ascending: true })
+                .order('id', { ascending: true })
+                .limit(5000);
+            if (spoolRows) {
+                const spoolSeen = new Set();
+                spoolRows.forEach(r => {
+                    if (spoolSeen.has(r.pkg_no)) return;
+                    spoolSeen.add(r.pkg_no);
+                    spoolShipping.push({
+                        packing:      'PGU-DE-0466',
+                        pkg_no:       r.pkg_no,
+                        description:  r.description || 'Piping Spool',
+                        qty:          r.qty || 1,
+                        unit:         r.unit || 'EA',
+                        purpose:      r.purpose || '',
+                        status:       '',
+                        on_site:      '',
+                        custom_clear: '',
+                        issue_date:   '',
+                        request_date: '',
+                        remark:       '',
+                    });
+                });
+            }
+        }
+
         // PKG NO당 1행만 표시 (밸브+악세사리 중복 방지) — 첫 번째 항목 기준
         const pkgSeen = new Set();
         _shippingData = db.receiving
@@ -3030,6 +3077,16 @@ async function initShipping() {
                 request_date: '',
                 remark:       '',
             }));
+
+        // spool_receiving 병합 (중복 PKG NO 제외)
+        spoolShipping.forEach(s => {
+            if (!pkgSeen.has(s.pkg_no)) {
+                pkgSeen.add(s.pkg_no);
+                _shippingData.push(s);
+            }
+        });
+        _shippingData.sort((a, b) => a.packing.localeCompare(b.packing) || a.pkg_no.localeCompare(b.pkg_no));
+
         buildShippingGroupFilter(_shippingData);
         renderShippingKpi();
         renderShippingTable(getShippingFiltered());
@@ -3360,10 +3417,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 siblings.forEach(sibPkg => {
                     if (!_plChanges[sibPkg]) _plChanges[sibPkg] = {};
                     _plChanges[sibPkg][field] = el.value;
-                    // 현재 페이지에 있는 read-only 셀 즉시 업데이트
                     if (sibPkg !== pkg) {
                         const roCell = tbody.querySelector(`[data-pkg-ro="${sibPkg}"][data-field-ro="${field}"]`);
                         if (roCell) roCell.textContent = el.value || '—';
+                        // editable sibling 셀 즉시 업데이트 (pkg_no당 1행이므로 모두 editable)
+                        const editEl = tbody.querySelector(`[data-pkg="${sibPkg}"][data-field="${field}"]`);
+                        if (editEl) editEl.value = el.value;
                     }
                 });
             } else {
@@ -3385,4 +3444,233 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('plSaveStatus').textContent = 'Unsaved changes.';
         });
     }
+});
+
+// ============================================================
+// Spool BOM & Spool Receiving
+// ============================================================
+
+// --- 공유 KPI 업데이트 (두 탭 모두 동일한 class 선택자로 업데이트) ---
+function updateSpoolKpis() {
+    const bomCount = (_spoolData || []).length;
+    const recCount = (_srData   || []).length;
+    const issued   = 0;
+    const stock    = Math.max(0, recCount - issued);
+    const prog     = bomCount > 0 ? (recCount / bomCount * 100).toFixed(1) : 0;
+    const hp       = (_spoolData || []).filter(r => r.system === 'HP').length;
+    const lp       = (_spoolData || []).filter(r => r.system === 'LP').length;
+    const pkgCount = new Set((_srData || []).map(r => r.pkg_no)).size;
+
+    const set = (cls, html) => document.querySelectorAll(cls).forEach(el => el.innerHTML = html);
+    const txt = (cls, val)  => document.querySelectorAll(cls).forEach(el => el.textContent = val);
+
+    set('.spool-kpi-progress', `${prog} <span class="unit">%</span>`);
+    txt('.spool-kpi-prog-sub', `Received ${recCount} / BOM ${bomCount}`);
+    set('.spool-kpi-bom',      `${bomCount} <span class="unit">EA</span>`);
+    txt('.spool-kpi-bom-sub',  `HP ${hp} | LP ${lp}`);
+    set('.spool-kpi-received', `${recCount} <span class="unit">EA</span>`);
+    txt('.spool-kpi-rec-sub',  `${pkgCount} PKG`);
+    set('.spool-kpi-issued',   `${issued} <span class="unit">EA</span>`);
+    set('.spool-kpi-stock',    `${stock} <span class="unit">EA</span>`);
+}
+
+// --- Spool BOM ---
+let _spoolData = null;
+let _spoolPage = 1;
+const SPOOL_PAGE_SIZE = 50;
+
+async function initSpoolBom() {
+    if (_spoolData) { renderSpoolTable(); return; }
+    if (!supabaseClient) return;
+    const { data, error } = await supabaseClient
+        .from('spool_bom')
+        .select('*')
+        .order('id', { ascending: true })
+        .limit(10000);
+    if (error) {
+        const tb = document.getElementById('spoolTbody');
+        if (tb) tb.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#c00;padding:40px;">Error: ${error.message}</td></tr>`;
+        return;
+    }
+    _spoolData = data || [];
+    _initSpoolFilters();
+    renderSpoolTable();
+}
+
+function _initSpoolFilters() {
+    const sel = document.getElementById('spoolSizeFilter');
+    if (!sel) return;
+    const sizes = [...new Set((_spoolData || []).map(r => r.size).filter(Boolean))]
+        .sort((a, b) => parseFloat(a) - parseFloat(b));
+    sel.innerHTML = '<option value="">All</option>' +
+        sizes.map(s => `<option value="${s}">${s}</option>`).join('');
+}
+
+function _getSpoolFiltered() {
+    const sys  = document.getElementById('spoolSystemFilter')?.value || '';
+    const size = document.getElementById('spoolSizeFilter')?.value   || '';
+    const q    = (document.getElementById('spoolSearch')?.value || '').trim().toLowerCase();
+    return (_spoolData || []).filter(r => {
+        if (sys  && r.system !== sys)  return false;
+        if (size && r.size   !== size) return false;
+        if (q && ![r.iso_dwg_no, r.tag_no, r.line_no, r.description].join(' ').toLowerCase().includes(q)) return false;
+        return true;
+    });
+}
+
+function renderSpoolTable() {
+    const filtered   = _getSpoolFiltered();
+    const total      = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(total / SPOOL_PAGE_SIZE));
+    if (_spoolPage > totalPages) _spoolPage = 1;
+
+    updateSpoolKpis();
+
+    const start = (_spoolPage - 1) * SPOOL_PAGE_SIZE;
+    const page  = filtered.slice(start, start + SPOOL_PAGE_SIZE);
+    const tbody = document.getElementById('spoolTbody');
+    if (!tbody) return;
+
+    const c = 'text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    tbody.innerHTML = page.length === 0
+        ? `<tr><td colspan="8" style="text-align:center;color:#999;padding:40px;">No data</td></tr>`
+        : page.map((r, i) => {
+            const badge = r.system === 'HP'
+                ? `<span style="background:#e3f2fd;color:#1565c0;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">HP</span>`
+                : `<span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">LP</span>`;
+            return `<tr>
+                <td style="${c}color:#999;">${start + i + 1}</td>
+                <td style="${c}">${badge}</td>
+                <td style="${c}" title="${r.iso_dwg_no || ''}">${r.iso_dwg_no || ''}</td>
+                <td style="${c}" title="${r.line_no || ''}">${r.line_no || ''}</td>
+                <td style="${c}font-weight:600;color:#0A2540;" title="${r.tag_no || ''}">${r.tag_no || ''}</td>
+                <td style="${c}">${r.size || ''}</td>
+                <td style="${c}color:#888;">${r.uom || 'EA'}</td>
+                <td style="${c}">${r.qty ?? 1}</td>
+            </tr>`;
+        }).join('');
+
+    const info = document.getElementById('spoolCountInfo');
+    const pagi = document.getElementById('spoolPagination');
+    if (info) info.textContent = `${total} spools (page ${_spoolPage} / ${totalPages})`;
+    if (pagi) pagi.innerHTML = `
+        <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;" ${_spoolPage <= 1 ? 'disabled' : ''} onclick="_spoolPage--;renderSpoolTable()">Prev</button>
+        <span style="margin:0 10px;font-size:13px;">${_spoolPage} / ${totalPages}</span>
+        <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;" ${_spoolPage >= totalPages ? 'disabled' : ''} onclick="_spoolPage++;renderSpoolTable()">Next</button>`;
+}
+
+// --- Spool Receiving ---
+let _srData = null;
+let _srPage = 1;
+const SR_PAGE_SIZE = 50;
+
+async function initSpoolReceiving() {
+    if (_srData) { renderSpoolReceiving(); return; }
+    if (!supabaseClient) return;
+    const { data, error } = await supabaseClient
+        .from('spool_receiving')
+        .select('*')
+        .order('pkg_seq', { ascending: true })
+        .order('id',      { ascending: true })
+        .limit(10000);
+    if (error) {
+        const tb = document.getElementById('srTbody');
+        if (tb) tb.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#c00;padding:40px;">Error: ${error.message}</td></tr>`;
+        return;
+    }
+    _srData = data || [];
+    _initSrFilters();
+    renderSpoolReceiving();
+}
+
+function _initSrFilters() {
+    const sel = document.getElementById('srPkgFilter');
+    if (!sel) return;
+    const pkgs = [...new Set((_srData || []).map(r => r.pkg_no).filter(Boolean))].sort();
+    sel.innerHTML = '<option value="">All</option>' + pkgs.map(p => `<option value="${p}">${p}</option>`).join('');
+}
+
+function _getSrFiltered() {
+    const pkg = document.getElementById('srPkgFilter')?.value  || '';
+    const sys = document.getElementById('srSystemFilter')?.value || '';
+    const q   = (document.getElementById('srSearch')?.value || '').trim().toLowerCase();
+    return (_srData || []).filter(r => {
+        if (pkg && r.pkg_no  !== pkg) return false;
+        if (sys && r.system  !== sys) return false;
+        if (q && ![r.pkg_no, r.tag_no, r.description, r.iso_dwg_no].join(' ').toLowerCase().includes(q)) return false;
+        return true;
+    });
+}
+
+function renderSpoolReceiving() {
+    const filtered   = _getSrFiltered();
+    const total      = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(total / SR_PAGE_SIZE));
+    if (_srPage > totalPages) _srPage = 1;
+
+    updateSpoolKpis();
+
+    const start = (_srPage - 1) * SR_PAGE_SIZE;
+    const page  = filtered.slice(start, start + SR_PAGE_SIZE);
+    const tbody = document.getElementById('srTbody');
+    if (!tbody) return;
+
+    const sysBadge = s => s === 'HP'
+        ? `<span style="background:#e3f2fd;color:#1565c0;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600;">HP</span>`
+        : s === 'LP'
+        ? `<span style="background:#e8f5e9;color:#2e7d32;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600;">LP</span>`
+        : '';
+
+    tbody.innerHTML = page.length === 0
+        ? `<tr><td colspan="10" style="text-align:center;color:#999;padding:40px;">No data</td></tr>`
+        : page.map(r => {
+            const pkgShort = (r.pkg_no || '').match(/^(PGU-DE-\d+)/)?.[1] || r.pkg_no || '';
+            return `<tr>
+            <td style="font-size:12px;font-weight:600;white-space:nowrap;">${pkgShort}</td>
+            <td style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.pkg_no || ''}">${r.pkg_no || ''}</td>
+            <td>${sysBadge(r.system)}</td>
+            <td style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.description || ''}">${r.description || ''}</td>
+            <td style="font-weight:600;color:#0A2540;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.tag_no || ''}">${r.tag_no || ''}</td>
+            <td>${r.item || 'Spool'}</td>
+            <td>${r.size || ''}</td>
+            <td style="color:#888;">${r.unit || 'EA'}</td>
+            <td>${r.qty ?? 1}</td>
+            <td style="color:#888;font-size:12px;">${r.purpose || ''}</td>
+        </tr>`;
+        }).join('');
+
+    const info = document.getElementById('srCountInfo');
+    const pagi = document.getElementById('srPagination');
+    if (info) info.textContent = `${total} items (page ${_srPage} / ${totalPages})`;
+    if (pagi) pagi.innerHTML = `
+        <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;" ${_srPage <= 1 ? 'disabled' : ''} onclick="_srPage--;renderSpoolReceiving()">Prev</button>
+        <span style="margin:0 10px;font-size:13px;">${_srPage} / ${totalPages}</span>
+        <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;" ${_srPage >= totalPages ? 'disabled' : ''} onclick="_srPage++;renderSpoolReceiving()">Next</button>`;
+}
+
+// Spool BOM + Spool Receiving 이벤트 등록 (DOMContentLoaded 1회)
+document.addEventListener('DOMContentLoaded', () => {
+    // Spool BOM 필터
+    const btnSpoolSearch = document.getElementById('btnSpoolSearch');
+    const btnSpoolReset  = document.getElementById('btnSpoolReset');
+    const spoolSearchEl  = document.getElementById('spoolSearch');
+    if (btnSpoolSearch) btnSpoolSearch.addEventListener('click', () => { _spoolPage = 1; renderSpoolTable(); });
+    if (btnSpoolReset)  btnSpoolReset.addEventListener('click', () => {
+        ['spoolSystemFilter','spoolSizeFilter'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+        if (spoolSearchEl) spoolSearchEl.value = '';
+        _spoolPage = 1; renderSpoolTable();
+    });
+    if (spoolSearchEl) spoolSearchEl.addEventListener('keydown', e => { if (e.key === 'Enter') { _spoolPage = 1; renderSpoolTable(); }});
+
+    // Spool Receiving 필터
+    const btnSrSearch = document.getElementById('btnSrSearch');
+    const btnSrReset  = document.getElementById('btnSrReset');
+    const srSearchEl  = document.getElementById('srSearch');
+    if (btnSrSearch) btnSrSearch.addEventListener('click', () => { _srPage = 1; renderSpoolReceiving(); });
+    if (btnSrReset)  btnSrReset.addEventListener('click', () => {
+        ['srPkgFilter','srSystemFilter'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+        if (srSearchEl) srSearchEl.value = '';
+        _srPage = 1; renderSpoolReceiving();
+    });
+    if (srSearchEl) srSearchEl.addEventListener('keydown', e => { if (e.key === 'Enter') { _srPage = 1; renderSpoolReceiving(); }});
 });

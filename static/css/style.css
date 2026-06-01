@@ -147,6 +147,10 @@ ul { list-style: none; }
 #bomTable th, #bomTable td { text-align: center; }
 #bomTable td:nth-child(4), #bomTable td:nth-child(5) { text-align: left; } /* Mat Code, Description */
 
+/* Spool BOM / Spool Receiving table center alignment */
+#spoolTable th, #spoolTable td { text-align: center; }
+#spoolReceivingTable th, #spoolReceivingTable td { text-align: center; }
+
 /* Receiving (PL) table center alignment */
 #plTable th, #plTable td { text-align: center; }
 /* Stock table center alignment & column widths */

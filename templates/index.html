@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EPC Piping Material Management System</title>
     <!-- CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260530a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260601e">
     <!-- FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Google Fonts: Inter -->
@@ -41,9 +41,11 @@
                  <div class="section-title">Master Data</div>
                  <div class="nav-item" data-target="matcode_master"><i class="fas fa-barcode"></i> MatCode Master</div>
                  <div class="nav-item" data-target="bom_management"><i class="fas fa-layer-group"></i> BOM Management</div>
+                 <div class="nav-item" data-target="spool_bom"><i class="fas fa-cubes"></i> Spool BOM</div>
 
                  <div class="section-title">Operations</div>
                  <div class="nav-item" data-target="receiving"><i class="fas fa-truck"></i> Material Receiving</div>
+                 <div class="nav-item" data-target="spool_receiving"><i class="fas fa-boxes"></i> Spool Receiving</div>
                  <div class="nav-item" data-target="issue"><i class="fas fa-file-signature"></i> Material Requisition</div>
                  <div class="nav-item" data-target="mr_history"><i class="fas fa-history"></i> MR History</div>
 
@@ -1173,6 +1175,246 @@
                 </div>
             </section>
 
+            <!-- ── Spool BOM ──────────────────────────────────────────── -->
+            <section id="spool_bom" class="view-section">
+                <div class="page-header">
+                    <div>
+                        <h1><i class="fas fa-cubes" style="color:#0A2540;margin-right:10px;"></i>Spool BOM</h1>
+                        <p class="subtitle">HP/LP Steam Piping Spool 제작 목록</p>
+                    </div>
+                </div>
+
+                <!-- Spool KPI Cards (shared) -->
+                <div class="kpi-grid" style="margin-bottom:20px;" id="spoolBomKpiGrid">
+                    <div class="kpi-card highlight" style="background-color:#0A2540;color:white;">
+                        <div class="kpi-info" style="color:white;">
+                            <div class="kpi-title" style="color:rgba(255,255,255,0.8);">Overall Progress</div>
+                            <div class="kpi-value spool-kpi-progress">— <span class="unit">%</span></div>
+                            <div class="kpi-desc spool-kpi-prog-sub" style="color:rgba(255,255,255,0.7);">BOM vs Received</div>
+                        </div>
+                        <div class="kpi-icon" style="background:rgba(255,255,255,0.1);color:white;"><i class="fas fa-chart-line"></i></div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-info">
+                            <div class="kpi-title">Total Spool BOM</div>
+                            <div class="kpi-value spool-kpi-bom">— <span class="unit">EA</span></div>
+                            <div class="kpi-desc spool-kpi-bom-sub">—</div>
+                        </div>
+                        <div class="kpi-icon"><i class="fas fa-cubes"></i></div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-info">
+                            <div class="kpi-title">Total Spool Received</div>
+                            <div class="kpi-value spool-kpi-received">— <span class="unit">EA</span></div>
+                            <div class="kpi-desc spool-kpi-rec-sub">—</div>
+                        </div>
+                        <div class="kpi-icon received"><i class="fas fa-truck-loading"></i></div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-info">
+                            <div class="kpi-title">Total Issued</div>
+                            <div class="kpi-value spool-kpi-issued">0 <span class="unit">EA</span></div>
+                            <div class="kpi-desc">Field issued</div>
+                        </div>
+                        <div class="kpi-icon issued"><i class="fas fa-clipboard-check"></i></div>
+                    </div>
+                    <div class="kpi-card" style="border:1px solid #00509E;">
+                        <div class="kpi-info">
+                            <div class="kpi-title">Current Stock</div>
+                            <div class="kpi-value spool-kpi-stock">— <span class="unit">EA</span></div>
+                            <div class="kpi-desc">Received − Issued</div>
+                        </div>
+                        <div class="kpi-icon" style="background:rgba(0,80,158,0.1);color:#00509E;"><i class="fas fa-boxes"></i></div>
+                    </div>
+                </div>
+
+                <!-- Filter Bar -->
+                <div class="panel" style="padding:16px;margin-bottom:16px;">
+                    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+                        <div class="form-group" style="flex:3;min-width:200px;margin-bottom:0;">
+                            <label style="display:block;margin-bottom:4px;font-size:12px;">Search (ISO / Tag / Line No)</label>
+                            <input type="text" id="spoolSearch" class="form-control" placeholder="ISO drawing, tag no, line no...">
+                        </div>
+                        <div class="form-group" style="flex:0 0 130px;margin-bottom:0;">
+                            <label style="display:block;margin-bottom:4px;font-size:12px;">System</label>
+                            <select id="spoolSystemFilter" class="form-control">
+                                <option value="">All</option>
+                                <option value="HP">HP</option>
+                                <option value="LP">LP</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex:0 0 130px;margin-bottom:0;">
+                            <label style="display:block;margin-bottom:4px;font-size:12px;">Size</label>
+                            <select id="spoolSizeFilter" class="form-control">
+                                <option value="">All</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" id="btnSpoolSearch" style="height:38px;">
+                            <i class="fas fa-search"></i> Search
+                        </button>
+                        <button class="btn btn-outline" id="btnSpoolReset" style="height:38px;">Reset</button>
+                    </div>
+                </div>
+
+                <!-- Spool Table -->
+                <div class="panel" style="padding:0;overflow:hidden;">
+                    <div style="overflow-x:auto;">
+                        <table class="data-table" id="spoolTable" style="table-layout:fixed;width:100%;">
+                            <colgroup>
+                                <col style="width:60px;">
+                                <col style="width:70px;">
+                                <col style="width:280px;">
+                                <col style="width:220px;">
+                                <col style="width:200px;">
+                                <col style="width:70px;">
+                                <col style="width:50px;">
+                                <col style="width:50px;">
+                            </colgroup>
+                            <thead>
+                                <tr style="text-align:center;">
+                                    <th>No</th>
+                                    <th>System</th>
+                                    <th>ISO Drawing</th>
+                                    <th>Line No</th>
+                                    <th>Tag No</th>
+                                    <th>Size</th>
+                                    <th>UOM</th>
+                                    <th>Qty</th>
+                                </tr>
+                            </thead>
+                            <tbody id="spoolTbody">
+                                <tr><td colspan="8" style="text-align:center;color:#999;padding:40px;">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
+                        <span id="spoolCountInfo" style="font-size:13px;color:#666;"></span>
+                        <div id="spoolPagination"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Spool Receiving ──────────────────────────────────────── -->
+            <section id="spool_receiving" class="view-section">
+                <div class="page-header">
+                    <div>
+                        <h1><i class="fas fa-boxes" style="color:#0A2540;margin-right:10px;"></i>Spool Receiving</h1>
+                        <p class="subtitle">PGU-DE-0465 / 0466 / 0477 / 0478 — Spool Receiving Records</p>
+                    </div>
+                </div>
+
+                <!-- Spool KPI Cards (shared — same class names as Spool BOM tab) -->
+                <div class="kpi-grid" style="margin-bottom:20px;" id="spoolRecKpiGrid">
+                    <div class="kpi-card highlight" style="background-color:#0A2540;color:white;">
+                        <div class="kpi-info" style="color:white;">
+                            <div class="kpi-title" style="color:rgba(255,255,255,0.8);">Overall Progress</div>
+                            <div class="kpi-value spool-kpi-progress">— <span class="unit">%</span></div>
+                            <div class="kpi-desc spool-kpi-prog-sub" style="color:rgba(255,255,255,0.7);">BOM vs Received</div>
+                        </div>
+                        <div class="kpi-icon" style="background:rgba(255,255,255,0.1);color:white;"><i class="fas fa-chart-line"></i></div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-info">
+                            <div class="kpi-title">Total Spool BOM</div>
+                            <div class="kpi-value spool-kpi-bom">— <span class="unit">EA</span></div>
+                            <div class="kpi-desc spool-kpi-bom-sub">—</div>
+                        </div>
+                        <div class="kpi-icon"><i class="fas fa-cubes"></i></div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-info">
+                            <div class="kpi-title">Total Spool Received</div>
+                            <div class="kpi-value spool-kpi-received">— <span class="unit">EA</span></div>
+                            <div class="kpi-desc spool-kpi-rec-sub">—</div>
+                        </div>
+                        <div class="kpi-icon received"><i class="fas fa-truck-loading"></i></div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-info">
+                            <div class="kpi-title">Total Issued</div>
+                            <div class="kpi-value spool-kpi-issued">0 <span class="unit">EA</span></div>
+                            <div class="kpi-desc">Field issued</div>
+                        </div>
+                        <div class="kpi-icon issued"><i class="fas fa-clipboard-check"></i></div>
+                    </div>
+                    <div class="kpi-card" style="border:1px solid #00509E;">
+                        <div class="kpi-info">
+                            <div class="kpi-title">Current Stock</div>
+                            <div class="kpi-value spool-kpi-stock">— <span class="unit">EA</span></div>
+                            <div class="kpi-desc">Received − Issued</div>
+                        </div>
+                        <div class="kpi-icon" style="background:rgba(0,80,158,0.1);color:#00509E;"><i class="fas fa-boxes"></i></div>
+                    </div>
+                </div>
+
+                <!-- Filter Bar -->
+                <div class="panel" style="padding:16px;margin-bottom:16px;">
+                    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+                        <div class="form-group" style="flex:3;min-width:200px;margin-bottom:0;">
+                            <label style="display:block;margin-bottom:4px;font-size:12px;">Search (PKG NO / Tag No / Description)</label>
+                            <input type="text" id="srSearch" class="form-control" placeholder="package no, tag no, description...">
+                        </div>
+                        <div class="form-group" style="flex:0 0 160px;margin-bottom:0;">
+                            <label style="display:block;margin-bottom:4px;font-size:12px;">Package No</label>
+                            <select id="srPkgFilter" class="form-control">
+                                <option value="">All</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex:0 0 110px;margin-bottom:0;">
+                            <label style="display:block;margin-bottom:4px;font-size:12px;">System</label>
+                            <select id="srSystemFilter" class="form-control">
+                                <option value="">All</option>
+                                <option value="HP">HP</option>
+                                <option value="LP">LP</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" id="btnSrSearch" style="height:38px;"><i class="fas fa-search"></i> Search</button>
+                        <button class="btn btn-outline" id="btnSrReset" style="height:38px;">Reset</button>
+                    </div>
+                </div>
+
+                <!-- Spool Receiving Table -->
+                <div class="panel" style="padding:0;overflow:hidden;">
+                    <div style="overflow-x:auto;">
+                        <table class="data-table" id="spoolReceivingTable" style="table-layout:fixed;width:100%;">
+                            <colgroup>
+                                <col style="width:140px;">
+                                <col style="width:240px;">
+                                <col style="width:85px;">
+                                <col style="width:190px;">
+                                <col style="width:210px;">
+                                <col style="width:90px;">
+                                <col style="width:75px;">
+                                <col style="width:75px;">
+                                <col style="width:70px;">
+                                <col style="width:160px;">
+                            </colgroup>
+                            <thead>
+                                <tr>
+                                    <th>PKG</th>
+                                    <th>PKG NO</th>
+                                    <th>System</th>
+                                    <th>Description</th>
+                                    <th>Tag No</th>
+                                    <th>Item</th>
+                                    <th>Size</th>
+                                    <th>Unit</th>
+                                    <th>Qty</th>
+                                    <th>Purpose</th>
+                                </tr>
+                            </thead>
+                            <tbody id="srTbody">
+                                <tr><td colspan="10" style="text-align:center;color:#999;padding:40px;">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
+                        <span id="srCountInfo" style="font-size:13px;color:#666;"></span>
+                        <div id="srPagination"></div>
+                    </div>
+                </div>
+            </section>
+
         </main>
     </div>
 
@@ -1351,6 +1593,6 @@
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
     <!-- Preloaded backend data (Removed large data.js) -->
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260530u"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260602d"></script>
 </body>
 </html>
