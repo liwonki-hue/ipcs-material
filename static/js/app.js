@@ -2983,6 +2983,11 @@ window.setShippingKpiFilter = function(type) {
     });
     const active = document.getElementById('skpi_' + type);
     if (active) { active.classList.add('active-kpi'); active.style.borderColor = ''; }
+    // 드롭다운 필터 초기화 (KPI 필터와 충돌 방지)
+    const sf = document.getElementById('shippingStatusFilter');
+    const cf = document.getElementById('shippingCustomFilter');
+    if (sf) sf.value = '';
+    if (cf) cf.value = '';
     renderShippingTable(getShippingFiltered());
 };
 
@@ -3163,7 +3168,7 @@ function getShippingFiltered() {
                 if (_shippingKpiFilter === 'shipping' && st !== 'Shipping')  return false;
                 if (_shippingKpiFilter === 'onsite'   && st !== 'On-Site')   return false;
                 if (_shippingKpiFilter === 'cleared'  && cc !== 'Cleared')   return false;
-                if (_shippingKpiFilter === 'pending'  && (st === 'On-Site' || st === 'Shipping')) return false;
+                if (_shippingKpiFilter === 'pending'  && cc !== 'Pending') return false;
                 if (_shippingKpiFilter === 'issued'   && !m.issue_date)      return false;
             }
             return true;
@@ -3198,7 +3203,7 @@ function renderShippingKpi() {
     const onsiteRows   = allMerged.filter(r => r.status === 'On-Site');
     const clearedRows  = allMerged.filter(r => r.custom_clear === 'Cleared');
     const issuedRows   = allMerged.filter(r => r.issue_date);
-    const pendingRows  = allMerged.filter(r => r.status !== 'On-Site' && r.status !== 'Shipping');
+    const pendingRows  = allMerged.filter(r => r.custom_clear === 'Pending');
     document.getElementById('sc_pl_count').textContent     = plCount.toLocaleString();
     document.getElementById('sc_total').textContent        = total.toLocaleString();
     document.getElementById('sc_shipping_pl').textContent  = new Set(shippingRows.map(r => r.packing)).size.toLocaleString();
@@ -3412,7 +3417,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnExport = document.getElementById('btnExportPL');
     const btnPrint  = document.getElementById('btnPrintPL');
     const searchBox = document.getElementById('shippingSearch');
-    if (btnFilter) btnFilter.addEventListener('click', () => { _shippingPage = 1; renderShippingTable(getShippingFiltered()); });
+    // 드롭다운/검색 필터 사용 시 KPI 카드 필터 초기화
+    function resetKpiFilter() {
+        _shippingKpiFilter = 'all';
+        document.querySelectorAll('.shipping-kpi-card').forEach(el => {
+            el.classList.remove('active-kpi');
+            el.style.borderColor = 'transparent';
+        });
+        const allCard = document.getElementById('skpi_all');
+        if (allCard) { allCard.classList.add('active-kpi'); allCard.style.borderColor = ''; }
+    }
+    if (btnFilter) btnFilter.addEventListener('click', () => { resetKpiFilter(); _shippingPage = 1; renderShippingTable(getShippingFiltered()); });
     if (btnReset)  btnReset.addEventListener('click', () => {
         document.getElementById('shippingGroupFilter').value = '';
         document.getElementById('shippingSearch').value = '';
@@ -3422,8 +3437,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (pf) pf.value = '';
         if (sf) sf.value = '';
         if (cf) cf.value = '';
+        resetKpiFilter();
         _shippingPage = 1;
-        if (_shippingData) renderShippingTable(_shippingData);
+        if (_shippingData) renderShippingTable(getShippingFiltered());
     });
     if (searchBox) searchBox.addEventListener('keyup', e => {
         if (e.key === 'Enter') { _shippingPage = 1; renderShippingTable(getShippingFiltered()); }
