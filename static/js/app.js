@@ -680,7 +680,7 @@ function updateCategoryCharts() {
     // Fetch category summary + Valve/Speciality tag-based receiving + Spool counts
     Promise.all([
         supabaseClient.from('v_category_readiness').select('*'),
-        supabaseClient.from('receiving').select('category, qty').not('tag', 'is', null).in('category', ['Valve', 'Speciality']).limit(5000),
+        supabaseClient.from('receiving').select('category, qty, tag, full_description').not('tag', 'is', null).in('category', ['Valve', 'Speciality']).limit(10000),
         supabaseClient.from('spool_bom').select('id', { count: 'exact', head: true }),
         supabaseClient.from('spool_receiving').select('id', { count: 'exact', head: true })
     ]).then(([catRes, tagRecRes, spoolBomRes, spoolRecRes]) => {
@@ -707,11 +707,35 @@ function updateCategoryCharts() {
             if (cat) activeRecByCategory[cat] = (activeRecByCategory[cat] || 0) + r.qty;
         });
 
-        // Valve/Speciality: DB 직접 쿼리 (tag 있는 항목만)
+        // Valve/Speciality: DB 직접 쿼리 (Tag Item만)
+        // Speciality: B0/B1/B2- 형식 tag만 + 부속 아이템(플랜지/볼트/가스켓 등) 제외
+        const SPECIALITY_ACCESSORY = [
+            'STUD BOLT', 'SUTD BOLT', 'NUT ', 'GASKET', 'FLANGE', 'BODY ',
+            'PACKING SET', 'PACKING GUIDE', 'STEM PACKING', 'SPARE PARTS',
+            'SPECIAL TOOLS', 'BLIND FLANGE', 'BONNET GASKET', 'TRIM PARTS',
+            'SCREW', 'WASHER', 'SLEEVE', 'SPACER', 'O-RING', 'O-RING',
+            'PLUG M', 'SPRING ', 'SEAT COVER', 'COVER HOLDER', 'SLOTTED NUT',
+            'LOCK WASHER', 'STUD :', 'PIPE ', 'B16.5', 'GASKET KIT',
+            'PRESSURE SEAL', 'STEM GUIDE', 'BALANCE SEAL', 'PISTON RING',
+            'WAVE SPRING', 'DUMMY BONNET', 'DUMMY CAGE', 'DUMMY SEAT',
+            'FLUSHING', 'HYDRO TEST', 'EYE BOLT', 'BLOW OUT', 'BLOW THROUGH',
+            'TEST PRESSURE'
+        ];
         if (tagRecRes.data) {
             tagRecRes.data.forEach(r => {
                 const cat = r.category;
-                activeRecByCategory[cat] = (activeRecByCategory[cat] || 0) + parseFloat(r.qty || 0);
+                const qty = parseFloat(r.qty || 0);
+                const tag = (r.tag || '').trim();
+                const desc = (r.full_description || '').toUpperCase();
+
+                if (cat === 'Speciality') {
+                    // B0/B1/B2- 형식 Tag Item만 (COMMISSIONING, Tool 등 제외)
+                    if (!/^B[0-2]-/i.test(tag)) return;
+                    // 부속/스페어/공구류 설명 제외
+                    if (SPECIALITY_ACCESSORY.some(w => desc.includes(w))) return;
+                }
+
+                activeRecByCategory[cat] = (activeRecByCategory[cat] || 0) + qty;
             });
         }
 
