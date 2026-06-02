@@ -143,6 +143,11 @@ ul { list-style: none; }
 .data-table th { background-color: #f8f9fa; color: var(--text-secondary); font-weight: 600; font-size: 11px; text-transform: uppercase; }
 .data-table tbody tr:hover { background-color: rgba(10, 37, 64, 0.02); }
 
+/* Shipping KPI card click filter */
+.shipping-kpi-card { transition: border-color 0.15s, box-shadow 0.15s; }
+.shipping-kpi-card:hover { border-color: #b0bec5 !important; }
+.shipping-kpi-card.active-kpi { border-color: #0A2540 !important; box-shadow: 0 2px 8px rgba(10,37,64,0.15); }
+
 /* BOM table center alignment */
 #bomTable th, #bomTable td { text-align: center; }
 #bomTable td:nth-child(4), #bomTable td:nth-child(5) { text-align: left; } /* Mat Code, Description */

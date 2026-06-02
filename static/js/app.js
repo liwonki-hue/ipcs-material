@@ -2968,8 +2968,23 @@ let _shippingData        = null;
 let _shippingFilteredRows = [];
 let _shippingPage        = 1;
 const PL_PAGE_SIZE       = 20;
-let _plUpdatesCache   = {};  // pkg_no → {status, on_site, custom_clear, issue_date, remark}
-let _plChanges        = {};  // dirty rows
+let _plUpdatesCache   = {};
+let _plChanges        = {};
+let _shippingKpiFilter = 'all'; // KPI 카드 클릭 필터: all|shipping|onsite|cleared|pending|issued
+
+// KPI 카드 클릭 핸들러
+window.setShippingKpiFilter = function(type) {
+    _shippingKpiFilter = type;
+    _shippingPage = 1;
+    // active 스타일 전환
+    document.querySelectorAll('.shipping-kpi-card').forEach(el => {
+        el.classList.remove('active-kpi');
+        el.style.borderColor = 'transparent';
+    });
+    const active = document.getElementById('skpi_' + type);
+    if (active) { active.classList.add('active-kpi'); active.style.borderColor = ''; }
+    renderShippingTable(getShippingFiltered());
+};
 
 // status가 Preparing/Shipping이면 아직 현장 미도착 → Receiving 집계 제외
 function isReceivingActive(plNo) {
@@ -3140,6 +3155,17 @@ function getShippingFiltered() {
                 const cc = (mergeRow(r).custom_clear || '').trim();
                 if (cc !== customF) return false;
             }
+            // KPI 카드 클릭 필터
+            if (_shippingKpiFilter && _shippingKpiFilter !== 'all') {
+                const m = mergeRow(r);
+                const st = m.status || '';
+                const cc = m.custom_clear || '';
+                if (_shippingKpiFilter === 'shipping' && st !== 'Shipping')  return false;
+                if (_shippingKpiFilter === 'onsite'   && st !== 'On-Site')   return false;
+                if (_shippingKpiFilter === 'cleared'  && cc !== 'Cleared')   return false;
+                if (_shippingKpiFilter === 'pending'  && (st === 'On-Site' || st === 'Shipping')) return false;
+                if (_shippingKpiFilter === 'issued'   && !m.issue_date)      return false;
+            }
             return true;
         })
         .sort((a, b) => a.packing.localeCompare(b.packing) || a.pkg_no.localeCompare(b.pkg_no));
@@ -3168,20 +3194,23 @@ function renderShippingKpi() {
     const allMerged  = (_shippingData || []).map(mergeRow);
     const total      = allMerged.length;
     const plCount    = new Set(allMerged.map(r => r.packing)).size;
-    const onsiteRows  = allMerged.filter(r => r.status === 'On-Site');
-    const clearedRows = allMerged.filter(r => r.custom_clear === 'Cleared');
-    const issuedRows  = allMerged.filter(r => r.issue_date);
-    const pendingRows = allMerged.filter(r => r.status !== 'On-Site');
-    document.getElementById('sc_pl_count').textContent    = plCount.toLocaleString();
-    document.getElementById('sc_total').textContent       = total.toLocaleString();
-    document.getElementById('sc_onsite_pl').textContent   = new Set(onsiteRows.map(r => r.packing)).size.toLocaleString();
-    document.getElementById('sc_onsite').textContent      = onsiteRows.length.toLocaleString();
-    document.getElementById('sc_cleared_pl').textContent  = new Set(clearedRows.map(r => r.packing)).size.toLocaleString();
-    document.getElementById('sc_cleared').textContent     = clearedRows.length.toLocaleString();
-    document.getElementById('sc_issued_pl').textContent   = new Set(issuedRows.map(r => r.packing)).size.toLocaleString();
-    document.getElementById('sc_issued').textContent      = issuedRows.length.toLocaleString();
-    document.getElementById('sc_pending_pl').textContent  = new Set(pendingRows.map(r => r.packing)).size.toLocaleString();
-    document.getElementById('sc_pending').textContent     = pendingRows.length.toLocaleString();
+    const shippingRows = allMerged.filter(r => r.status === 'Shipping');
+    const onsiteRows   = allMerged.filter(r => r.status === 'On-Site');
+    const clearedRows  = allMerged.filter(r => r.custom_clear === 'Cleared');
+    const issuedRows   = allMerged.filter(r => r.issue_date);
+    const pendingRows  = allMerged.filter(r => r.status !== 'On-Site' && r.status !== 'Shipping');
+    document.getElementById('sc_pl_count').textContent     = plCount.toLocaleString();
+    document.getElementById('sc_total').textContent        = total.toLocaleString();
+    document.getElementById('sc_shipping_pl').textContent  = new Set(shippingRows.map(r => r.packing)).size.toLocaleString();
+    document.getElementById('sc_shipping').textContent     = shippingRows.length.toLocaleString();
+    document.getElementById('sc_onsite_pl').textContent    = new Set(onsiteRows.map(r => r.packing)).size.toLocaleString();
+    document.getElementById('sc_onsite').textContent       = onsiteRows.length.toLocaleString();
+    document.getElementById('sc_cleared_pl').textContent   = new Set(clearedRows.map(r => r.packing)).size.toLocaleString();
+    document.getElementById('sc_cleared').textContent      = clearedRows.length.toLocaleString();
+    document.getElementById('sc_issued_pl').textContent    = new Set(issuedRows.map(r => r.packing)).size.toLocaleString();
+    document.getElementById('sc_issued').textContent       = issuedRows.length.toLocaleString();
+    document.getElementById('sc_pending_pl').textContent   = new Set(pendingRows.map(r => r.packing)).size.toLocaleString();
+    document.getElementById('sc_pending').textContent      = pendingRows.length.toLocaleString();
     document.getElementById('shippingTotalBadge').textContent = `${total.toLocaleString()} packages`;
 }
 

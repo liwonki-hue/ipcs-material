@@ -1014,56 +1014,77 @@
                 </div>
 
                 <!-- Summary Cards -->
-                <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:20px;" id="shippingCards">
-                    <div class="panel" style="padding:16px;text-align:center;">
+                <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:16px;margin-bottom:20px;" id="shippingCards">
+                    <!-- All -->
+                    <div class="panel shipping-kpi-card active-kpi" id="skpi_all" onclick="setShippingKpiFilter('all')" style="padding:16px;text-align:center;cursor:pointer;border:2px solid #0A2540;">
                         <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Packing Lists / Packages</div>
                         <div style="display:flex;align-items:baseline;justify-content:center;gap:6px;margin:4px 0 2px;">
-                            <span style="font-size:28px;font-weight:700;color:#0A2540;" id="sc_pl_count">—</span>
-                            <span style="font-size:13px;color:#888;">PL</span>
-                            <span style="font-size:18px;color:#ccc;">/</span>
-                            <span style="font-size:28px;font-weight:700;color:#0A2540;" id="sc_total">—</span>
-                            <span style="font-size:13px;color:#888;">PKG</span>
+                            <span style="font-size:26px;font-weight:700;color:#0A2540;" id="sc_pl_count">—</span>
+                            <span style="font-size:12px;color:#888;">PL</span>
+                            <span style="font-size:16px;color:#ccc;">/</span>
+                            <span style="font-size:26px;font-weight:700;color:#0A2540;" id="sc_total">—</span>
+                            <span style="font-size:12px;color:#888;">PKG</span>
                         </div>
                     </div>
-                    <div class="panel" style="padding:16px;text-align:center;">
+                    <!-- Shipping -->
+                    <div class="panel shipping-kpi-card" id="skpi_shipping" onclick="setShippingKpiFilter('shipping')" style="padding:16px;text-align:center;cursor:pointer;border:2px solid transparent;">
+                        <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Shipping</div>
+                        <div style="display:flex;align-items:baseline;justify-content:center;gap:6px;margin:4px 0 2px;">
+                            <span style="font-size:26px;font-weight:700;color:#e65100;" id="sc_shipping_pl">—</span>
+                            <span style="font-size:12px;color:#888;">PL</span>
+                            <span style="font-size:16px;color:#ccc;">/</span>
+                            <span style="font-size:26px;font-weight:700;color:#e65100;" id="sc_shipping">—</span>
+                            <span style="font-size:12px;color:#888;">PKG</span>
+                        </div>
+                        <div style="font-size:11px;color:#e65100;margin-top:2px;">Status: Shipping</div>
+                    </div>
+                    <!-- On-Site -->
+                    <div class="panel shipping-kpi-card" id="skpi_onsite" onclick="setShippingKpiFilter('onsite')" style="padding:16px;text-align:center;cursor:pointer;border:2px solid transparent;">
                         <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">On-Site</div>
                         <div style="display:flex;align-items:baseline;justify-content:center;gap:6px;margin:4px 0 2px;">
-                            <span style="font-size:28px;font-weight:700;color:#2e7d32;" id="sc_onsite_pl">—</span>
-                            <span style="font-size:13px;color:#888;">PL</span>
-                            <span style="font-size:18px;color:#ccc;">/</span>
-                            <span style="font-size:28px;font-weight:700;color:#2e7d32;" id="sc_onsite">—</span>
-                            <span style="font-size:13px;color:#888;">PKG</span>
+                            <span style="font-size:26px;font-weight:700;color:#2e7d32;" id="sc_onsite_pl">—</span>
+                            <span style="font-size:12px;color:#888;">PL</span>
+                            <span style="font-size:16px;color:#ccc;">/</span>
+                            <span style="font-size:26px;font-weight:700;color:#2e7d32;" id="sc_onsite">—</span>
+                            <span style="font-size:12px;color:#888;">PKG</span>
                         </div>
+                        <div style="font-size:11px;color:#2e7d32;margin-top:2px;">Status: On-Site</div>
                     </div>
-                    <div class="panel" style="padding:16px;text-align:center;">
+                    <!-- Custom Cleared -->
+                    <div class="panel shipping-kpi-card" id="skpi_cleared" onclick="setShippingKpiFilter('cleared')" style="padding:16px;text-align:center;cursor:pointer;border:2px solid transparent;">
                         <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Custom Cleared</div>
                         <div style="display:flex;align-items:baseline;justify-content:center;gap:6px;margin:4px 0 2px;">
-                            <span style="font-size:28px;font-weight:700;color:#1565c0;" id="sc_cleared_pl">—</span>
-                            <span style="font-size:13px;color:#888;">PL</span>
-                            <span style="font-size:18px;color:#ccc;">/</span>
-                            <span style="font-size:28px;font-weight:700;color:#1565c0;" id="sc_cleared">—</span>
-                            <span style="font-size:13px;color:#888;">PKG</span>
+                            <span style="font-size:26px;font-weight:700;color:#1565c0;" id="sc_cleared_pl">—</span>
+                            <span style="font-size:12px;color:#888;">PL</span>
+                            <span style="font-size:16px;color:#ccc;">/</span>
+                            <span style="font-size:26px;font-weight:700;color:#1565c0;" id="sc_cleared">—</span>
+                            <span style="font-size:12px;color:#888;">PKG</span>
                         </div>
+                        <div style="font-size:11px;color:#1565c0;margin-top:2px;">Custom Clear: Cleared</div>
                     </div>
-                    <div class="panel" style="padding:16px;text-align:center;">
-                        <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Issued</div>
-                        <div style="display:flex;align-items:baseline;justify-content:center;gap:6px;margin:4px 0 2px;">
-                            <span style="font-size:28px;font-weight:700;color:#6a1b9a;" id="sc_issued_pl">—</span>
-                            <span style="font-size:13px;color:#888;">PL</span>
-                            <span style="font-size:18px;color:#ccc;">/</span>
-                            <span style="font-size:28px;font-weight:700;color:#6a1b9a;" id="sc_issued">—</span>
-                            <span style="font-size:13px;color:#888;">PKG</span>
-                        </div>
-                    </div>
-                    <div class="panel" style="padding:16px;text-align:center;">
+                    <!-- Pending -->
+                    <div class="panel shipping-kpi-card" id="skpi_pending" onclick="setShippingKpiFilter('pending')" style="padding:16px;text-align:center;cursor:pointer;border:2px solid transparent;">
                         <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Pending</div>
                         <div style="display:flex;align-items:baseline;justify-content:center;gap:6px;margin:4px 0 2px;">
-                            <span style="font-size:28px;font-weight:700;color:#c62828;" id="sc_pending_pl">—</span>
-                            <span style="font-size:13px;color:#888;">PL</span>
-                            <span style="font-size:18px;color:#ccc;">/</span>
-                            <span style="font-size:28px;font-weight:700;color:#c62828;" id="sc_pending">—</span>
-                            <span style="font-size:13px;color:#888;">PKG</span>
+                            <span style="font-size:26px;font-weight:700;color:#c62828;" id="sc_pending_pl">—</span>
+                            <span style="font-size:12px;color:#888;">PL</span>
+                            <span style="font-size:16px;color:#ccc;">/</span>
+                            <span style="font-size:26px;font-weight:700;color:#c62828;" id="sc_pending">—</span>
+                            <span style="font-size:12px;color:#888;">PKG</span>
                         </div>
+                        <div style="font-size:11px;color:#c62828;margin-top:2px;">Status: Preparing / Not Set</div>
+                    </div>
+                    <!-- Issued -->
+                    <div class="panel shipping-kpi-card" id="skpi_issued" onclick="setShippingKpiFilter('issued')" style="padding:16px;text-align:center;cursor:pointer;border:2px solid transparent;">
+                        <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Issued</div>
+                        <div style="display:flex;align-items:baseline;justify-content:center;gap:6px;margin:4px 0 2px;">
+                            <span style="font-size:26px;font-weight:700;color:#6a1b9a;" id="sc_issued_pl">—</span>
+                            <span style="font-size:12px;color:#888;">PL</span>
+                            <span style="font-size:16px;color:#ccc;">/</span>
+                            <span style="font-size:26px;font-weight:700;color:#6a1b9a;" id="sc_issued">—</span>
+                            <span style="font-size:12px;color:#888;">PKG</span>
+                        </div>
+                        <div style="font-size:11px;color:#6a1b9a;margin-top:2px;">Issue Date set</div>
                     </div>
                 </div>
 
@@ -1593,6 +1614,6 @@
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
     <!-- Preloaded backend data (Removed large data.js) -->
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260602e"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260602g"></script>
 </body>
 </html>
