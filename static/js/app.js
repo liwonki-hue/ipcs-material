@@ -728,9 +728,10 @@ function updateCategoryCharts() {
                 const tag = (r.tag || '').trim();
                 const desc = (r.full_description || '').toUpperCase();
 
+                // Valve/Speciality 공통: B0/B1/B2- 형식 Tag Item만 (COMMISSIONING, Tool 등 제외)
+                if (!/^B[0-2]-/i.test(tag)) return;
+
                 if (cat === 'Speciality') {
-                    // B0/B1/B2- 형식 Tag Item만 (COMMISSIONING, Tool 등 제외)
-                    if (!/^B[0-2]-/i.test(tag)) return;
                     // 부속/스페어/공구류 설명 제외
                     if (SPECIALITY_ACCESSORY.some(w => desc.includes(w))) return;
                 }
