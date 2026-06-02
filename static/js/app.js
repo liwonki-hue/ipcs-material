@@ -3037,13 +3037,15 @@ async function initShipping() {
                 spoolRows.forEach(r => {
                     if (spoolSeen.has(r.pkg_no)) return;
                     spoolSeen.add(r.pkg_no);
+                    // packing 이름을 pkg_no에서 추출 (e.g. PGU-DE-0466-BOP-PIP-001 → PGU-DE-0466)
+                    const packing = (r.pkg_no || '').match(/^(PGU-DE-\d+)/)?.[1] || r.pkg_no || '';
                     spoolShipping.push({
-                        packing:      'PGU-DE-0466',
+                        packing,
                         pkg_no:       r.pkg_no,
                         description:  r.description || 'Piping Spool',
                         qty:          r.qty || 1,
                         unit:         r.unit || 'EA',
-                        purpose:      r.purpose || '',
+                        purpose:      r.purpose || 'Permanent',
                         status:       '',
                         on_site:      '',
                         custom_clear: '',
