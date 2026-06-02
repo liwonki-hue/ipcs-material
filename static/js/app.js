@@ -987,7 +987,7 @@ let _shortagePage = 1;
 const SHORTAGE_PAGE_SIZE = 30;
 let _shortageList = [];
 
-const CAT_ORDER = { 'Pipe': 0, 'Fitting': 1, 'Valve': 2, 'Others': 3, 'Speciality': 4 };
+const CAT_ORDER = { 'Pipe': 0, 'Fitting': 1, 'Valve': 2, 'Spool': 3, 'Support': 4, 'Others': 5, 'Speciality': 6 };
 
 function initShortageFilters() {
     // PKG / PKG NO 필터 제거됨 — Category/Item/Size만 유지
@@ -1050,15 +1050,17 @@ function renderShortageTable() {
         shortageList.push({ matCode, cat, desc, item, size, unit, bomQty, recQty, shortage });
     });
 
-    // Pipe 우선, 이후 카테고리 순, 동일 카테고리 내 Size 오름차순
+    // Category → Item → Size 순 정렬
     shortageList.sort((a, b) => {
         const oa = CAT_ORDER[a.cat] ?? 9;
         const ob = CAT_ORDER[b.cat] ?? 9;
         if (oa !== ob) return oa - ob;
+        const ia = (a.item || '').toUpperCase();
+        const ib = (b.item || '').toUpperCase();
+        if (ia !== ib) return ia.localeCompare(ib);
         const sa = parseFloat((a.size || '0').replace(/[^0-9.]/g, '')) || 0;
         const sb = parseFloat((b.size || '0').replace(/[^0-9.]/g, '')) || 0;
-        if (sa !== sb) return sa - sb;
-        return a.matCode.localeCompare(b.matCode);
+        return sa - sb;
     });
 
     _shortageList = shortageList;
@@ -1077,8 +1079,8 @@ function renderShortageTable() {
     const pageRows = shortageList.slice(start, start + SHORTAGE_PAGE_SIZE);
 
     tbody.innerHTML = pageRows.map(({ matCode, cat, desc, item, size, unit, bomQty, recQty, shortage }) => `<tr>
-            <td style="text-align:center;font-weight:600;color:var(--color-primary);white-space:nowrap;">${matCode}</td>
             <td style="text-align:center;"><strong>${cat}</strong></td>
+            <td style="text-align:center;font-weight:600;color:var(--color-primary);white-space:nowrap;">${matCode}</td>
             <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${desc}">${desc}</td>
             <td style="text-align:center;">${item}</td>
             <td style="text-align:center;">${size}</td>
