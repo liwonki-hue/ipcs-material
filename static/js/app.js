@@ -121,6 +121,9 @@ window.extractItemFromDesc = function(desc) {
     for (const c of COMPOUND) {
         if (upper.startsWith(c)) return c;
     }
+    // Safety / Control Valve 직접 감지 (description 전체 기준)
+    if (/SAFETY VALVE|\bPSV\b|\bPRV\b/.test(upper)) return 'SAFETY VALVE';
+    if (/\b(TCV|LCV|FCV|PCV)\b/.test(upper) || /\bXV\b/.test(upper)) return 'CONTROL VALVE';
     // Skip leading dimension prefix (e.g., 3", 1/2", DN80, 2"x1")
     const s = desc.replace(/^[\d"'\s\/\-×xX]+/, '').trim();
     if (!s) return '-';
@@ -133,7 +136,8 @@ window.extractItemFromDesc = function(desc) {
         'CHCK': 'CHECK VALVE', 'BUTTERFLY': 'BUTTERFLY VALVE',
         'BTFY': 'BUTTERFLY VALVE',
     };
-    return ITEM_MAP[raw] || raw;
+    if (ITEM_MAP[raw]) return ITEM_MAP[raw];
+    return raw;
 };
 
 window.extractItemFromMatCode = function(matCode) {
@@ -189,6 +193,8 @@ function showLoading(show) {
 }
 
 const TABLES_WITH_ID = new Set(['receiving', 'issued', 'bom']);
+const CAT_BADGE = { Pipe:'info', Fitting:'ok', Valve:'warn', Speciality:'warn', Spool:'info', Support:'ok', Others:'ok', Other:'err' };
+const getCatBadge = cat => CAT_BADGE[cat] || 'ok';
 
 async function fetchAllRows(tableName) {
     let allData = [];
@@ -403,19 +409,13 @@ function renderIsoPage(page) {
     if (pageData.length === 0) {
         tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#888;padding:20px;">No ISOs found.</td></tr>`;
     } else {
-        pageData.forEach(iso => {
+        tbody.innerHTML = pageData.map(iso => {
             const sp = parseFloat(iso.spool_score || 0);
             const fd = parseFloat(iso.field_score || 0);
             const stage = getIsoStage(sp, fd);
-            const spBar = `<div style="display:flex;align-items:center;gap:5px;">
-                <div style="width:55px;background:#eee;height:7px;border-radius:4px;overflow:hidden;">
-                    <div style="width:${Math.min(sp,100)}%;background:#1565c0;height:100%;"></div>
-                </div><span style="font-size:11px;font-weight:600;color:#1565c0;">${sp}%</span></div>`;
-            const fdBar = `<div style="display:flex;align-items:center;gap:5px;">
-                <div style="width:55px;background:#eee;height:7px;border-radius:4px;overflow:hidden;">
-                    <div style="width:${Math.min(fd,100)}%;background:#2e7d32;height:100%;"></div>
-                </div><span style="font-size:11px;font-weight:600;color:#2e7d32;">${fd}%</span></div>`;
-            tbody.innerHTML += `<tr style="cursor:pointer;" onclick="window.showIsoDetail('${iso.iso_dwg_no}')" title="${iso.iso_dwg_no}">
+            const spBar = `<div style="display:flex;align-items:center;gap:5px;"><div style="width:55px;background:#eee;height:7px;border-radius:4px;overflow:hidden;"><div style="width:${Math.min(sp,100)}%;background:#1565c0;height:100%;"></div></div><span style="font-size:11px;font-weight:600;color:#1565c0;">${sp}%</span></div>`;
+            const fdBar = `<div style="display:flex;align-items:center;gap:5px;"><div style="width:55px;background:#eee;height:7px;border-radius:4px;overflow:hidden;"><div style="width:${Math.min(fd,100)}%;background:#2e7d32;height:100%;"></div></div><span style="font-size:11px;font-weight:600;color:#2e7d32;">${fd}%</span></div>`;
+            return `<tr style="cursor:pointer;" onclick="window.showIsoDetail('${iso.iso_dwg_no}')" title="${iso.iso_dwg_no}">
                 <td><strong style="color:#0A2540;text-decoration:underline dotted;">${iso.iso_dwg_no}</strong></td>
                 <td>${spBar}</td>
                 <td>${fdBar}</td>
@@ -424,7 +424,7 @@ function renderIsoPage(page) {
                 <td><span class="status-badge ${stage.cls}" style="white-space:nowrap;">${stage.label}</span></td>
                 <td><button style="background:#0A2540;color:white;border:none;padding:5px 12px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;" onclick="event.stopPropagation();window.showIsoDetail('${iso.iso_dwg_no}')"><i class="fas fa-file-signature"></i> Issue MR</button></td>
             </tr>`;
-        });
+        }).join('');
     }
     renderIsoPaginator(page);
 }
@@ -531,12 +531,12 @@ function updateDashboard() {
         if (summaryRes.error) console.error('v_project_summary error:', summaryRes.error);
         const summary = Array.isArray(summaryRes.data) ? summaryRes.data[0] : summaryRes.data;
         if (summary) {
-            const totalBom = parseFloat(summary.global_bom_qty || 0);
+            const totalBom = parseFloat(summary.global_bom_qty) || 0;
             // Received KPI: On-Site 도착 패키지 + Valve/Speciality는 Tag 항목만 집계
             const totalRec = db.receiving
                 .filter(r => (r.purpose === 'Permanent' || r.purpose === '') && isReceivingActive(r.plNo) && isKpiReceiving(r))
-                .reduce((s, r) => s + r.qty, 0);
-            const totalIss = parseFloat(summary.global_issued_qty || 0);
+                .reduce((s, r) => s + (r.qty || 0), 0);
+            const totalIss = parseFloat(summary.global_issued_qty) || 0;
             const prog = totalBom > 0 ? (totalRec / totalBom * 100).toFixed(1) : 0;
             const kpiMap = {
                 'kpi-progress': `${prog}%`,
@@ -709,18 +709,9 @@ function updateCategoryCharts() {
 
         // Valve/Speciality: DB 직접 쿼리 (Tag Item만)
         // Speciality: B0/B1/B2- 형식 tag만 + 부속 아이템(플랜지/볼트/가스켓 등) 제외
-        const SPECIALITY_ACCESSORY = [
-            'STUD BOLT', 'SUTD BOLT', 'NUT ', 'GASKET', 'FLANGE', 'BODY ',
-            'PACKING SET', 'PACKING GUIDE', 'STEM PACKING', 'SPARE PARTS',
-            'SPECIAL TOOLS', 'BLIND FLANGE', 'BONNET GASKET', 'TRIM PARTS',
-            'SCREW', 'WASHER', 'SLEEVE', 'SPACER', 'O-RING', 'O-RING',
-            'PLUG M', 'SPRING ', 'SEAT COVER', 'COVER HOLDER', 'SLOTTED NUT',
-            'LOCK WASHER', 'STUD :', 'PIPE ', 'B16.5', 'GASKET KIT',
-            'PRESSURE SEAL', 'STEM GUIDE', 'BALANCE SEAL', 'PISTON RING',
-            'WAVE SPRING', 'DUMMY BONNET', 'DUMMY CAGE', 'DUMMY SEAT',
-            'FLUSHING', 'HYDRO TEST', 'EYE BOLT', 'BLOW OUT', 'BLOW THROUGH',
-            'TEST PRESSURE'
-        ];
+        // 부속품/스페어파트 정규식 (단일 pass로 모든 키워드 검사)
+        const ACCESSORY_RE = /STUD BOLT|SUTD BOLT|NUT |GASKET|FLANGE|BODY |PACKING SET|PACKING GUIDE|STEM PACKING|SPARE PARTS|SPECIAL TOOLS|BLIND FLANGE|BONNET GASKET|TRIM PARTS|SCREW|WASHER|SLEEVE|SPACER|O-RING|PLUG M|SPRING |SEAT COVER|COVER HOLDER|SLOTTED NUT|LOCK WASHER|STUD :|PIPE |B16\.5|GASKET KIT|PRESSURE SEAL|STEM GUIDE|BALANCE SEAL|PISTON RING|WAVE SPRING|DUMMY BONNET|DUMMY CAGE|DUMMY SEAT|FLUSHING|HYDRO TEST|EYE BOLT|BLOW OUT|BLOW THROUGH|TEST PRESSURE|HINGE PIN|SEAL RING| RING FOR|PIN RING/;
+
         if (tagRecRes.data) {
             tagRecRes.data.forEach(r => {
                 const cat = r.category;
@@ -728,13 +719,8 @@ function updateCategoryCharts() {
                 const tag = (r.tag || '').trim();
                 const desc = (r.full_description || '').toUpperCase();
 
-                // Valve/Speciality 공통: B0/B1/B2- 형식 Tag Item만 (COMMISSIONING, Tool 등 제외)
                 if (!/^B[0-2]-/i.test(tag)) return;
-
-                if (cat === 'Speciality') {
-                    // 부속/스페어/공구류 설명 제외
-                    if (SPECIALITY_ACCESSORY.some(w => desc.includes(w))) return;
-                }
+                if (ACCESSORY_RE.test(desc)) return;
 
                 activeRecByCategory[cat] = (activeRecByCategory[cat] || 0) + qty;
             });
@@ -962,7 +948,7 @@ function renderStockTable() {
     if (label) label.textContent = `(${filtered.length.toLocaleString()} items)`;
 
     const display = filtered.slice(0, 1000);
-    display.forEach(matCode => {
+    const stockRows = display.map(matCode => {
         let rec   = recMap[matCode] || 0;
         let iss   = issMap[matCode] || 0;
         let stock = Math.max(0, rec - iss);
@@ -979,14 +965,11 @@ function renderStockTable() {
         const size    = (_sz && _sz !== '-') ? _sz : (mData.size1 || '-');
         const unitStr = bomLookup[matCode]?.unit || 'EA';
         const badge   = stock > 0 ? '<span class="status-badge ok">In Stock</span>' : '<span class="status-badge err">Out of Stock</span>';
-
         const docs    = docMap[matCode] ? [...docMap[matCode]].sort().join('<br>') : '-';
         const pkgs    = pkgMap[matCode] ? [...pkgMap[matCode]].sort().join('<br>') : '-';
-        const fullDesc = db.bomDesc[matCode]
-                      || (db.receiving.find(r => r.matCode === matCode)?.desc)
-                      || '-';
+        const fullDesc = db.bomDesc[matCode] || (db.receiving.find(r => r.matCode === matCode)?.desc) || '-';
 
-        tbody.innerHTML += `<tr>
+        return `<tr>
             <td>${docs}</td>
             <td>${pkgs}</td>
             <td style="font-weight:600; color:var(--color-primary);">${matCode}</td>
@@ -1001,10 +984,10 @@ function renderStockTable() {
             <td>${badge}</td>
         </tr>`;
     });
-
-    if(filtered.length > 1000) {
-        tbody.innerHTML += `<tr><td colspan="12" style="text-align:center;color:#666;font-style:italic;">Showing first 1,000 of ${filtered.length.toLocaleString()} items.</td></tr>`;
+    if (filtered.length > 1000) {
+        stockRows.push(`<tr><td colspan="12" style="text-align:center;color:#666;font-style:italic;">Showing first 1,000 of ${filtered.length.toLocaleString()} items.</td></tr>`);
     }
+    tbody.innerHTML = stockRows.join('');
 }
 
 // --- Material Shortage ---
@@ -1167,9 +1150,8 @@ function renderMatCodeMaster() {
         return true;
     });
 
-    const BADGE = {Pipe:'info', Fitting:'ok', Valve:'warn', Speciality:'warn', Other:'err'};
     tbody.innerHTML = data.map(m => {
-        const cb = BADGE[m.category] || 'ok';
+        const cb = getCatBadge(m.category);
         const fullDesc = db.bomDesc[m.matCode.trim().toUpperCase()]
             || db.receiving.find(r => r.matCode === m.matCode)?.desc
             || [m.itemDesc, m.matlDesc, m.size2, m.classDesc, m.etDesc].filter(v => v && v !== '-').join(', ')
@@ -1206,7 +1188,10 @@ function initFilterOptions() {
     if(bomSys && bomIsoData) {
         const systems = [...new Set(db.bom.map(b => b.system).filter(Boolean))].sort();
         const isos = [...new Set(db.bomIsoList.map(r => r.iso))].sort();
-        const bomItems = [...new Set(db.bom.map(b => window.extractItemFromMatCode(b.matCode)).filter(v => v && v !== '-'))].sort();
+        const bomItemsSet = new Set(db.bom.map(b => window.extractItemFromMatCode(b.matCode)).filter(v => v && v !== '-'));
+        bomItemsSet.add('CONTROL VALVE');
+        bomItemsSet.add('SAFETY VALVE');
+        const bomItems = [...bomItemsSet].sort();
         const bomSizes = [...new Set(db.bom.map(b => window.extractSizeFromMatCode(b.matCode)).filter(v => v && v !== '-'))].sort((a,b) => parseFloat(a) - parseFloat(b));
 
         bomSys.innerHTML = '<option value="All">All Systems</option>' + systems.map(s => `<option value="${s}">${s}</option>`).join('');
@@ -1323,13 +1308,17 @@ async function renderBomTable() {
         if (search) q = q.or(`iso_dwg_no.ilike.%${search}%,mat_code.ilike.%${search}%,category.ilike.%${search}%,full_description.ilike.%${search}%`);
         if (cat  !== 'All') q = q.ilike('category', `%${cat}%`);
         if (item !== 'All') {
-            // MatCode prefix 기반 필터 (드롭박스 생성 기준과 동일)
-            const prefixes = ITEM_PREFIX_MAP[item];
-            if (prefixes && prefixes.length > 0) {
-                // PostgREST or() 문자열은 % 대신 * 를 와일드카드로 사용
-                q = q.or(prefixes.map(p => `mat_code.ilike.${p}-*`).join(','));
+            if (item === 'CONTROL VALVE') {
+                q = q.or('tag.ilike.%-TCV-%,tag.ilike.%-LCV-%,tag.ilike.%-FCV-%,tag.ilike.%-PCV-%,tag.ilike.%-FV-%');
+            } else if (item === 'SAFETY VALVE') {
+                q = q.or('tag.ilike.%-PSV%,tag.ilike.%-PRV%,mat_code.ilike.PSV-*,mat_code.ilike.PRV-*');
             } else {
-                q = q.ilike('full_description', `%${item}%`);  // fallback
+                const prefixes = ITEM_PREFIX_MAP[item];
+                if (prefixes && prefixes.length > 0) {
+                    q = q.or(prefixes.map(p => `mat_code.ilike.${p}-*`).join(','));
+                } else {
+                    q = q.ilike('full_description', `%${item}%`);
+                }
             }
         }
         if (size !== 'All') {
@@ -1357,35 +1346,38 @@ async function renderBomTable() {
             .select('*', { count: 'exact', head: true })
     );
 
-    const [{ data: rawData, error }, { count }] = await Promise.all([dataQ, countQ]);
-    if (error) {
-        tbody.innerHTML = `<tr><td colspan="10" style="color:red;text-align:center;">Error: ${error.message}</td></tr>`;
+    const [dataRes, countRes] = await Promise.all([dataQ, countQ]);
+    if (dataRes.error) {
+        tbody.innerHTML = `<tr><td colspan="10" style="color:red;text-align:center;">Error: ${dataRes.error.message}</td></tr>`;
         return;
     }
 
-    const allFetched = rawData || [];
+    const allFetched = dataRes.data || [];
     const hasMore = allFetched.length > PAGE_SIZE;
     const data = allFetched.slice(0, PAGE_SIZE);
+    const count = countRes.count;
 
     // HEAD count 쿼리가 null이면 hasMore 기반 추정값 사용
     const totalCount = (count != null)
         ? count
         : (currentBomPage * PAGE_SIZE + data.length + (hasMore ? PAGE_SIZE : 0));
 
-    tbody.innerHTML = '';
-    data.forEach(b => {
+    tbody.innerHTML = data.map(b => {
         let displayCat = b.category;
         if (displayCat === 'BULK' || !displayCat) {
             displayCat = window.getCategory(b.full_description, b.mat_code);
         }
-        
-        let isAuto = (b.mat_code || '').includes('NEW-MAT');
-        let badgeClass = isAuto ? 'warn' : 'ok';
-        let desc = (b.full_description || '-').replace(/_/g, '-');
-        const size = window.extractSizeFromMatCode(b.mat_code);
+        const isAuto = (b.mat_code || '').includes('NEW-MAT');
+        const badgeClass = isAuto ? 'warn' : 'ok';
+        const desc = (b.full_description || '-').replace(/_/g, '-');
+        let size = window.extractSizeFromMatCode(b.mat_code);
+        if (size === '-' && b.full_description) {
+            const dnM = b.full_description.match(/\bDN\s*(\d+)\b/i);
+            if (dnM) size = 'DN ' + dnM[1];
+        }
         const item = window.extractItemFromDesc(desc);
-        tbody.innerHTML += `<tr>
-            <td style="text-align:center;"><span class="status-badge ${badgeClass}">${b.mat_code}</span></td>
+        return `<tr>
+            <td style="text-align:center;"><span class="status-badge ${badgeClass}">${b.mat_code || '-'}</span></td>
             <td style="text-align:center;"><strong>${displayCat}</strong></td>
             <td style="text-align:center;">${b.system || '-'}</td>
             <td style="text-align:center;">${b.iso_dwg_no || '-'}</td>
@@ -1398,7 +1390,7 @@ async function renderBomTable() {
             <td style="text-align:center;">${parseFloat(b.qty || 0).toFixed(2)}</td>
             <td style="text-align:center;"><button class="btn-small btn-outline-danger">Del</button></td>
         </tr>`;
-    });
+    }).join('');
 
     renderTablePagination(
         totalCount,
@@ -1450,7 +1442,7 @@ function renderReceivingTable() {
             catForBadge = 'Valve'; // Tag items are valves
         }
 
-        let catBadge = {Pipe:'info', Fitting:'ok', Valve:'warn', Speciality:'warn', Other:'err'}[catForBadge] || 'ok';
+        const catBadge = getCatBadge(catForBadge);
         const descDisplay = (r.desc || '').replace(/_/g, '-');
 
         const size = window.extractSizeFromMatCode(r.matCode);
@@ -1667,12 +1659,8 @@ function renderPLReview() {
     updatePLReviewSummary();
 
     const tbody = document.getElementById('plReviewTbody');
-    tbody.innerHTML = '';
-
-    plReviewData.forEach((row, idx) => {
+    tbody.innerHTML = plReviewData.map((row, idx) => {
         let statusBadge, matcodeCell;
-        const catColors = { Pipe: 'info', Fitting: 'ok', Valve: 'warn', Speciality: 'warn', Other: 'err' };
-
         if (row.status === 'matched') {
             statusBadge = '<span class="status-badge ok">Matched</span>';
             matcodeCell = `<span class="status-badge ok" style="font-size:11px;">${row.matCode}</span>`;
@@ -1681,25 +1669,14 @@ function renderPLReview() {
             const opts = row.candidates.map(c =>
                 `<option value="${c.matCode}|${c.category}">${c.matCode} (${c.size2 || c.size1})</option>`
             ).join('');
-            matcodeCell = `<select class="form-control" style="font-size:11px; padding:2px 6px; height:28px;"
-                onchange="assignPLMatCode(${idx}, this.value)">
-                <option value="">-- Select --</option>${opts}
-            </select>`;
+            matcodeCell = `<select class="form-control" style="font-size:11px; padding:2px 6px; height:28px;" onchange="assignPLMatCode(${idx}, this.value)"><option value="">-- Select --</option>${opts}</select>`;
         } else {
             statusBadge = '<span class="status-badge err">New Code</span>';
-            matcodeCell = `<button class="btn-small btn-outline" onclick="openNewMatCodeModal(${idx})" style="font-size:11px; padding:3px 8px;">
-                <i class="fas fa-plus"></i> Create Code
-            </button>`;
+            matcodeCell = `<button class="btn-small btn-outline" onclick="openNewMatCodeModal(${idx})" style="font-size:11px; padding:3px 8px;"><i class="fas fa-plus"></i> Create Code</button>`;
         }
-
-        const catBadge = catColors[row.category] || '';
-        const catCell = row.category
-            ? `<span class="status-badge ${catBadge}">${row.category}</span>`
-            : '<span style="color:#999;">-</span>';
-
+        const catCell = row.category ? `<span class="status-badge ${getCatBadge(row.category)}">${row.category}</span>` : '<span style="color:#999;">-</span>';
         const shortDesc = row.desc.length > 55 ? row.desc.substring(0, 52) + '...' : row.desc;
-
-        tbody.innerHTML += `<tr id="plrow_${idx}">
+        return `<tr id="plrow_${idx}">
             <td style="font-size:12px;">${row.docNo}</td>
             <td style="font-size:12px;">${row.pkgNo}</td>
             <td title="${row.desc}" style="font-size:12px;">${shortDesc}</td>
@@ -1709,7 +1686,7 @@ function renderPLReview() {
             <td id="plrow_matcode_${idx}">${matcodeCell}</td>
             <td id="plrow_cat_${idx}">${catCell}</td>
         </tr>`;
-    });
+    }).join('');
 }
 
 window.assignPLMatCode = function(idx, value) {
@@ -1718,7 +1695,7 @@ window.assignPLMatCode = function(idx, value) {
     plReviewData[idx].matCode = matCode;
     plReviewData[idx].category = category;
     plReviewData[idx].status = 'matched';
-    const catBadge = { Pipe: 'info', Fitting: 'ok', Valve: 'warn', Speciality: 'warn', Other: 'err' }[category] || 'ok';
+    const catBadge = getCatBadge(category);
     document.getElementById('plrow_matcode_' + idx).innerHTML = `<span class="status-badge ok" style="font-size:11px;">${matCode}</span>`;
     document.getElementById('plrow_cat_' + idx).innerHTML = `<span class="status-badge ${catBadge}">${category}</span>`;
     updatePLReviewSummary();
@@ -1772,7 +1749,7 @@ window.selectExistingForPL = function(matCode, category) {
     plReviewData[idx].category = category;
     plReviewData[idx].status = 'matched';
 
-    const catBadge = { Pipe: 'info', Fitting: 'ok', Valve: 'warn', Speciality: 'warn', Other: 'err' }[category] || 'ok';
+    const catBadge = getCatBadge(category);
     document.getElementById('plrow_matcode_' + idx).innerHTML = `<span class="status-badge ok" style="font-size:11px;">${matCode}</span>`;
     document.getElementById('plrow_cat_' + idx).innerHTML = `<span class="status-badge ${catBadge}">${category}</span>`;
 
@@ -2611,7 +2588,7 @@ function attachEventListeners() {
                 }
             }
 
-            const catBadge = {Pipe:'info',Fitting:'ok',Valve:'warn',Speciality:'warn',Other:'err'}[category]||'ok';
+            const catBadge = getCatBadge(category);
             document.getElementById('plrow_matcode_'+idx).innerHTML = `<span class="status-badge ok" style="font-size:11px;">${matCode}</span>`;
             document.getElementById('plrow_cat_'+idx).innerHTML = `<span class="status-badge ${catBadge}">${category}</span>`;
 
@@ -2676,7 +2653,7 @@ function renderMrTable() {
             .map(([plNo, qty]) => ({ plNo, qty }));
     });
 
-    db.mrTable.forEach(m => {
+    tbody.innerHTML = db.mrTable.map(m => {
         const records = pkgSorted[m.matCode] || [];
         let remaining = m.reqQty;
         const allocated = [];
@@ -2695,8 +2672,7 @@ function renderMrTable() {
                 `<span style="font-weight:600;color:#0d47a1;">${a.plNo}</span><span style="font-size:10px;color:#555;"> (${a.take % 1 === 0 ? a.take : a.take.toFixed(2)})</span>`
             ).join('<br>');
         }
-
-        tbody.innerHTML += `<tr>
+        return `<tr>
             <td><strong>${m.mrNo}</strong></td>
             <td>${m.iso}</td>
             <td style="line-height:1.8;">${pkgDisplay}</td>
@@ -2705,7 +2681,7 @@ function renderMrTable() {
             <td>${m.size}</td><td>${m.unit}</td>
             <td><strong>${(m.reqQty || 0).toFixed(2)}</strong></td>
         </tr>`;
-    });
+    }).join('');
 }
 
 // ==========================================
@@ -2791,14 +2767,13 @@ async function renderMrHistory() {
         if (mrList.length === 0) {
             histTbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#888;padding:20px;">No MR records found.</td></tr>';
         } else {
-            histTbody.innerHTML = '';
-            mrList.forEach(mr => {
+            histTbody.innerHTML = mrList.map(mr => {
                 const status = getIsoStatus(mr.iso);
                 const sCls   = status === 'CLOSED' ? 'ok' : (status === 'PARTIAL' ? 'warn' : '');
                 const suppBtn = status === 'PARTIAL'
                     ? `<button class="btn btn-primary btn-small" onclick="window.loadSupplementMR('${mr.iso.replace(/'/g,"\\'")}','${mr.mrNo}')"><i class="fas fa-plus-circle"></i> Supplement Issue</button>`
                     : '<span style="color:#aaa;font-size:11px;">Closed</span>';
-                histTbody.innerHTML += `<tr>
+                return `<tr>
                     <td><strong style="color:var(--color-primary);">${mr.mrNo}</strong></td>
                     <td style="font-size:12px;">${mr.iso}</td>
                     <td>${mr.date}</td>
@@ -2807,7 +2782,7 @@ async function renderMrHistory() {
                     <td><span class="status-badge ${sCls}">${status}</span></td>
                     <td>${suppBtn}</td>
                 </tr>`;
-            });
+            }).join('');
         }
     }
 
@@ -2836,32 +2811,24 @@ async function renderMrHistory() {
         if (isoRows.length === 0) {
             progTbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#888;">No data.</td></tr>';
         } else {
-            progTbody.innerHTML = '';
-            isoRows.forEach(r => {
+            progTbody.innerHTML = isoRows.map(r => {
                 const sCls = r.status === 'CLOSED' ? 'ok' : 'warn';
                 const pct  = r.progress.toFixed(1);
                 const barColor = r.progress >= 100 ? '#2e7d32' : (r.progress >= 50 ? '#f57f17' : '#c62828');
                 const suppBtn = r.status === 'PARTIAL'
                     ? `<button class="btn btn-primary btn-small" onclick="window.loadSupplementMR('${r.iso.replace(/'/g,"\\'")}','${r.latestMrNo}')"><i class="fas fa-plus-circle"></i> Supplement Issue</button>`
                     : '<span style="color:#aaa;font-size:11px;">-</span>';
-                progTbody.innerHTML += `<tr>
+                return `<tr>
                     <td style="font-size:12px;">${r.iso}</td>
                     <td style="text-align:center;">${r.bomItems}</td>
                     <td style="font-weight:600;color:#0d47a1;text-align:right;">${r.totalBom.toFixed(2)}</td>
                     <td style="font-weight:600;color:#2e7d32;text-align:right;">${r.totalIssued.toFixed(2)}</td>
                     <td style="font-weight:600;color:${r.remaining > 0 ? '#c62828' : '#888'};text-align:right;">${r.remaining.toFixed(2)}</td>
-                    <td>
-                        <div style="display:flex;align-items:center;gap:8px;">
-                            <div style="flex:1;background:#eee;height:8px;border-radius:4px;overflow:hidden;min-width:80px;">
-                                <div style="width:${pct}%;background:${barColor};height:100%;border-radius:4px;"></div>
-                            </div>
-                            <span style="font-size:11px;font-weight:600;min-width:38px;">${pct}%</span>
-                        </div>
-                    </td>
+                    <td><div style="display:flex;align-items:center;gap:8px;"><div style="flex:1;background:#eee;height:8px;border-radius:4px;overflow:hidden;min-width:80px;"><div style="width:${pct}%;background:${barColor};height:100%;border-radius:4px;"></div></div><span style="font-size:11px;font-weight:600;min-width:38px;">${pct}%</span></div></td>
                     <td><span class="status-badge ${sCls}">${r.status}</span></td>
                     <td>${suppBtn}</td>
                 </tr>`;
-            });
+            }).join('');
         }
     }
 }
@@ -2971,19 +2938,18 @@ window.showReceivingDetail = function(matCode) {
     if (recRecords.length === 0) {
         tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#888;">No receiving records.</td></tr>';
     } else {
-        recRecords.forEach(r => {
-            tbody.innerHTML += `<tr>
+        const recRows = recRecords.map(r => `<tr>
                 <td>${r.docNo}</td>
                 <td style="font-weight:600;color:#0d47a1;">${r.plNo}</td>
                 <td style="font-weight:700;text-align:right;">${r.qty.toLocaleString()}</td>
                 <td>${r.unit || 'EA'}</td>
-            </tr>`;
-        });
-        tbody.innerHTML += `<tr style="background:#f0f4f8;font-weight:700;">
+            </tr>`);
+        recRows.push(`<tr style="background:#f0f4f8;font-weight:700;">
             <td colspan="2" style="text-align:right;">Total</td>
             <td style="text-align:right;color:#2e7d32;">${totalRec.toLocaleString()}</td>
             <td>${unit}</td>
-        </tr>`;
+        </tr>`);
+        tbody.innerHTML = recRows.join('');
     }
 
     modal.style.display = 'flex';
