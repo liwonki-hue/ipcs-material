@@ -84,12 +84,13 @@ window.getCategory = function(desc, matCode) {
     let d = ((desc||'') + ' ' + (matCode||'')).toUpperCase();
     let m = (matCode || '').toUpperCase();
     
-    // 1. Valve Detection
-    if (d.includes('VALVE') || d.includes('VLV') || 
-        /^(BAV|GLV|GTV|CHV|BFV|PLV|PSV|PRV|CV-)/.test(m)) return 'Valve';
-        
-    // 2. Pipe Detection
-    if (d.includes('PIPE') || d.includes('TUBE') || m.startsWith('PIS-') || m.startsWith('PIP-')) return 'Pipe';
+    // 1. Valve Detection (MOV/CON/PSV 포함)
+    if (d.includes('VALVE') || d.includes('VLV') ||
+        /^(BAV|GLV|GTV|CHV|BFV|PLV|PSV|PRV|CON|MOV|CV-)/.test(m)) return 'Valve';
+
+    // 2. Pipe Detection (TUBE는 배관재 맥락에서만 — 밸브 이후 체크)
+    if (d.includes('PIPE') || m.startsWith('PIS-') || m.startsWith('PIP-') ||
+        (/\bTUBE\b/.test(d) && !m.startsWith('MOV'))) return 'Pipe';
 
     // 3. Support Detection
     if (d.includes('SUPPORT') || d.includes('SHOE') || d.includes('GUIDE') || d.includes('U-BOLT') || d.includes('UBOLT')) return 'Support';
@@ -157,6 +158,7 @@ window.extractItemFromMatCode = function(matCode) {
         'BAV':'BALL VALVE', 'GTV':'GATE VALVE', 'GLV':'GLOBE VALVE',
         'BFV':'BUTTERFLY VALVE', 'PLV':'PLUG VALVE',
         'CON':'CONTROL VALVE',
+        'MOV':'MOV',
         'PSV':'SAFETY VALVE', 'PRV':'RELIEF VALVE',
         'STB':'STUD BOLT',
         'GSKT':'GASKET', 'GSK':'GASKET',
