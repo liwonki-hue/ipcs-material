@@ -6,21 +6,21 @@
     <title>EPC Piping Material Management System</title>
     <!-- CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260601e">
-    <!-- FontAwesome for Icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Google Fonts: Inter -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- DataTables CSS -->
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
-    <!-- SheetJS for Excel Processing -->
-    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-    <!-- Supabase JS Client -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <!-- flatpickr date picker (English UI) -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <!-- FontAwesome for Icons (local) -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/css/fa-all.min.css') }}">
+    <!-- Google Fonts: Inter (local) -->
+    <link href="{{ url_for('static', filename='vendor/css/inter.css') }}" rel="stylesheet">
+    <!-- Chart.js (local) -->
+    <script src="{{ url_for('static', filename='vendor/js/chart.min.js') }}"></script>
+    <!-- DataTables CSS (local) -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/css/jquery.dataTables.min.css') }}">
+    <!-- SheetJS for Excel Processing (local) -->
+    <script src="{{ url_for('static', filename='vendor/js/xlsx.full.min.js') }}"></script>
+    <!-- Supabase JS Client (local) -->
+    <script src="{{ url_for('static', filename='vendor/js/supabase.min.js') }}"></script>
+    <!-- flatpickr date picker (local) -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/css/flatpickr.min.css') }}">
+    <script src="{{ url_for('static', filename='vendor/js/flatpickr.min.js') }}"></script>
 </head>
 <body>
     <!-- Global Loader Overlay -->
@@ -1611,9 +1611,9 @@
     </div>
 
     <!-- Scripts -->
-    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="{{ url_for('static', filename='vendor/js/jquery.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='vendor/js/jquery.dataTables.min.js') }}"></script>
     <!-- Preloaded backend data (Removed large data.js) -->
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260602j"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260603b"></script>
 </body>
 </html>
