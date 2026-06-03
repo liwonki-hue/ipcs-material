@@ -195,7 +195,7 @@ function showLoading(show) {
 }
 
 const TABLES_WITH_ID = new Set(['receiving', 'issued', 'bom']);
-const CAT_BADGE = { Pipe:'info', Fitting:'ok', Valve:'warn', Speciality:'warn', Spool:'info', Support:'ok', Others:'ok', Other:'err' };
+const CAT_BADGE = { Pipe:'info', Fitting:'ok', Valve:'warn', Speciality:'warn', Spool:'info', Support:'ok', Others:'ok' };
 const getCatBadge = cat => CAT_BADGE[cat] || 'ok';
 
 async function fetchAllRows(tableName) {
@@ -999,9 +999,7 @@ let _shortageList = [];
 
 const CAT_ORDER = { 'Pipe': 0, 'Fitting': 1, 'Valve': 2, 'Spool': 3, 'Support': 4, 'Others': 5, 'Speciality': 6 };
 
-function initShortageFilters() {
-    // PKG / PKG NO 필터 제거됨 — Category/Item/Size만 유지
-}
+function initShortageFilters() {}
 
 function renderShortageTable() {
     const tbody = document.querySelector('#shortageTable tbody');
@@ -1391,7 +1389,7 @@ async function renderBomTable() {
             <td style="text-align:center;font-weight:600;">${size}</td>
             <td style="text-align:center;">${b.uom || 'EA'}</td>
             <td style="text-align:center;">${parseFloat(b.qty || 0).toFixed(2)}</td>
-            <td style="text-align:center;"><button class="btn-small btn-outline-danger">Del</button></td>
+            <td></td>
         </tr>`;
     }).join('');
 
@@ -1850,6 +1848,14 @@ function attachEventListeners() {
         });
     }
 
+    // MatCode Modal Close Button
+    const btnCloseNewMatCode = document.getElementById('btnCloseNewMatCode');
+    if (btnCloseNewMatCode) {
+        btnCloseNewMatCode.addEventListener('click', () => {
+            document.getElementById('newMatCodeModal').style.display = 'none';
+        });
+    }
+
     // Sync Button
     const btnSync = document.getElementById('btnSyncData');
     if (btnSync) btnSync.addEventListener('click', syncFromSupabase);
@@ -2113,7 +2119,7 @@ function attachEventListeners() {
             const purpose = sel.value;
             if (!recvId || !supabaseClient) return;
             sel.disabled = true;
-            const { error } = await supabaseClient.schema('material').from('receiving')
+            const { error } = await supabaseClient.from('receiving')
                 .update({ purpose })
                 .eq('id', recvId);
             sel.disabled = false;
@@ -2775,7 +2781,7 @@ async function renderMrHistory() {
                 const status = getIsoStatus(mr.iso);
                 const sCls   = status === 'CLOSED' ? 'ok' : (status === 'PARTIAL' ? 'warn' : '');
                 const suppBtn = status === 'PARTIAL'
-                    ? `<button class="btn btn-primary btn-small" onclick="window.loadSupplementMR('${mr.iso.replace(/'/g,"\\'")}','${mr.mrNo}')"><i class="fas fa-plus-circle"></i> Supplement Issue</button>`
+                    ? `<button class="btn btn-primary btn-small" onclick="window.loadSupplementMR(${JSON.stringify(mr.iso)},${JSON.stringify(mr.mrNo)})"><i class="fas fa-plus-circle"></i> Supplement Issue</button>`
                     : '<span style="color:#aaa;font-size:11px;">Closed</span>';
                 return `<tr>
                     <td><strong style="color:var(--color-primary);">${mr.mrNo}</strong></td>
@@ -2820,7 +2826,7 @@ async function renderMrHistory() {
                 const pct  = r.progress.toFixed(1);
                 const barColor = r.progress >= 100 ? '#2e7d32' : (r.progress >= 50 ? '#f57f17' : '#c62828');
                 const suppBtn = r.status === 'PARTIAL'
-                    ? `<button class="btn btn-primary btn-small" onclick="window.loadSupplementMR('${r.iso.replace(/'/g,"\\'")}','${r.latestMrNo}')"><i class="fas fa-plus-circle"></i> Supplement Issue</button>`
+                    ? `<button class="btn btn-primary btn-small" onclick="window.loadSupplementMR(${JSON.stringify(r.iso)},${JSON.stringify(r.latestMrNo)})"><i class="fas fa-plus-circle"></i> Supplement Issue</button>`
                     : '<span style="color:#aaa;font-size:11px;">-</span>';
                 return `<tr>
                     <td style="font-size:12px;">${r.iso}</td>

@@ -1,19 +1,8 @@
-from flask import Flask, render_template, make_response, jsonify
-import os, json
+from flask import Flask, render_template, make_response
+import os
 
 app = Flask(__name__)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
-
-PL_SUMMARY_PATH = os.path.join(os.path.dirname(__file__), 'static', 'data', 'pl_summary.json')
-
-@app.route('/api/pl_summary')
-def pl_summary():
-    try:
-        with open(PL_SUMMARY_PATH, encoding='utf-8') as f:
-            data = json.load(f)
-        return jsonify(data)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 @app.route('/')
 def index():
