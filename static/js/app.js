@@ -3262,7 +3262,7 @@ function renderShippingTable(rows) {
             ? `<td style="text-align:center;font-weight:700;color:#0A2540;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:2px solid #e0e7ef;" title="${r.packing}">${r.packing}</td>`
             : `<td style="text-align:center;color:#ccc;border-top:none;white-space:nowrap;">↳</td>`;
         const qtyDisplay = r.qty !== '' ? Number(r.qty).toLocaleString() : '—';
-        const pkg = r.pkg_no.replace(/'/g, "\\'");
+        const pkg = r.pkg_no;
 
         const statusOpts = ['', 'Preparing', 'Shipping', 'On-Site'].map(v =>
             `<option value="${v}"${r.status === v ? ' selected' : ''}>${v || '—'}</option>`
