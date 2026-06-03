@@ -63,6 +63,7 @@ async function syncShortageData() {
                 tag:      r.tag || '-',
                 purpose:  r.purpose || '',
             })).filter(r => r.qty > 0);
+            invalidateRecvPurposeMap();
         }
         renderShortageTable();
     } catch (e) {
@@ -287,8 +288,9 @@ async function syncFromSupabase() {
                 tag:      r.tag || '-',
                 purpose:  r.purpose || '',
             })).filter(r => r.qty > 0);
+            invalidateRecvPurposeMap();
         }
-        
+
         if (issuedRaw.length > 0) {
             db.issued = issuedRaw.map(i => ({
                 matCode: (i.mat_code || '').trim().toUpperCase(),
@@ -1454,7 +1456,6 @@ function renderReceivingTable() {
         const etPart = (r.matCode || '').split('-').pop().toUpperCase();
         const flangeType = (item === 'FLANGE' && (etPart === 'FF' || etPart === 'RF'))
             ? 'WN' + etPart : '-';
-        const PURPOSE_OPTS = ['', 'Permanent', 'Temporary', 'Repair', 'Spare', 'Commissioning', 'Accessory', 'Other'];
         const purposeOpts = PURPOSE_OPTS.map(v =>
             `<option value="${v}"${r.purpose === v ? ' selected' : ''}>${v || '—'}</option>`
         ).join('');
@@ -3044,6 +3045,7 @@ async function initShipping() {
                     tag:      r.tag || '-',
                     purpose:  r.purpose || '',
                 })).filter(r => r.qty > 0);
+                invalidateRecvPurposeMap();
             }
         }
         await loadPlUpdates();
@@ -3182,12 +3184,24 @@ function getShippingFiltered() {
 }
 
 const PL_INPUT_CSS = 'width:100%;box-sizing:border-box;border:1px solid #dde3ee;border-radius:4px;padding:3px 5px;font-size:12px;background:#fff;color:#0A2540;text-align:center;';
+const PURPOSE_OPTS = ['', 'Permanent', 'Temporary', 'Repair', 'Spare', 'Commissioning', 'Accessory', 'Other'];
+
+// pkg_no → first purpose 조회 맵 (렌더링 전 한 번만 빌드)
+let _recvPurposeMap = null;
+function _buildRecvPurposeMap() {
+    _recvPurposeMap = {};
+    db.receiving.forEach(rx => {
+        if (!(rx.plNo in _recvPurposeMap)) _recvPurposeMap[rx.plNo] = rx.purpose || '';
+    });
+}
+// db.receiving 교체 시 무효화
+function invalidateRecvPurposeMap() { _recvPurposeMap = null; }
 
 function mergeRow(r) {
     const upd = _plUpdatesCache[r.pkg_no] || {};
     const chg = _plChanges[r.pkg_no]      || {};
-    // purpose는 receiving 테이블에서 직접 관리 — db.receiving 최신값 우선
-    const recvPurpose = db.receiving.find(rx => rx.plNo === r.pkg_no)?.purpose ?? r.purpose ?? '';
+    if (!_recvPurposeMap) _buildRecvPurposeMap();
+    const recvPurpose = _recvPurposeMap[r.pkg_no] ?? r.purpose ?? '';
     return {
         ...r,
         status:        chg.status        ?? upd.status        ?? r.status        ?? '',
@@ -3288,7 +3302,6 @@ function renderShippingTable(rows) {
         const customClearCell = newPkg
             ? `<td style="text-align:center;padding:3px;"><select style="${PL_INPUT_CSS}" data-pkg="${pkg}" data-field="custom_clear" data-packing="${r.packing}">${clearOpts}</select></td>`
             : `<td style="${roStyle}">${r.custom_clear || '—'}</td>`;
-        const PURPOSE_OPTS = ['', 'Permanent', 'Temporary', 'Repair', 'Spare', 'Commissioning', 'Accessory', 'Other'];
         const purposeOpts = PURPOSE_OPTS.map(v =>
             `<option value="${v}"${r.purpose === v ? ' selected' : ''}>${v || '—'}</option>`
         ).join('');
