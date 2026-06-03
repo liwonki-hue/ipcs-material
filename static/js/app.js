@@ -101,7 +101,7 @@ window.getCategory = function(desc, matCode) {
     if (d.includes('GASKET') || d.includes('BOLT') || /\bNUT\b/.test(d) || m.startsWith('GSKT-') || m.startsWith('STB-') || m.startsWith('NUT-')) return 'Others';
 
     // 6. Fitting Detection
-    if (d.includes('ELBOW') || d.includes('TEE') || d.includes('REDUCER') || d.includes('CAP') || d.includes('OLET') || d.includes('FLANGE') || d.includes('NIPPLE') || d.includes('COUPLING') || d.includes('UNION') || d.includes('BLIND') || d.includes('FLN') || d.includes('EL9') || d.includes('EL4') || m.startsWith('ELB-') || m.startsWith('TEE-') || m.startsWith('RED-') || m.startsWith('CAP-') || m.startsWith('FLN-')) return 'Fitting';
+    if (d.includes('ELBOW') || d.includes('TEE') || d.includes('REDUCER') || d.includes('CAP') || d.includes('OLET') || d.includes('FLANGE') || d.includes('NIPPLE') || d.includes('COUPLING') || d.includes('UNION') || d.includes('BLIND') || d.includes('FLN') || d.includes('EL9') || d.includes('EL4') || m.startsWith('ELB-') || m.startsWith('TEE-') || m.startsWith('RED-') || m.startsWith('CAP-') || m.startsWith('FLN-') || m.startsWith('PIN-')) return 'Fitting';
 
     return 'Others';
 };
@@ -1233,12 +1233,13 @@ function initFilterOptions() {
     const plSizeF = document.getElementById('plSizeFilter');
     const plTypeF = document.getElementById('plTypeFilter');
     if(plDoc && plPkg) {
-        const docs = [...new Set(db.receiving.map(r => r.docNo))].sort();
-        const pkgs = [...new Set(db.receiving.map(r => r.plNo))].sort();
-        const cats = [...new Set(db.receiving.map(r => r.category).filter(Boolean))].sort();
-        const items = [...new Set(db.receiving.map(r => window.extractItemFromMatCode(r.matCode)).filter(v => v && v !== '-'))].sort();
-        const sizes = [...new Set(db.receiving.map(r => window.extractSizeFromMatCode(r.matCode)).filter(v => v && v !== '-'))].sort();
-        const types = [...new Set(db.receiving.map(r => {
+        const activeRecv = db.receiving.filter(r => isReceivingActive(r.plNo));
+        const docs = [...new Set(activeRecv.map(r => r.docNo))].sort();
+        const pkgs = [...new Set(activeRecv.map(r => r.plNo))].sort();
+        const cats = [...new Set(activeRecv.map(r => r.category).filter(Boolean))].sort();
+        const items = [...new Set(activeRecv.map(r => window.extractItemFromMatCode(r.matCode)).filter(v => v && v !== '-'))].sort();
+        const sizes = [...new Set(activeRecv.map(r => window.extractSizeFromMatCode(r.matCode)).filter(v => v && v !== '-'))].sort();
+        const types = [...new Set(activeRecv.map(r => {
             const et = (r.matCode || '').split('-').pop().toUpperCase();
             const item = window.extractItemFromMatCode(r.matCode);
             return (item === 'FLANGE' && (et === 'FF' || et === 'RF')) ? 'WN' + et : null;
@@ -1419,6 +1420,7 @@ function renderReceivingTable() {
     const typeF  = (document.getElementById('plTypeFilter')?.value || '').trim();
 
     let data = db.receiving.filter(r => {
+        if (!isReceivingActive(r.plNo)) return false;
         const matchSearch = !search || r.matCode.toUpperCase().includes(search) || r.plNo.toUpperCase().includes(search) || (r.category||'').toUpperCase().includes(search) || r.desc.toUpperCase().includes(search);
         const matchDoc  = doc  === 'All' || r.docNo    === doc;
         const matchPkg  = pkg  === 'All' || r.plNo     === pkg;
@@ -1434,9 +1436,9 @@ function renderReceivingTable() {
     let slicedPl = data.slice(currentPlPage * PAGE_SIZE, (currentPlPage + 1) * PAGE_SIZE); 
     
     slicedPl.forEach(r => {
-        let displayCat = r.category;
-        if (displayCat === 'BULK' || !displayCat) {
-            displayCat = window.getCategory(r.desc, r.matCode);
+        let displayCat = window.getCategory(r.desc, r.matCode);
+        if (!displayCat || displayCat === 'Others') {
+            displayCat = r.category || 'Others';
         }
         
         let catForBadge = displayCat;

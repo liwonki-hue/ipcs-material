@@ -69,7 +69,7 @@ DCODE_TO_DN = {
 ITEM_CAT = {
     'PIS': ('PIPE', 'Pipe'),
     'PIW': ('PIPE', 'Pipe'),
-    'PIN': ('PIPE', 'Pipe'),
+    'PIN': ('NIPPLE', 'Fitting'),
     'EL9L': ('ELBOW LR 90D', 'Fitting'),
     'EL9S': ('ELBOW SR 90D', 'Fitting'),
     'EL4L': ('ELBOW 45D', 'Fitting'),
