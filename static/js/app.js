@@ -3184,6 +3184,8 @@ const PL_INPUT_CSS = 'width:100%;box-sizing:border-box;border:1px solid #dde3ee;
 function mergeRow(r) {
     const upd = _plUpdatesCache[r.pkg_no] || {};
     const chg = _plChanges[r.pkg_no]      || {};
+    // purpose는 receiving 테이블에서 직접 관리 — db.receiving 최신값 우선
+    const recvPurpose = db.receiving.find(rx => rx.plNo === r.pkg_no)?.purpose ?? r.purpose ?? '';
     return {
         ...r,
         status:        chg.status        ?? upd.status        ?? r.status        ?? '',
@@ -3194,6 +3196,7 @@ function mergeRow(r) {
         remark:        chg.remark        !== undefined ? chg.remark
                      : upd.remark        !== undefined ? upd.remark
                     : (r.remark || ''),
+        purpose:       recvPurpose,
     };
 }
 
@@ -3283,6 +3286,13 @@ function renderShippingTable(rows) {
         const customClearCell = newPkg
             ? `<td style="text-align:center;padding:3px;"><select style="${PL_INPUT_CSS}" data-pkg="${pkg}" data-field="custom_clear" data-packing="${r.packing}">${clearOpts}</select></td>`
             : `<td style="${roStyle}">${r.custom_clear || '—'}</td>`;
+        const PURPOSE_OPTS = ['', 'Permanent', 'Temporary', 'Repair', 'Spare', 'Commissioning', 'Accessory', 'Other'];
+        const purposeOpts = PURPOSE_OPTS.map(v =>
+            `<option value="${v}"${r.purpose === v ? ' selected' : ''}>${v || '—'}</option>`
+        ).join('');
+        const purposeCell = newPkg
+            ? `<td style="text-align:center;padding:3px;"><select class="pl-purpose-pkg-sel" style="${PL_INPUT_CSS}color:#1565c0;font-weight:600;" data-pkg="${pkg}">${purposeOpts}</select></td>`
+            : `<td style="${roStyle}" data-pkg-ro="${pkg}" data-field-ro="purpose">${r.purpose || '—'}</td>`;
 
         return `<tr${newGroup ? ' style="background:#f8fafc;"' : ''}>
             ${packingCell}
@@ -3299,7 +3309,7 @@ function renderShippingTable(rows) {
             <td style="text-align:center;padding:3px;">
                 <input type="text" class="pl-datepicker" style="${PL_INPUT_CSS}" data-pkg="${pkg}" data-field="issue_date" value="${r.issue_date}" placeholder="YYYY-MM-DD">
             </td>
-            <td style="text-align:center;font-size:12px;color:#1565c0;font-weight:600;">${r.purpose || '—'}</td>
+            ${purposeCell}
             <td style="padding:3px;">
                 <textarea style="${PL_INPUT_CSS}resize:vertical;min-height:32px;max-height:80px;" data-pkg="${pkg}" data-field="remark" rows="1">${r.remark || ''}</textarea>
             </td>
@@ -3454,6 +3464,29 @@ document.addEventListener('DOMContentLoaded', () => {
     // 편집 셀 change 이벤트 위임
     const tbody = document.getElementById('shippingTbody');
     if (tbody) {
+        // Purpose 드롭박스: receiving 테이블 pkg_no 일괄 업데이트
+        tbody.addEventListener('change', async e => {
+            const sel = e.target.closest('.pl-purpose-pkg-sel');
+            if (!sel || !supabaseClient) return;
+            const pkg     = sel.dataset.pkg;
+            const purpose = sel.value;
+            if (!pkg) return;
+            sel.disabled = true;
+            const { error } = await supabaseClient.from('receiving')
+                .update({ purpose })
+                .eq('pkg_no', pkg);
+            sel.disabled = false;
+            if (!error) {
+                // 메모리 동기화
+                db.receiving.forEach(r => { if (r.plNo === pkg) r.purpose = purpose; });
+                const sd = _shippingData.find(r => r.pkg_no === pkg);
+                if (sd) sd.purpose = purpose;
+                // 동일 PKG 연속행 read-only 셀 즉시 갱신
+                tbody.querySelectorAll(`[data-pkg-ro="${pkg}"][data-field-ro="purpose"]`)
+                    .forEach(cell => { cell.textContent = purpose || '—'; });
+            }
+        });
+
         tbody.addEventListener('change', e => {
             const el = e.target;
             const pkg = el.dataset.pkg;
