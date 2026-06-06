@@ -668,10 +668,11 @@ function updateExpediteAlerts() {
 
     const recSummary = {};
     db.receiving.filter(r => isReceivingActive(r.plNo) && isKpiReceiving(r)).forEach(r => {
-        if(r.matCode) {
-            if(!recSummary[r.matCode]) recSummary[r.matCode] = 0;
-            recSummary[r.matCode] += r.qty;
-        }
+        const tagInfo = db.bomTagMap[(r.tag || '').toUpperCase()];
+        const effMat = r.matCode || (tagInfo ? tagInfo.matCode : '');
+        if (!effMat) return;
+        if(!recSummary[effMat]) recSummary[effMat] = 0;
+        recSummary[effMat] += r.qty;
     });
 
     let hasAlert = false;
@@ -909,18 +910,25 @@ function initStockFilters() {
             db.matCodeMaster.forEach(m => { masterMap[m.matCode] = m; });
             const recMap = {}, docMap = {}, pkgMap = {};
             db.receiving.filter(r => isReceivingActive(r.plNo) && isKpiReceiving(r)).forEach(r => {
-                if (!r.matCode) return;
-                recMap[r.matCode] = (recMap[r.matCode] || 0) + r.qty;
-                if (!docMap[r.matCode]) docMap[r.matCode] = new Set();
-                if (!pkgMap[r.matCode]) pkgMap[r.matCode] = new Set();
-                docMap[r.matCode].add(r.docNo);
-                pkgMap[r.matCode].add(r.plNo);
+                const tagInfo = db.bomTagMap[(r.tag || '').toUpperCase()];
+                const effMat = r.matCode || (tagInfo ? tagInfo.matCode : '');
+                if (!effMat) return;
+                recMap[effMat] = (recMap[effMat] || 0) + r.qty;
+                if (!docMap[effMat]) docMap[effMat] = new Set();
+                if (!pkgMap[effMat]) pkgMap[effMat] = new Set();
+                docMap[effMat].add(r.docNo);
+                pkgMap[effMat].add(r.plNo);
             });
             const recDescMap = {};
             db.receiving.forEach(r => { if (r.matCode && !recDescMap[r.matCode]) recDescMap[r.matCode] = r.desc; });
             const issuedPkgNos = new Set(Object.entries(_plUpdatesCache).filter(([,v]) => v.issue_date).map(([k]) => k));
             const issMap = {};
-            db.receiving.filter(r => issuedPkgNos.has(r.plNo) && r.matCode).forEach(r => { issMap[r.matCode] = (issMap[r.matCode] || 0) + r.qty; });
+            db.receiving.filter(r => issuedPkgNos.has(r.plNo)).forEach(r => {
+                const tagInfo = db.bomTagMap[(r.tag || '').toUpperCase()];
+                const effMat = r.matCode || (tagInfo ? tagInfo.matCode : '');
+                if (!effMat) return;
+                issMap[effMat] = (issMap[effMat] || 0) + r.qty;
+            });
             const codes = [...new Set([...Object.keys(recMap), ...Object.keys(issMap)])].sort();
             const rows = codes.map(matCode => {
                 const m   = masterMap[matCode] || {};
@@ -971,6 +979,7 @@ function renderStockTable() {
     db.bom.forEach(b => { bomLookup[b.matCode] = { unit: b.uom }; });
 
     // Aggregate Receiving per MatCode: recMap, pkgMap (docNo set, plNo set)
+    // 매칭 원칙: TAG 우선, TAG 없으면 matCode
     const recMap = {};
     const docMap = {};   // matCode → Set of docNo
     const pkgMap = {};   // matCode → Set of plNo
@@ -978,19 +987,26 @@ function renderStockTable() {
         (fDoc === 'All' || r.docNo === fDoc) &&
         (fPkg === 'All' || r.plNo  === fPkg)
     ).forEach(r => {
-        if(!r.matCode) return;
-        if(!recMap[r.matCode]) recMap[r.matCode] = 0;
-        recMap[r.matCode] += r.qty;
-        if(!docMap[r.matCode]) docMap[r.matCode] = new Set();
-        if(!pkgMap[r.matCode]) pkgMap[r.matCode] = new Set();
-        docMap[r.matCode].add(r.docNo);
-        pkgMap[r.matCode].add(r.plNo);
+        const tagInfo = db.bomTagMap[(r.tag || '').toUpperCase()];
+        const effMat = r.matCode || (tagInfo ? tagInfo.matCode : '');
+        if (!effMat) return;
+        if(!recMap[effMat]) recMap[effMat] = 0;
+        recMap[effMat] += r.qty;
+        if(!docMap[effMat]) docMap[effMat] = new Set();
+        if(!pkgMap[effMat]) pkgMap[effMat] = new Set();
+        docMap[effMat].add(r.docNo);
+        pkgMap[effMat].add(r.plNo);
     });
 
     // Aggregate Issued per MatCode — issue_date가 설정된 Package의 입고 수량 기준
     const issuedPkgNos = new Set(Object.entries(_plUpdatesCache).filter(([,v]) => v.issue_date).map(([k]) => k));
     const issMap = {};
-    db.receiving.filter(r => issuedPkgNos.has(r.plNo) && r.matCode).forEach(r => { issMap[r.matCode] = (issMap[r.matCode] || 0) + r.qty; });
+    db.receiving.filter(r => issuedPkgNos.has(r.plNo)).forEach(r => {
+        const tagInfo = db.bomTagMap[(r.tag || '').toUpperCase()];
+        const effMat = r.matCode || (tagInfo ? tagInfo.matCode : '');
+        if (!effMat) return;
+        issMap[effMat] = (issMap[effMat] || 0) + r.qty;
+    });
 
     // If DOC/PKG filter active, only show matCodes that appear in recMap
     let activeCodes;
@@ -1088,13 +1104,16 @@ function renderShortageTable() {
     });
 
     // Aggregate Receiving qty per matCode — On-Site 도착 + Permanent/미분류만 BOM 비교 대상
+    // 매칭 원칙: TAG 우선, TAG 없으면 matCode
     const recMap = {};
     db.receiving
         .filter(r => (r.purpose === 'Permanent' || r.purpose === '') && isReceivingActive(r.plNo))
         .forEach(r => {
-            if (!r.matCode) return;
-            if (!recMap[r.matCode]) recMap[r.matCode] = { qty: 0, desc: r.desc, unit: r.unit };
-            recMap[r.matCode].qty += r.qty;
+            const tagInfo = db.bomTagMap[(r.tag || '').toUpperCase()];
+            const effMat = r.matCode || (tagInfo ? tagInfo.matCode : '');
+            if (!effMat) return;
+            if (!recMap[effMat]) recMap[effMat] = { qty: 0, desc: r.desc, unit: r.unit };
+            recMap[effMat].qty += r.qty;
         });
 
     // masterMap for item / size / category lookup
