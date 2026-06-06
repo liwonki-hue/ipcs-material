@@ -1,5 +1,5 @@
 /* global Chart */
-// Supabase Configuration - LIVE CREDENTIALS (FIXED COLLISION)
+// Supabase 설정
 const SUPABASE_URL = 'https://ognhvfvlboqblueuldlm.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9nbmh2ZnZsYm9xYmx1ZXVsZGxtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3MzY2NTUsImV4cCI6MjA4ODMxMjY1NX0.paO5jr16M7yTySUAp9LgberoatDds9rTNa_eCU_ET_I';
 let supabaseClient = null;
@@ -324,7 +324,6 @@ async function syncFromSupabase() {
 
         await loadPlUpdates();
         renderAllViews();
-        updateDashboard();
         initFilterOptions();
 
         // Refresh active table if user is looking at one
@@ -763,9 +762,11 @@ function updateCategoryCharts() {
         const otherRec  = catLabels.slice(1).reduce((s, l) => s + (activeRecByCategory[l] || 0), 0) + spoolRecCount;
 
         // Issued breakdown by category using matCodeMaster lookup
+        const mMap = {};
+        db.matCodeMaster.forEach(m => { mMap[m.matCode] = m; });
         let pipeIss = 0, otherIss = 0;
         db.issued.forEach(i => {
-            const master = db.matCodeMaster.find(m => m.matCode === i.matCode);
+            const master = mMap[i.matCode];
             const cat = master ? master.category : window.getCategory('', i.matCode);
             if (cat === 'Pipe') pipeIss += i.qty;
             else otherIss += i.qty;
@@ -912,6 +913,8 @@ function initStockFilters() {
                 docMap[r.matCode].add(r.docNo);
                 pkgMap[r.matCode].add(r.plNo);
             });
+            const recDescMap = {};
+            db.receiving.forEach(r => { if (r.matCode && !recDescMap[r.matCode]) recDescMap[r.matCode] = r.desc; });
             const issuedPkgNos = new Set(Object.entries(_plUpdatesCache).filter(([,v]) => v.issue_date).map(([k]) => k));
             const issMap = {};
             db.receiving.filter(r => issuedPkgNos.has(r.plNo) && r.matCode).forEach(r => { issMap[r.matCode] = (issMap[r.matCode] || 0) + r.qty; });
@@ -925,7 +928,7 @@ function initStockFilters() {
                     'PKG NO':          pkgMap[matCode] ? [...pkgMap[matCode]].sort().join(', ') : '-',
                     'MatCode':         matCode,
                     'Category':        m.category || '-',
-                    'Full Description': db.bomDesc[matCode] || (db.receiving.find(r => r.matCode === matCode)?.desc) || '-',
+                    'Full Description': db.bomDesc[matCode] || recDescMap[matCode] || '-',
                     'Item':            m.itemDesc || '-',
                     'Size':            window.extractSizeFromMatCode(matCode) || '-',
                     'Unit':            'EA',
@@ -1012,6 +1015,10 @@ function renderStockTable() {
     const label = document.getElementById('stockCountLabel');
     if (label) label.textContent = `(${filtered.length.toLocaleString()} items)`;
 
+    // pre-build receiving desc fallback map (O(n) 1회)
+    const recDescMap = {};
+    db.receiving.forEach(r => { if (r.matCode && !recDescMap[r.matCode]) recDescMap[r.matCode] = r.desc; });
+
     const display = filtered.slice(0, 1000);
     const stockRows = display.map(matCode => {
         let rec   = recMap[matCode] || 0;
@@ -1032,7 +1039,7 @@ function renderStockTable() {
         const badge   = stock > 0 ? '<span class="status-badge ok">In Stock</span>' : '<span class="status-badge err">Out of Stock</span>';
         const docs    = docMap[matCode] ? [...docMap[matCode]].sort().join('<br>') : '-';
         const pkgs    = pkgMap[matCode] ? [...pkgMap[matCode]].sort().join('<br>') : '-';
-        const fullDesc = db.bomDesc[matCode] || (db.receiving.find(r => r.matCode === matCode)?.desc) || '-';
+        const fullDesc = db.bomDesc[matCode] || recDescMap[matCode] || '-';
 
         return `<tr>
             <td>${docs}</td>
@@ -1644,7 +1651,7 @@ function renderReceivingTable() {
 
     let slicedPl = data.slice(currentPlPage * PAGE_SIZE, (currentPlPage + 1) * PAGE_SIZE);
 
-    slicedPl.forEach(r => {
+    const rows = slicedPl.map(r => {
         const tagInfo = db.bomTagMap[(r.tag || '').toUpperCase()];
         const effMat = r.matCode || (tagInfo ? tagInfo.matCode : '');
         const bomFullDesc = tagInfo ? tagInfo.fullDescription : '';
@@ -1678,7 +1685,7 @@ function renderReceivingTable() {
         const purposeSel = `<select class="pl-purpose-sel" data-recv-id="${r.id}"
             style="width:100%;border:1px solid #dde3ee;border-radius:4px;padding:3px 6px;font-size:13px;background:#fff;color:#0A2540;text-align:center;">
             ${purposeOpts}</select>`;
-        let tr = `<tr>
+        return `<tr>
             <td style="white-space:nowrap;">${r.docNo}</td>
             <td style="white-space:nowrap;">${r.plNo}</td>
             <td style="white-space:nowrap;"><span class="status-badge ${r.matCode ? 'ok' : (tagInfo ? 'warn' : '')}">${effMat || (tagInfo ? '(BOM)' : '-')}</span></td>
@@ -1692,8 +1699,8 @@ function renderReceivingTable() {
             <td style="white-space:nowrap;text-align:center;">${r.qty.toFixed(2)}</td>
             <td style="padding:3px;">${purposeSel}</td>
         </tr>`;
-        tbody.innerHTML += tr;
     });
+    tbody.innerHTML = rows.join('');
 
     renderTablePagination(
         data.length, 
@@ -2061,7 +2068,6 @@ function attachEventListeners() {
                     renderBomTable();
                 } else {
                     showSection('stock_ledger');
-                    // MatCode search logic can be added later
                 }
             }
         });
@@ -2679,8 +2685,8 @@ function attachEventListeners() {
              document.getElementById('printMrNo').innerText = firstMr;
              document.getElementById('printDate').innerText = new Date().toISOString().split('T')[0];
              
-             let printTbody = document.getElementById('printTbody');
-             printTbody.innerHTML = '';
+             const printTbody = document.getElementById('printTbody');
+             const printRows = [];
 
              // Build matCode → [{plNo, qty}] sorted by PKG NO ascending (On-Site만)
              const pkgRecords = {};
@@ -2719,7 +2725,7 @@ function attachEventListeners() {
                      pkgDisplay = allocated.map(a => `${a.plNo}<br><span style="font-size:10px;color:#555;">(${a.take % 1 === 0 ? a.take : a.take.toFixed(2)})</span>`).join('<br>');
                  }
 
-                 let tr = `<tr>
+                 printRows.push(`<tr>
                      <td style="border:1px solid #000; padding:8px;">${mrItem.iso}</td>
                      <td style="border:1px solid #000; padding:8px; font-weight:600; color:#0d47a1; line-height:1.6;">${pkgDisplay}</td>
                      <td style="border:1px solid #000; padding:8px;">${mrItem.matCode}</td>
@@ -2727,9 +2733,9 @@ function attachEventListeners() {
                      <td style="border:1px solid #000; padding:8px;">${mrItem.size}</td>
                      <td style="border:1px solid #000; padding:8px;">${mrItem.unit}</td>
                      <td style="border:1px solid #000; padding:8px; font-weight:bold;">${mrItem.reqQty.toFixed(2)}</td>
-                 </tr>`;
-                 printTbody.innerHTML += tr;
+                 </tr>`);
              });
+             printTbody.innerHTML = printRows.join('');
 
              document.getElementById('printModal').style.display = 'flex';
         });
@@ -3431,23 +3437,18 @@ function getShippingFiltered() {
             if (pkgF  && r.pkg_no  !== pkgF)  return false;
             if (search && !r.pkg_no.toLowerCase().includes(search)
                        && !r.description.toLowerCase().includes(search)) return false;
-            if (statusF) {
-                const s = mergeRow(r).status || '';
-                if (statusF === '__none__' ? s !== '' : s !== statusF) return false;
-            }
-            if (customF) {
-                const cc = (mergeRow(r).custom_clear || '').trim();
-                if (customF === '__none__' ? cc !== '' : cc !== customF) return false;
-            }
-            // KPI 카드 클릭 필터
+            const needMerge = statusF || customF || (_shippingKpiFilter && _shippingKpiFilter !== 'all');
+            if (!needMerge) return true;
+            const m = mergeRow(r);
+            const st = m.status || '';
+            const cc = (m.custom_clear || '').trim();
+            if (statusF && (statusF === '__none__' ? st !== '' : st !== statusF)) return false;
+            if (customF && (customF === '__none__' ? cc !== '' : cc !== customF)) return false;
             if (_shippingKpiFilter && _shippingKpiFilter !== 'all') {
-                const m = mergeRow(r);
-                const st = m.status || '';
-                const cc = m.custom_clear || '';
                 if (_shippingKpiFilter === 'shipping' && st !== 'Preparing' && st !== 'Shipping') return false;
                 if (_shippingKpiFilter === 'onsite'   && st !== 'On-Site')   return false;
                 if (_shippingKpiFilter === 'cleared'  && cc !== 'Cleared')   return false;
-                if (_shippingKpiFilter === 'pending'  && cc !== 'Pending') return false;
+                if (_shippingKpiFilter === 'pending'  && cc !== 'Pending')   return false;
                 if (_shippingKpiFilter === 'issued'   && !m.issue_date)      return false;
             }
             return true;
