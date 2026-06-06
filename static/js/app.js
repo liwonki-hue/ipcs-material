@@ -73,6 +73,43 @@ async function syncShortageData() {
     }
 }
 
+// 전체 테이블 공통 페이지 크기
+const PAGE_SIZE = 25;
+
+// 공통 페이지네이터 렌더러 — Previous 1/2/3 ... Next 형식
+function renderPagination(containerId, page, totalPages, gotoFnName) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    if (totalPages <= 1) { container.innerHTML = ''; return; }
+
+    const base = 'min-width:32px;height:28px;padding:0 10px;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid ';
+    const sActive  = base + '#0A2540;background:#0A2540;color:#fff;cursor:default;';
+    const sInact   = base + '#ccc;background:#fff;color:#333;';
+    const sDis     = base + '#e0e0e0;background:#f5f5f5;color:#bbb;cursor:not-allowed;';
+
+    let html = `<div style="display:flex;align-items:center;justify-content:center;gap:4px;padding:10px 0;flex-wrap:wrap;">`;
+
+    const prevDis = page <= 1;
+    html += `<button style="${prevDis ? sDis : sInact}" ${prevDis ? 'disabled' : `onclick="${gotoFnName}(${page - 1})"`}>&#8249; Prev</button>`;
+
+    const delta = 2;
+    const pageSet = new Set([1, totalPages]);
+    for (let i = Math.max(2, page - delta); i <= Math.min(totalPages - 1, page + delta); i++) pageSet.add(i);
+    const sorted = [...pageSet].sort((a, b) => a - b);
+    let prev = 0;
+    sorted.forEach(p => {
+        if (prev && p - prev > 1) html += `<span style="padding:0 4px;color:#aaa;">…</span>`;
+        const isActive = p === page;
+        html += `<button style="${isActive ? sActive : sInact}" ${isActive ? 'disabled' : `onclick="${gotoFnName}(${p})"`}>${p}</button>`;
+        prev = p;
+    });
+
+    const nextDis = page >= totalPages;
+    html += `<button style="${nextDis ? sDis : sInact}" ${nextDis ? 'disabled' : `onclick="${gotoFnName}(${page + 1})"`}>Next &#8250;</button>`;
+    html += `</div>`;
+    container.innerHTML = html;
+}
+
 // --- Helper Functions (Globally Available) ---
 
 // KPI/Chart 집계 포함 여부: Valve/Speciality는 Tag 항목만, 나머지는 전체
@@ -425,7 +462,6 @@ function getIsoStage(sp, fd) {
 }
 
 // Render ISO priority table — reusable for dropdown filter & donut chart click
-const ISO_PAGE_SIZE = 20;
 let isoCurrentPage = 1;
 let isoSortedData = [];
 
@@ -433,8 +469,8 @@ function renderIsoPage(page) {
     const tbody = document.getElementById('priorityIsoTbody');
     if (!tbody) return;
     tbody.innerHTML = '';
-    const start = (page - 1) * ISO_PAGE_SIZE;
-    const pageData = isoSortedData.slice(start, start + ISO_PAGE_SIZE);
+    const start = (page - 1) * PAGE_SIZE;
+    const pageData = isoSortedData.slice(start, start + PAGE_SIZE);
     if (pageData.length === 0) {
         tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#888;padding:20px;">No ISOs found.</td></tr>`;
     } else {
@@ -455,37 +491,8 @@ function renderIsoPage(page) {
             </tr>`;
         }).join('');
     }
-    renderIsoPaginator(page);
-}
-
-function renderIsoPaginator(page) {
-    const paginator = document.getElementById('isoPaginator');
-    if (!paginator) return;
-    const totalPages = Math.ceil(isoSortedData.length / ISO_PAGE_SIZE);
-    if (totalPages <= 1) { paginator.innerHTML = ''; return; }
-
-    const btnStyle = (active) =>
-        `style="min-width:32px;height:30px;padding:0 8px;border:1px solid ${active ? '#0A2540' : '#ccc'};background:${active ? '#0A2540' : '#fff'};color:${active ? '#fff' : '#333'};border-radius:4px;cursor:${active ? 'default' : 'pointer'};font-size:12px;font-weight:600;"`;
-
-    let html = '';
-    html += `<button ${btnStyle(false)} ${page === 1 ? 'disabled' : ''} onclick="isoGoPage(${page - 1})">&#8249;</button>`;
-
-    const delta = 2;
-    let pages = new Set([1, totalPages]);
-    for (let i = Math.max(2, page - delta); i <= Math.min(totalPages - 1, page + delta); i++) pages.add(i);
-    const sorted = [...pages].sort((a, b) => a - b);
-
-    let prev = 0;
-    sorted.forEach(p => {
-        if (prev && p - prev > 1) html += `<span style="padding:0 4px;color:#999;">…</span>`;
-        const isActive = p === page;
-        html += `<button ${btnStyle(isActive)} ${isActive ? 'disabled' : ''} onclick="isoGoPage(${p})">${p}</button>`;
-        prev = p;
-    });
-
-    html += `<button ${btnStyle(false)} ${page === totalPages ? 'disabled' : ''} onclick="isoGoPage(${page + 1})">&#8250;</button>`;
-    html += `<span style="font-size:11px;color:#888;margin-left:6px;">${isoSortedData.length} ISOs / ${totalPages} pages</span>`;
-    paginator.innerHTML = html;
+    const totalPages = Math.max(1, Math.ceil(isoSortedData.length / PAGE_SIZE));
+    renderPagination('isoPaginator', page, totalPages, 'isoGoPage');
 }
 
 window.isoGoPage = function(page) {
@@ -892,8 +899,9 @@ function initStockFilters() {
 
     const btn   = document.getElementById('btnStockSearch');
     const clear = document.getElementById('btnStockClear');
-    if (btn)   btn.addEventListener('click',   () => renderStockTable());
+    if (btn)   btn.addEventListener('click',   () => { _stockPage = 1; renderStockTable(); });
     if (clear) clear.addEventListener('click', () => {
+        _stockPage = 1;
         ['stockSearch','stockDocFilter','stockPkgFilter'].forEach(id => {
             const el = document.getElementById(id); if(el) el.value = el.tagName==='SELECT' ? 'All' : '';
         });
@@ -1038,7 +1046,11 @@ function renderStockTable() {
     const recDescMap = {};
     db.receiving.forEach(r => { if (r.matCode && !recDescMap[r.matCode]) recDescMap[r.matCode] = r.desc; });
 
-    const display = filtered.slice(0, 1000);
+    const stTotalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    if (_stockPage > stTotalPages) _stockPage = 1;
+    const stStart = (_stockPage - 1) * PAGE_SIZE;
+    const display = filtered.slice(stStart, stStart + PAGE_SIZE);
+
     const stockRows = display.map(matCode => {
         let rec   = recMap[matCode] || 0;
         let iss   = issMap[matCode] || 0;
@@ -1075,15 +1087,14 @@ function renderStockTable() {
             <td>${badge}</td>
         </tr>`;
     });
-    if (filtered.length > 1000) {
-        stockRows.push(`<tr><td colspan="12" style="text-align:center;color:#666;font-style:italic;">Showing first 1,000 of ${filtered.length.toLocaleString()} items.</td></tr>`);
-    }
     tbody.innerHTML = stockRows.join('');
+    renderPagination('stockPagination', _stockPage, stTotalPages, '_stockGoPage');
 }
+let _stockPage = 1;
+window._stockGoPage = function(p) { _stockPage = p; renderStockTable(); };
 
 // --- Material Shortage ---
 let _shortagePage = 1;
-const SHORTAGE_PAGE_SIZE = 30;
 let _shortageList = [];
 
 const CAT_ORDER = { 'Pipe': 0, 'Fitting': 1, 'Valve': 2, 'Spool': 3, 'Support': 4, 'Others': 5, 'Speciality': 6 };
@@ -1164,19 +1175,19 @@ function renderShortageTable() {
     });
 
     _shortageList = shortageList;
-    _shortagePage = Math.min(_shortagePage, Math.max(1, Math.ceil(shortageList.length / SHORTAGE_PAGE_SIZE)));
+    _shortagePage = Math.min(_shortagePage, Math.max(1, Math.ceil(shortageList.length / PAGE_SIZE)));
 
     const countEl = document.getElementById('shortageCount');
     if (countEl) countEl.textContent = shortageList.length > 0 ? `${shortageList.length} items` : '';
 
     if (shortageList.length === 0) {
         tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#666;padding:20px;">No shortage items found.</td></tr>';
-        renderShortagePagination(0);
+        const sp = document.getElementById('shortagePagination'); if (sp) sp.innerHTML = '';
         return;
     }
 
-    const start = (_shortagePage - 1) * SHORTAGE_PAGE_SIZE;
-    const pageRows = shortageList.slice(start, start + SHORTAGE_PAGE_SIZE);
+    const start = (_shortagePage - 1) * PAGE_SIZE;
+    const pageRows = shortageList.slice(start, start + PAGE_SIZE);
 
     tbody.innerHTML = pageRows.map(({ matCode, cat, desc, item, size, unit, bomQty, recQty, shortage }) => `<tr>
             <td style="text-align:center;"><strong>${cat}</strong></td>
@@ -1190,31 +1201,11 @@ function renderShortageTable() {
             <td style="text-align:center;font-weight:700;color:#d32f2f;">${Math.round(shortage).toLocaleString()}</td>
         </tr>`).join('');
 
-    renderShortagePagination(shortageList.length);
-}
-
-function renderShortagePagination(total) {
-    const container = document.getElementById('shortagePagination');
-    if (!container) return;
-    const totalPages = Math.ceil(total / SHORTAGE_PAGE_SIZE);
-    if (totalPages <= 1) { container.innerHTML = ''; return; }
-
-    const s = Math.max(1, _shortagePage - 2);
-    const e = Math.min(totalPages, _shortagePage + 2);
-    let html = `<div style="display:flex;align-items:center;justify-content:center;gap:5px;padding:14px 0;font-size:13px;flex-wrap:wrap;">`;
-    html += `<button class="btn btn-outline" style="height:30px;padding:0 10px;" onclick="goShortagePage(${_shortagePage-1})" ${_shortagePage===1?'disabled':''}>‹ Prev</button>`;
-    if (s > 1) { html += `<button class="btn btn-outline" style="height:30px;min-width:32px;" onclick="goShortagePage(1)">1</button>`; if (s > 2) html += `<span style="color:#aaa;">…</span>`; }
-    for (let p = s; p <= e; p++) html += `<button class="btn ${p===_shortagePage?'btn-primary':'btn-outline'}" style="height:30px;min-width:32px;" onclick="goShortagePage(${p})">${p}</button>`;
-    if (e < totalPages) { if (e < totalPages-1) html += `<span style="color:#aaa;">…</span>`; html += `<button class="btn btn-outline" style="height:30px;min-width:32px;" onclick="goShortagePage(${totalPages})">${totalPages}</button>`; }
-    html += `<button class="btn btn-outline" style="height:30px;padding:0 10px;" onclick="goShortagePage(${_shortagePage+1})" ${_shortagePage===totalPages?'disabled':''}>Next ›</button>`;
-    const pageStart = (_shortagePage - 1) * SHORTAGE_PAGE_SIZE + 1;
-    html += `<span style="color:#888;margin-left:8px;">${pageStart.toLocaleString()}–${Math.min(_shortagePage*SHORTAGE_PAGE_SIZE,total).toLocaleString()} / ${total.toLocaleString()}</span>`;
-    html += `</div>`;
-    container.innerHTML = html;
+    renderPagination('shortagePagination', _shortagePage, Math.max(1, Math.ceil(shortageList.length / PAGE_SIZE)), 'goShortagePage');
 }
 
 function goShortagePage(p) {
-    const totalPages = Math.ceil(_shortageList.length / SHORTAGE_PAGE_SIZE);
+    const totalPages = Math.max(1, Math.ceil(_shortageList.length / PAGE_SIZE));
     if (p < 1 || p > totalPages) return;
     _shortagePage = p;
     renderShortageTable();
@@ -1242,10 +1233,18 @@ function renderMatCodeMaster() {
         return true;
     });
 
-    tbody.innerHTML = data.map(m => {
+    const mcTotalPages = Math.max(1, Math.ceil(data.length / PAGE_SIZE));
+    if (_matCodePage > mcTotalPages) _matCodePage = 1;
+    const mcStart = (_matCodePage - 1) * PAGE_SIZE;
+    const pageData = data.slice(mcStart, mcStart + PAGE_SIZE);
+
+    const recDescMap = {};
+    db.receiving.forEach(r => { if (r.matCode && !recDescMap[r.matCode]) recDescMap[r.matCode] = r.desc; });
+
+    tbody.innerHTML = pageData.map(m => {
         const cb = getCatBadge(m.category);
         const fullDesc = db.bomDesc[m.matCode.trim().toUpperCase()]
-            || db.receiving.find(r => r.matCode === m.matCode)?.desc
+            || recDescMap[m.matCode]
             || [m.itemDesc, m.matlDesc, m.size2, m.classDesc, m.etDesc].filter(v => v && v !== '-').join(', ')
             || '-';
         return `<tr>
@@ -1263,12 +1262,14 @@ function renderMatCodeMaster() {
 
     const info = document.getElementById('masterInfo');
     if (info) info.textContent = `${data.length} / ${db.matCodeMaster.length} items`;
+    renderPagination('matCodePagination', _matCodePage, mcTotalPages, '_matCodeGoPage');
 }
+let _matCodePage = 1;
+window._matCodeGoPage = function(p) { _matCodePage = p; renderMatCodeMaster(); };
 
 // --- 3. BOM & Receiving Paginations ---
-const PAGE_SIZE = 50;
-let currentBomPage = 0;
-let currentPlPage = 0;
+let currentBomPage = 1;
+let currentPlPage = 1;
 
 function initFilterOptions() {
     // BOM Filters
@@ -1477,28 +1478,6 @@ function initFilterOptions() {
     }
 }
 
-function renderTablePagination(total, current, pageSize, infoId, btnPrevId, btnNextId, updateFn) {
-    const info = document.getElementById(infoId);
-    const btnPrev = document.getElementById(btnPrevId);
-    const btnNext = document.getElementById(btnNextId);
-    if(!info || !btnPrev || !btnNext) return;
-
-    let totalPages = Math.ceil(total / pageSize);
-    if (totalPages === 0) totalPages = 1;
-
-    let start = current * pageSize + 1;
-    let end = Math.min((current + 1) * pageSize, total);
-    if(total === 0) start = 0;
-
-    info.innerText = `Showing ${start}-${end} of ${total} items (Page ${current + 1} of ${totalPages})`;
-
-    btnPrev.disabled = (current === 0);
-    btnNext.disabled = (current >= totalPages - 1);
-
-    // Re-attach listeners just in case
-    btnPrev.onclick = () => { if(current > 0) { updateFn(current - 1); } };
-    btnNext.onclick = () => { if(current < totalPages - 1) { updateFn(current + 1); } };
-}
 
 async function renderBomTable() {
     let tbody = document.querySelector('#bomTable tbody');
@@ -1566,7 +1545,7 @@ async function renderBomTable() {
     const dataQ  = applyFilters(
         supabaseClient.from('bom_detail')
             .select('mat_code, category, system, iso_dwg_no, line_no, tag, full_description, uom, qty')
-            .range(currentBomPage * PAGE_SIZE, (currentBomPage + 1) * PAGE_SIZE)  // +1 for hasMore
+            .range((currentBomPage - 1) * PAGE_SIZE, currentBomPage * PAGE_SIZE)  // +1 for hasMore
             .order('iso_dwg_no')
     );
     const countQ = applyFilters(
@@ -1588,7 +1567,7 @@ async function renderBomTable() {
     // HEAD count 쿼리가 null이면 hasMore 기반 추정값 사용
     const totalCount = (count != null)
         ? count
-        : (currentBomPage * PAGE_SIZE + data.length + (hasMore ? PAGE_SIZE : 0));
+        : ((currentBomPage - 1) * PAGE_SIZE + data.length + (hasMore ? PAGE_SIZE : 0));
 
     tbody.innerHTML = data.map(b => {
         let displayCat = b.category;
@@ -1619,16 +1598,10 @@ async function renderBomTable() {
         </tr>`;
     }).join('');
 
-    renderTablePagination(
-        totalCount,
-        currentBomPage,
-        PAGE_SIZE,
-        'bomPaginationInfo',
-        'btnPrevBom',
-        'btnNextBom',
-        (p) => { currentBomPage = p; renderBomTable(); }
-    );
+    const bomTotalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+    renderPagination('bomPagination', currentBomPage, bomTotalPages, '_bomGoPage');
 }
+window._bomGoPage = function(p) { currentBomPage = p; renderBomTable(); };
 
 function renderReceivingTable() {
     let tbody = document.querySelector('#plTable tbody');
@@ -1671,7 +1644,7 @@ function renderReceivingTable() {
         return matchSearch && matchDoc && matchPkg && matchSys && matchCat && matchItemF && matchSizeF;
     }).sort((a, b) => a.docNo.localeCompare(b.docNo) || a.plNo.localeCompare(b.plNo));
 
-    let slicedPl = data.slice(currentPlPage * PAGE_SIZE, (currentPlPage + 1) * PAGE_SIZE);
+    let slicedPl = data.slice((currentPlPage - 1) * PAGE_SIZE, currentPlPage * PAGE_SIZE);
 
     const rows = slicedPl.map(r => {
         const tagInfo = db.bomTagMap[(r.tag || '').toUpperCase()];
@@ -1724,16 +1697,10 @@ function renderReceivingTable() {
     });
     tbody.innerHTML = rows.join('');
 
-    renderTablePagination(
-        data.length, 
-        currentPlPage, 
-        PAGE_SIZE, 
-        'plPaginationInfo', 
-        'btnPrevPl', 
-        'btnNextPl', 
-        (p) => { currentPlPage = p; renderReceivingTable(); }
-    );
+    const plTotalPages = Math.max(1, Math.ceil(data.length / PAGE_SIZE));
+    renderPagination('plPagination', currentPlPage, plTotalPages, '_plGoPage');
 }
+window._plGoPage = function(p) { currentPlPage = p; renderReceivingTable(); };
 
 // --- 5. Material Issue (ISO/MR Table) ---
 function renderIssueOptions() {
@@ -2244,7 +2211,7 @@ function attachEventListeners() {
 
             document.getElementById('bomUploadModal').style.display = 'none';
             alert(`✅ BOM updated successfully!\n${bomUploadRows.length} rows inserted across ${isoSet.length} ISOs.`);
-            currentBomPage = 0;
+            currentBomPage = 1;
             renderBomTable();
         } catch(err) {
             alert('❌ Upload failed: ' + err.message);
@@ -2260,7 +2227,7 @@ function attachEventListeners() {
     const btnFilterBom = document.getElementById('btnFilterBom');
     if(btnFilterBom) {
         btnFilterBom.addEventListener('click', () => {
-            currentBomPage = 0;
+            currentBomPage = 1;
             renderBomTable();
         });
     }
@@ -2282,7 +2249,7 @@ function attachEventListeners() {
             if (bomItemFilter) bomItemFilter.value = 'All';
             const bomSizeFilter = document.getElementById('bomSizeFilter');
             if (bomSizeFilter) bomSizeFilter.value = 'All';
-            currentBomPage = 0;
+            currentBomPage = 1;
             renderBomTable();
         });
     }
@@ -2291,6 +2258,7 @@ function attachEventListeners() {
     const btnFilterMaster = document.getElementById('btnFilterMaster');
     if(btnFilterMaster) {
         btnFilterMaster.addEventListener('click', () => {
+            _matCodePage = 1;
             renderMatCodeMaster();
         });
     }
@@ -2347,7 +2315,7 @@ function attachEventListeners() {
     const btnFilterPl = document.getElementById('btnFilterPl');
     if(btnFilterPl) {
         btnFilterPl.addEventListener('click', () => {
-            currentPlPage = 0;
+            currentPlPage = 1;
             renderReceivingTable();
         });
     }
@@ -3001,6 +2969,78 @@ function renderMrTable() {
 // MR History & ISO Progress
 // ==========================================
 
+let _mrHistPage = 1;
+let _mrProgPage = 1;
+let _mrHistCache = null; // { mrList, isoRows }
+
+function _renderMrHistPages() {
+    if (!_mrHistCache) return;
+    const { mrList, isoRows, getIsoStatus } = _mrHistCache;
+
+    const histTbody = document.getElementById('mrHistTbody');
+    const progTbody = document.getElementById('isoMrProgressTbody');
+
+    if (histTbody) {
+        if (mrList.length === 0) {
+            histTbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#888;padding:20px;">No MR records found.</td></tr>';
+            const hp = document.getElementById('mrHistPagination'); if (hp) hp.innerHTML = '';
+        } else {
+            const hTotal = Math.max(1, Math.ceil(mrList.length / PAGE_SIZE));
+            if (_mrHistPage > hTotal) _mrHistPage = 1;
+            const hStart = (_mrHistPage - 1) * PAGE_SIZE;
+            histTbody.innerHTML = mrList.slice(hStart, hStart + PAGE_SIZE).map(mr => {
+                const status = getIsoStatus(mr.iso);
+                const sCls   = status === 'CLOSED' ? 'ok' : (status === 'PARTIAL' ? 'warn' : '');
+                const suppBtn = status === 'PARTIAL'
+                    ? `<button class="btn btn-primary btn-small" onclick="window.loadSupplementMR(${JSON.stringify(mr.iso)},${JSON.stringify(mr.mrNo)})"><i class="fas fa-plus-circle"></i> Supplement Issue</button>`
+                    : '<span style="color:#aaa;font-size:11px;">Closed</span>';
+                return `<tr>
+                    <td><strong style="color:var(--color-primary);">${mr.mrNo}</strong></td>
+                    <td style="font-size:12px;">${mr.iso}</td>
+                    <td>${mr.date}</td>
+                    <td style="text-align:center;">${mr.items.length}</td>
+                    <td style="text-align:right;">${mr.totalQty.toFixed(2)}</td>
+                    <td><span class="status-badge ${sCls}">${status}</span></td>
+                    <td>${suppBtn}</td>
+                </tr>`;
+            }).join('');
+            renderPagination('mrHistPagination', _mrHistPage, hTotal, '_mrHistGoPage');
+        }
+    }
+
+    if (progTbody) {
+        if (isoRows.length === 0) {
+            progTbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#888;">No data.</td></tr>';
+            const pp = document.getElementById('mrProgPagination'); if (pp) pp.innerHTML = '';
+        } else {
+            const pTotal = Math.max(1, Math.ceil(isoRows.length / PAGE_SIZE));
+            if (_mrProgPage > pTotal) _mrProgPage = 1;
+            const pStart = (_mrProgPage - 1) * PAGE_SIZE;
+            progTbody.innerHTML = isoRows.slice(pStart, pStart + PAGE_SIZE).map(r => {
+                const sCls = r.status === 'CLOSED' ? 'ok' : 'warn';
+                const pct  = r.progress.toFixed(1);
+                const barColor = r.progress >= 100 ? '#2e7d32' : (r.progress >= 50 ? '#f57f17' : '#c62828');
+                const suppBtn = r.status === 'PARTIAL'
+                    ? `<button class="btn btn-primary btn-small" onclick="window.loadSupplementMR(${JSON.stringify(r.iso)},${JSON.stringify(r.latestMrNo)})"><i class="fas fa-plus-circle"></i> Supplement Issue</button>`
+                    : '<span style="color:#aaa;font-size:11px;">-</span>';
+                return `<tr>
+                    <td style="font-size:12px;">${r.iso}</td>
+                    <td style="text-align:center;">${r.bomItems}</td>
+                    <td style="font-weight:600;color:#0d47a1;text-align:right;">${r.totalBom.toFixed(2)}</td>
+                    <td style="font-weight:600;color:#2e7d32;text-align:right;">${r.totalIssued.toFixed(2)}</td>
+                    <td style="font-weight:600;color:${r.remaining > 0 ? '#c62828' : '#888'};text-align:right;">${r.remaining.toFixed(2)}</td>
+                    <td><div style="display:flex;align-items:center;gap:8px;"><div style="flex:1;background:#eee;height:8px;border-radius:4px;overflow:hidden;min-width:80px;"><div style="width:${pct}%;background:${barColor};height:100%;border-radius:4px;"></div></div><span style="font-size:11px;font-weight:600;min-width:38px;">${pct}%</span></div></td>
+                    <td><span class="status-badge ${sCls}">${r.status}</span></td>
+                    <td>${suppBtn}</td>
+                </tr>`;
+            }).join('');
+            renderPagination('mrProgPagination', _mrProgPage, pTotal, '_mrProgGoPage');
+        }
+    }
+}
+window._mrHistGoPage = function(p) { _mrHistPage = p; _renderMrHistPages(); };
+window._mrProgGoPage = function(p) { _mrProgPage = p; _renderMrHistPages(); };
+
 async function renderMrHistory() {
     if (!supabaseClient) return;
 
@@ -3008,6 +3048,10 @@ async function renderMrHistory() {
     const dateTo   = document.getElementById('mrHistDateTo')?.value || '';
     const isoSearch = (document.getElementById('mrHistIsoSearch')?.value || '').trim().toUpperCase();
     const statusFilter = document.getElementById('mrHistStatus')?.value || 'All';
+
+    _mrHistCache = null;
+    _mrHistPage = 1;
+    _mrProgPage = 1;
 
     const histTbody = document.getElementById('mrHistTbody');
     const progTbody = document.getElementById('isoMrProgressTbody');
@@ -3075,75 +3119,27 @@ async function renderMrHistory() {
     // Apply status filter
     if (statusFilter !== 'All') mrList = mrList.filter(m => getIsoStatus(m.iso) === statusFilter);
 
-    // 5. Render MR History table
-    if (histTbody) {
-        if (mrList.length === 0) {
-            histTbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#888;padding:20px;">No MR records found.</td></tr>';
-        } else {
-            histTbody.innerHTML = mrList.map(mr => {
-                const status = getIsoStatus(mr.iso);
-                const sCls   = status === 'CLOSED' ? 'ok' : (status === 'PARTIAL' ? 'warn' : '');
-                const suppBtn = status === 'PARTIAL'
-                    ? `<button class="btn btn-primary btn-small" onclick="window.loadSupplementMR(${JSON.stringify(mr.iso)},${JSON.stringify(mr.mrNo)})"><i class="fas fa-plus-circle"></i> Supplement Issue</button>`
-                    : '<span style="color:#aaa;font-size:11px;">Closed</span>';
-                return `<tr>
-                    <td><strong style="color:var(--color-primary);">${mr.mrNo}</strong></td>
-                    <td style="font-size:12px;">${mr.iso}</td>
-                    <td>${mr.date}</td>
-                    <td style="text-align:center;">${mr.items.length}</td>
-                    <td style="text-align:right;">${mr.totalQty.toFixed(2)}</td>
-                    <td><span class="status-badge ${sCls}">${status}</span></td>
-                    <td>${suppBtn}</td>
-                </tr>`;
-            }).join('');
-        }
-    }
-
-    // 6. Render ISO-level progress table
-    if (progTbody) {
-        const isoRows = [];
-        uniqueISOs.forEach(iso => {
-            const bom = bomByIso[iso] || {};
-            const mcs = Object.keys(bom);
-            let totalBom = 0, totalIssued = 0;
-            mcs.forEach(mc => {
-                totalBom    += (bom[mc] || 0);
-                totalIssued += (issuedByIsoMat[`${iso}::${mc}`] || 0);
-            });
-            const remaining = Math.max(0, totalBom - totalIssued);
-            const progress  = totalBom > 0 ? Math.min(100, totalIssued / totalBom * 100) : 0;
-            const status    = progress >= 99.9 ? 'CLOSED' : 'PARTIAL';
-            // Latest MR for this ISO
-            const isoMrs = Object.values(mrMap).filter(m => m.iso === iso).sort((a, b) => b.date.localeCompare(a.date));
-            const latestMrNo = isoMrs.length > 0 ? isoMrs[0].mrNo : '-';
-            isoRows.push({ iso, bomItems: mcs.length, totalBom, totalIssued, remaining, progress, status, latestMrNo });
+    // 6. Build ISO-level progress rows
+    const isoRows = [];
+    uniqueISOs.forEach(iso => {
+        const bom = bomByIso[iso] || {};
+        const mcs = Object.keys(bom);
+        let totalBom = 0, totalIssued = 0;
+        mcs.forEach(mc => {
+            totalBom    += (bom[mc] || 0);
+            totalIssued += (issuedByIsoMat[`${iso}::${mc}`] || 0);
         });
+        const remaining = Math.max(0, totalBom - totalIssued);
+        const progress  = totalBom > 0 ? Math.min(100, totalIssued / totalBom * 100) : 0;
+        const status    = progress >= 99.9 ? 'CLOSED' : 'PARTIAL';
+        const isoMrs = Object.values(mrMap).filter(m => m.iso === iso).sort((a, b) => b.date.localeCompare(a.date));
+        const latestMrNo = isoMrs.length > 0 ? isoMrs[0].mrNo : '-';
+        isoRows.push({ iso, bomItems: mcs.length, totalBom, totalIssued, remaining, progress, status, latestMrNo });
+    });
+    isoRows.sort((a, b) => a.progress - b.progress);
 
-        isoRows.sort((a, b) => a.progress - b.progress); // PARTIAL first
-
-        if (isoRows.length === 0) {
-            progTbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#888;">No data.</td></tr>';
-        } else {
-            progTbody.innerHTML = isoRows.map(r => {
-                const sCls = r.status === 'CLOSED' ? 'ok' : 'warn';
-                const pct  = r.progress.toFixed(1);
-                const barColor = r.progress >= 100 ? '#2e7d32' : (r.progress >= 50 ? '#f57f17' : '#c62828');
-                const suppBtn = r.status === 'PARTIAL'
-                    ? `<button class="btn btn-primary btn-small" onclick="window.loadSupplementMR(${JSON.stringify(r.iso)},${JSON.stringify(r.latestMrNo)})"><i class="fas fa-plus-circle"></i> Supplement Issue</button>`
-                    : '<span style="color:#aaa;font-size:11px;">-</span>';
-                return `<tr>
-                    <td style="font-size:12px;">${r.iso}</td>
-                    <td style="text-align:center;">${r.bomItems}</td>
-                    <td style="font-weight:600;color:#0d47a1;text-align:right;">${r.totalBom.toFixed(2)}</td>
-                    <td style="font-weight:600;color:#2e7d32;text-align:right;">${r.totalIssued.toFixed(2)}</td>
-                    <td style="font-weight:600;color:${r.remaining > 0 ? '#c62828' : '#888'};text-align:right;">${r.remaining.toFixed(2)}</td>
-                    <td><div style="display:flex;align-items:center;gap:8px;"><div style="flex:1;background:#eee;height:8px;border-radius:4px;overflow:hidden;min-width:80px;"><div style="width:${pct}%;background:${barColor};height:100%;border-radius:4px;"></div></div><span style="font-size:11px;font-weight:600;min-width:38px;">${pct}%</span></div></td>
-                    <td><span class="status-badge ${sCls}">${r.status}</span></td>
-                    <td>${suppBtn}</td>
-                </tr>`;
-            }).join('');
-        }
-    }
+    _mrHistCache = { mrList, isoRows, getIsoStatus };
+    _renderMrHistPages();
 }
 
 /**
@@ -3274,7 +3270,6 @@ let _shippingData        = null;
 let _spoolShippingCache  = null;
 let _shippingFilteredRows = [];
 let _shippingPage        = 1;
-const PL_PAGE_SIZE       = 20;
 let _plUpdatesCache   = {};
 let _plChanges        = {};
 let _shippingKpiFilter = 'all'; // KPI 카드 클릭 필터: all|shipping|onsite|cleared|pending|issued
@@ -3534,7 +3529,7 @@ function renderShippingKpi() {
 
 function renderShippingTable(rows) {
     _shippingFilteredRows = rows || [];
-    const totalPages = Math.max(1, Math.ceil(_shippingFilteredRows.length / PL_PAGE_SIZE));
+    const totalPages = Math.max(1, Math.ceil(_shippingFilteredRows.length / PAGE_SIZE));
     if (_shippingPage > totalPages) _shippingPage = totalPages;
 
     // packing ↔ pkg_no 매핑 재구성 (전체 필터 행 기준)
@@ -3551,13 +3546,13 @@ function renderShippingTable(rows) {
     const allMerged = _shippingFilteredRows.map(mergeRow);
     document.getElementById('shippingCountLabel').textContent = `(${allMerged.length.toLocaleString()} items)`;
 
-    const start  = (_shippingPage - 1) * PL_PAGE_SIZE;
-    const merged = allMerged.slice(start, start + PL_PAGE_SIZE);
+    const start  = (_shippingPage - 1) * PAGE_SIZE;
+    const merged = allMerged.slice(start, start + PAGE_SIZE);
 
     const tbody = document.getElementById('shippingTbody');
     if (!merged.length) {
         tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:#888;padding:30px;">No data found.</td></tr>';
-        renderShippingPagination(0);
+        const spEl = document.getElementById('shippingPagination'); if (spEl) spEl.innerHTML = '';
         return;
     }
 
@@ -3632,30 +3627,11 @@ function renderShippingTable(rows) {
             }
         });
     });
-    renderShippingPagination(_shippingFilteredRows.length);
-}
-
-function renderShippingPagination(total) {
-    const container = document.getElementById('shippingPagination');
-    if (!container) return;
-    const totalPages = Math.ceil(total / PL_PAGE_SIZE);
-    if (totalPages <= 1) { container.innerHTML = ''; return; }
-
-    const s = Math.max(1, _shippingPage - 2);
-    const e = Math.min(totalPages, _shippingPage + 2);
-    let html = `<div style="display:flex;align-items:center;justify-content:center;gap:5px;padding:14px 0;font-size:13px;flex-wrap:wrap;">`;
-    html += `<button class="btn btn-outline" style="height:30px;padding:0 10px;" onclick="goShippingPage(${_shippingPage-1})" ${_shippingPage===1?'disabled':''}>‹ Prev</button>`;
-    if (s > 1) { html += `<button class="btn btn-outline" style="height:30px;min-width:32px;" onclick="goShippingPage(1)">1</button>`; if (s > 2) html += `<span style="color:#aaa;">…</span>`; }
-    for (let p = s; p <= e; p++) html += `<button class="btn ${p===_shippingPage?'btn-primary':'btn-outline'}" style="height:30px;min-width:32px;" onclick="goShippingPage(${p})">${p}</button>`;
-    if (e < totalPages) { if (e < totalPages-1) html += `<span style="color:#aaa;">…</span>`; html += `<button class="btn btn-outline" style="height:30px;min-width:32px;" onclick="goShippingPage(${totalPages})">${totalPages}</button>`; }
-    html += `<button class="btn btn-outline" style="height:30px;padding:0 10px;" onclick="goShippingPage(${_shippingPage+1})" ${_shippingPage===totalPages?'disabled':''}>Next ›</button>`;
-    html += `<span style="color:#888;margin-left:8px;">${(((_shippingPage-1)*PL_PAGE_SIZE)+1).toLocaleString()}–${Math.min(_shippingPage*PL_PAGE_SIZE,total).toLocaleString()} / ${total.toLocaleString()}</span>`;
-    html += `</div>`;
-    container.innerHTML = html;
+    renderPagination('shippingPagination', _shippingPage, Math.max(1, Math.ceil(_shippingFilteredRows.length / PAGE_SIZE)), 'goShippingPage');
 }
 
 function goShippingPage(p) {
-    const totalPages = Math.ceil(_shippingFilteredRows.length / PL_PAGE_SIZE);
+    const totalPages = Math.max(1, Math.ceil(_shippingFilteredRows.length / PAGE_SIZE));
     if (p < 1 || p > totalPages) return;
     _shippingPage = p;
     renderShippingTable(_shippingFilteredRows);
@@ -3867,7 +3843,6 @@ function updateSpoolKpis() {
 // --- Spool BOM ---
 let _spoolData = null;
 let _spoolPage = 1;
-const SPOOL_PAGE_SIZE = 50;
 
 async function initSpoolBom() {
     if (_spoolData) { renderSpoolTable(); return; }
@@ -3911,13 +3886,13 @@ function _getSpoolFiltered() {
 function renderSpoolTable() {
     const filtered   = _getSpoolFiltered();
     const total      = filtered.length;
-    const totalPages = Math.max(1, Math.ceil(total / SPOOL_PAGE_SIZE));
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
     if (_spoolPage > totalPages) _spoolPage = 1;
 
     updateSpoolKpis();
 
-    const start = (_spoolPage - 1) * SPOOL_PAGE_SIZE;
-    const page  = filtered.slice(start, start + SPOOL_PAGE_SIZE);
+    const start = (_spoolPage - 1) * PAGE_SIZE;
+    const page  = filtered.slice(start, start + PAGE_SIZE);
     const tbody = document.getElementById('spoolTbody');
     if (!tbody) return;
 
@@ -3941,18 +3916,14 @@ function renderSpoolTable() {
         }).join('');
 
     const info = document.getElementById('spoolCountInfo');
-    const pagi = document.getElementById('spoolPagination');
-    if (info) info.textContent = `${total} spools (page ${_spoolPage} / ${totalPages})`;
-    if (pagi) pagi.innerHTML = `
-        <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;" ${_spoolPage <= 1 ? 'disabled' : ''} onclick="_spoolPage--;renderSpoolTable()">Prev</button>
-        <span style="margin:0 10px;font-size:13px;">${_spoolPage} / ${totalPages}</span>
-        <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;" ${_spoolPage >= totalPages ? 'disabled' : ''} onclick="_spoolPage++;renderSpoolTable()">Next</button>`;
+    if (info) info.textContent = `${total} spools`;
+    renderPagination('spoolPagination', _spoolPage, totalPages, '_spoolGoPage');
 }
+window._spoolGoPage = function(p) { _spoolPage = p; renderSpoolTable(); };
 
 // --- Spool Receiving ---
 let _srData = null;
 let _srPage = 1;
-const SR_PAGE_SIZE = 50;
 
 async function initSpoolReceiving() {
     if (_srData) { renderSpoolReceiving(); return; }
@@ -3995,13 +3966,13 @@ function _getSrFiltered() {
 function renderSpoolReceiving() {
     const filtered   = _getSrFiltered();
     const total      = filtered.length;
-    const totalPages = Math.max(1, Math.ceil(total / SR_PAGE_SIZE));
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
     if (_srPage > totalPages) _srPage = 1;
 
     updateSpoolKpis();
 
-    const start = (_srPage - 1) * SR_PAGE_SIZE;
-    const page  = filtered.slice(start, start + SR_PAGE_SIZE);
+    const start = (_srPage - 1) * PAGE_SIZE;
+    const page  = filtered.slice(start, start + PAGE_SIZE);
     const tbody = document.getElementById('srTbody');
     if (!tbody) return;
 
@@ -4030,13 +4001,10 @@ function renderSpoolReceiving() {
         }).join('');
 
     const info = document.getElementById('srCountInfo');
-    const pagi = document.getElementById('srPagination');
-    if (info) info.textContent = `${total} items (page ${_srPage} / ${totalPages})`;
-    if (pagi) pagi.innerHTML = `
-        <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;" ${_srPage <= 1 ? 'disabled' : ''} onclick="_srPage--;renderSpoolReceiving()">Prev</button>
-        <span style="margin:0 10px;font-size:13px;">${_srPage} / ${totalPages}</span>
-        <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;" ${_srPage >= totalPages ? 'disabled' : ''} onclick="_srPage++;renderSpoolReceiving()">Next</button>`;
+    if (info) info.textContent = `${total} items`;
+    renderPagination('srPagination', _srPage, totalPages, '_srGoPage');
 }
+window._srGoPage = function(p) { _srPage = p; renderSpoolReceiving(); };
 
 // Spool BOM + Spool Receiving 이벤트 등록 (DOMContentLoaded 1회)
 document.addEventListener('DOMContentLoaded', () => {
