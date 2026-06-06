@@ -323,6 +323,9 @@ async function syncFromSupabase() {
         }
 
         await loadPlUpdates();
+        // Shipping 캐시 무효화 — 전역 동기화 후 다음 탭 진입 시 재빌드
+        _shippingData = null;
+        _spoolShippingCache = null;
         renderAllViews();
         initFilterOptions();
 
@@ -3249,6 +3252,7 @@ window.showReceivingDetail = function(matCode) {
 
 // ── Shipping / Custom Clearance ────────────────────────────────────────
 let _shippingData        = null;
+let _spoolShippingCache  = null;
 let _shippingFilteredRows = [];
 let _shippingPage        = 1;
 const PL_PAGE_SIZE       = 20;
@@ -3304,62 +3308,54 @@ async function loadPlUpdates() {
 }
 
 async function initShipping() {
+    // 캐시 있으면 네트워크 요청 없이 즉시 렌더링
+    if (_shippingData) {
+        renderShippingKpi();
+        renderShippingTable(getShippingFiltered());
+        return;
+    }
+
     document.getElementById('shippingTbody').innerHTML =
         '<tr><td colspan="12" style="text-align:center;color:#888;padding:30px;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
     try {
-        // Supabase에서 최신 receiving 데이터 전체 조회 (페이지네이션)
-        if (supabaseClient) {
-            const fresh = await fetchAllRows('receiving');
-            if (fresh.length > 0) {
-                db.receiving = fresh.map(r => ({
-                    id:       r.id,
-                    matCode:  (r.mat_code || '').trim().toUpperCase(),
-                    category: r.category || '-',
-                    docNo:    r.doc_no || '-',
-                    plNo:     r.pkg_no || '-',
-                    desc:     r.full_description || '-',
-                    unit:     r.unit || 'EA',
-                    qty:      parseFloat(r.qty) || 0,
-                    tag:      r.tag || '-',
-                    purpose:  r.purpose || '',
-                })).filter(r => r.qty > 0);
-                invalidateRecvPurposeMap();
-            }
+        // pl_updates는 아직 로드 안 됐을 때만 조회
+        if (Object.keys(_plUpdatesCache).length === 0) {
+            await loadPlUpdates();
         }
-        await loadPlUpdates();
 
-        // spool_receiving PKG NO별 첫 번째 행만 추출
-        let spoolShipping = [];
-        if (supabaseClient) {
+        // spool_receiving: 캐시 있으면 재사용, 없을 때만 조회
+        if (!_spoolShippingCache && supabaseClient) {
             const { data: spoolRows } = await supabaseClient
                 .from('spool_receiving')
                 .select('pkg_seq,pkg_no,description,qty,unit,purpose,system')
                 .order('pkg_seq', { ascending: true })
                 .order('id', { ascending: true })
                 .limit(5000);
-            if (spoolRows) {
-                const spoolSeen = new Set();
-                spoolRows.forEach(r => {
-                    if (spoolSeen.has(r.pkg_no)) return;
-                    spoolSeen.add(r.pkg_no);
-                    // packing 이름을 pkg_no에서 추출 (e.g. PGU-DE-0466-BOP-PIP-001 → PGU-DE-0466)
-                    const packing = (r.pkg_no || '').match(/^(PGU-DE-\d+)/)?.[1] || r.pkg_no || '';
-                    spoolShipping.push({
-                        packing,
-                        pkg_no:       r.pkg_no,
-                        description:  r.description || 'Piping Spool',
-                        qty:          r.qty || 1,
-                        unit:         r.unit || 'EA',
-                        purpose:      r.purpose || 'Permanent',
-                        status:       '',
-                        on_site:      '',
-                        custom_clear: '',
-                        issue_date:   '',
-                        request_date: '',
-                        remark:       '',
-                    });
+            _spoolShippingCache = spoolRows || [];
+        }
+
+        const spoolShipping = [];
+        if (_spoolShippingCache) {
+            const spoolSeen = new Set();
+            _spoolShippingCache.forEach(r => {
+                if (spoolSeen.has(r.pkg_no)) return;
+                spoolSeen.add(r.pkg_no);
+                const packing = (r.pkg_no || '').match(/^(PGU-DE-\d+)/)?.[1] || r.pkg_no || '';
+                spoolShipping.push({
+                    packing,
+                    pkg_no:       r.pkg_no,
+                    description:  r.description || 'Piping Spool',
+                    qty:          r.qty || 1,
+                    unit:         r.unit || 'EA',
+                    purpose:      r.purpose || 'Permanent',
+                    status:       '',
+                    on_site:      '',
+                    custom_clear: '',
+                    issue_date:   '',
+                    request_date: '',
+                    remark:       '',
                 });
-            }
+            });
         }
 
         // PKG NO당 1행만 표시 (밸브+악세사리 중복 방지) — 첫 번째 항목 기준
