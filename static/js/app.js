@@ -16,9 +16,11 @@ try {
 
 let db = {
     matCodeMaster: [],
-    bom: [],        // bom_agg: aggregated by matCode+category+system
-    bomIsoList: [], // bom_iso_list: distinct system+iso_dwg_no pairs for dropdowns
-    bomDesc: {},    // bom_desc view: matCode → full_description (BOM 설계 원문)
+    bom: [],           // bom_agg: aggregated by matCode+category+system
+    bomIsoList: [],    // bom_iso_list: distinct system+iso_dwg_no pairs for dropdowns
+    bomDesc: {},       // bom_desc view: matCode → full_description (BOM 설계 원문)
+    bomTagMap: {},     // bom_detail: tag → {matCode, fullDescription} (NULL matCode 입고 레코드 매칭용)
+    specialityItems: [], // Speciality category distinct items (mat_code NULL → desc 기반)
     receiving: [],
     mrTable: [],
     issued: []
@@ -125,7 +127,7 @@ window.extractItemFromDesc = function(desc) {
     }
     // Safety / Control Valve 직접 감지 (description 전체 기준)
     if (/SAFETY VALVE|\bPSV\b|\bPRV\b/.test(upper)) return 'SAFETY VALVE';
-    if (/\b(TCV|LCV|FCV|PCV)\b/.test(upper) || /\bXV\b/.test(upper)) return 'CONTROL VALVE';
+    if (/\b(TCV|LCV|FCV|PCV)\b/.test(upper) || /\bXV\b/.test(upper) || /CONTROL VALVE/.test(upper)) return 'CONTROL VALVE';
     // Skip leading dimension prefix (e.g., 3", 1/2", DN80, 2"x1")
     const s = desc.replace(/^[\d"'\s\/\-×xX]+/, '').trim();
     if (!s) return '-';
@@ -136,7 +138,7 @@ window.extractItemFromDesc = function(desc) {
         'BALL': 'BALL VALVE', 'GATE': 'GATE VALVE',
         'GLOBE': 'GLOBE VALVE', 'CHECK': 'CHECK VALVE',
         'CHCK': 'CHECK VALVE', 'BUTTERFLY': 'BUTTERFLY VALVE',
-        'BTFY': 'BUTTERFLY VALVE',
+        'BTFY': 'BUTTERFLY VALVE', 'CONTROL': 'CONTROL VALVE',
     };
     if (ITEM_MAP[raw]) return ITEM_MAP[raw];
     return raw;
@@ -146,19 +148,22 @@ window.extractItemFromMatCode = function(matCode) {
     const prefix = (matCode || '').split('-')[0].toUpperCase();
     const MAP = {
         'PIS':'PIPE', 'PIW':'PIPE', 'PIN':'NIPPLE',
-        'EL9L':'ELBOW', 'EL4L':'ELBOW', 'ELS':'ELBOW',
+        'EL9L':'ELBOW 90D', 'EL9S':'ELBOW 90D',
+        'EL4L':'ELBOW 45D', 'ELS':'ELBOW 45D', 'ELB':'ELBOW 45D',
         'FLN':'FLANGE', 'FLB':'FLANGE', 'FLS':'FLANGE', 'FLO':'FLANGE', 'FLR':'FLANGE',
         'TEE':'TEE', 'TER':'TEE-RED',
         'RDC':'RED-CON', 'RDE':'RED-ECC',
         'CAP':'CAP',
-        'CPH':'COUPLING', 'CPU':'COUPLING',
-        'SWC':'SWAGE-CON', 'SWE':'SWAGE-ECC',
+        'CPF':'COUPLING-FULL', 'CPH':'COUPLING-HALF', 'CPU':'COUPLING',
+        'SWC':'SWAGE-CON', 'SWE':'SWAGE-ECC', 'SCN':'SWAGE-CON',
         'WOL':'WELDOLET', 'SOL':'SOCKOLET', 'TOL':'THREADOLET',
+        'NOZ':'NOZZLE',
         'VLV':'VALVE', 'VBL':'BALL VALVE', 'VGA':'GATE VALVE', 'VGL':'GLOBE VALVE',
         'VCH':'CHECK VALVE', 'CHV':'CHECK VALVE', 'VBF':'BUTTERFLY VALVE',
         'BAV':'BALL VALVE', 'GTV':'GATE VALVE', 'GLV':'GLOBE VALVE',
         'BFV':'BUTTERFLY VALVE', 'PLV':'PLUG VALVE',
-        'CON':'CONTROL VALVE',
+        'CON':'CONTROL VALVE', 'FCV':'CONTROL VALVE', 'TCV':'CONTROL VALVE',
+        'LCV':'CONTROL VALVE', 'PCV':'CONTROL VALVE', 'XV':'CONTROL VALVE',
         'MOV':'MOV',
         'PSV':'SAFETY VALVE', 'PRV':'RELIEF VALVE',
         'STB':'STUD BOLT',
@@ -234,13 +239,15 @@ async function syncFromSupabase() {
     
     showLoading(true);
     try {
-        const [matMasterRaw, bomRaw, bomIsoRaw, recvRaw, issuedRaw, bomDescRaw] = await Promise.all([
+        const [matMasterRaw, bomRaw, bomIsoRaw, recvRaw, issuedRaw, bomDescRaw, specialityRaw, bomTagRaw] = await Promise.all([
             fetchAllRows('matcode_master'),
             supabaseClient.from('bom_agg').select('*').then(r => r.data || []),
             supabaseClient.from('bom_iso_list').select('*').then(r => r.data || []),
             fetchAllRows('receiving'),
             fetchAllRows('issued'),
-            supabaseClient.from('bom_desc').select('mat_code,full_description').then(r => r.data || [])
+            supabaseClient.from('bom_desc').select('mat_code,full_description').then(r => r.data || []),
+            supabaseClient.from('bom_detail').select('full_description').eq('category', 'Speciality').not('full_description', 'is', null).then(r => r.data || []),
+            supabaseClient.from('bom_detail').select('tag,mat_code,full_description').not('tag', 'is', null).then(r => r.data || [])
         ]);
 
         if (matMasterRaw.length > 0) {
@@ -270,6 +277,20 @@ async function syncFromSupabase() {
                 db.bomDesc[b.mat_code.trim().toUpperCase()] = b.full_description;
             }
         });
+        db.bomTagMap = {};
+        bomTagRaw.forEach(b => {
+            if (!b.tag) return;
+            const key = b.tag.trim().toUpperCase();
+            if (!db.bomTagMap[key]) {
+                db.bomTagMap[key] = {
+                    matCode: b.mat_code ? b.mat_code.trim().toUpperCase() : '',
+                    fullDescription: b.full_description || ''
+                };
+            }
+        });
+        db.specialityItems = [...new Set(
+            specialityRaw.map(b => window.extractItemFromDesc(b.full_description)).filter(v => v && v !== '-')
+        )].sort();
         db.bomIsoList = bomIsoRaw.map(r => ({
             system: r.system || '-',
             iso: r.iso || '-'
@@ -818,24 +839,62 @@ function initStockFilters() {
     const docs  = [...new Set(db.receiving.map(r => r.docNo).filter(Boolean))].sort();
     const pkgs  = [...new Set(db.receiving.map(r => r.plNo).filter(Boolean))].sort();
     const cats  = [...new Set(db.receiving.map(r => r.category).filter(Boolean))].sort();
-    const items = [...new Set(db.receiving.map(r => window.extractItemFromMatCode(r.matCode)).filter(v => v && v !== '-'))].sort();
-    const sizes = [...new Set(db.receiving.map(r => window.extractSizeFromMatCode(r.matCode)).filter(v => v && v !== '-'))].sort();
     const sel = (id, opts, all) => {
         const el = document.getElementById(id); if (!el) return;
         el.innerHTML = `<option value="All">${all}</option>` + opts.map(o => `<option value="${o}">${o}</option>`).join('');
     };
-    sel('stockDocFilter',  docs,  'All DOCs');
-    sel('stockPkgFilter',  pkgs,  'All PKGs');
-    sel('stockCatFilter',  cats,  'All Categories');
-    sel('stockItemFilter', items, 'All Items');
-    sel('stockSizeFilter', sizes, 'All Sizes');
+    sel('stockDocFilter', docs, 'All DOCs');
+    sel('stockPkgFilter', pkgs, 'All PKGs');
+    sel('stockCatFilter', cats, 'All Categories');
+
+    const stockCatEl  = document.getElementById('stockCatFilter');
+    const stockItemEl = document.getElementById('stockItemFilter');
+    const stockSizeEl = document.getElementById('stockSizeFilter');
+
+    function stockGetItemsForCat(cat) {
+        const src = cat === 'All' ? db.receiving : db.receiving.filter(r => (r.category || '') === cat);
+        return [...new Set(src.map(r => window.extractItemFromMatCode(r.matCode)).filter(v => v && v !== '-'))].sort();
+    }
+    function stockGetSizesForCatItem(cat, item) {
+        let src = cat === 'All' ? db.receiving : db.receiving.filter(r => (r.category || '') === cat);
+        if (item !== 'All') src = src.filter(r => window.extractItemFromMatCode(r.matCode) === item);
+        return [...new Set(src.map(r => window.extractSizeFromMatCode(r.matCode)).filter(v => v && v !== '-'))].sort();
+    }
+    function refreshStockItemOptions(cat) {
+        if (!stockItemEl) return;
+        const items = stockGetItemsForCat(cat);
+        stockItemEl.innerHTML = '<option value="All">All Items</option>' + items.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
+    }
+    function refreshStockSizeOptions(cat, item) {
+        if (!stockSizeEl) return;
+        const sizes = stockGetSizesForCatItem(cat, item);
+        stockSizeEl.innerHTML = '<option value="All">All Sizes</option>' + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
+    }
+    refreshStockItemOptions('All');
+    refreshStockSizeOptions('All', 'All');
+    if (stockCatEl) {
+        stockCatEl.addEventListener('change', () => {
+            refreshStockItemOptions(stockCatEl.value);
+            refreshStockSizeOptions(stockCatEl.value, 'All');
+        });
+    }
+    if (stockItemEl) {
+        stockItemEl.addEventListener('change', () => {
+            const cat = stockCatEl ? stockCatEl.value : 'All';
+            refreshStockSizeOptions(cat, stockItemEl.value);
+        });
+    }
 
     const btn   = document.getElementById('btnStockSearch');
     const clear = document.getElementById('btnStockClear');
     if (btn)   btn.addEventListener('click',   () => renderStockTable());
     if (clear) clear.addEventListener('click', () => {
-        ['stockSearch','stockDocFilter','stockPkgFilter','stockCatFilter','stockItemFilter','stockSizeFilter']
-            .forEach(id => { const el = document.getElementById(id); if(el) el.value = el.tagName==='SELECT' ? 'All' : ''; });
+        ['stockSearch','stockDocFilter','stockPkgFilter'].forEach(id => {
+            const el = document.getElementById(id); if(el) el.value = el.tagName==='SELECT' ? 'All' : '';
+        });
+        if (stockCatEl) { stockCatEl.value = 'All'; stockCatEl.dispatchEvent(new Event('change')); }
+        if (stockItemEl) stockItemEl.value = 'All';
+        if (stockSizeEl) stockSizeEl.value = 'All';
         renderStockTable();
     });
 
@@ -853,8 +912,9 @@ function initStockFilters() {
                 docMap[r.matCode].add(r.docNo);
                 pkgMap[r.matCode].add(r.plNo);
             });
+            const issuedPkgNos = new Set(Object.entries(_plUpdatesCache).filter(([,v]) => v.issue_date).map(([k]) => k));
             const issMap = {};
-            db.issued.forEach(i => { if (i.matCode) issMap[i.matCode] = (issMap[i.matCode] || 0) + i.qty; });
+            db.receiving.filter(r => issuedPkgNos.has(r.plNo) && r.matCode).forEach(r => { issMap[r.matCode] = (issMap[r.matCode] || 0) + r.qty; });
             const codes = [...new Set([...Object.keys(recMap), ...Object.keys(issMap)])].sort();
             const rows = codes.map(matCode => {
                 const m   = masterMap[matCode] || {};
@@ -921,11 +981,10 @@ function renderStockTable() {
         pkgMap[r.matCode].add(r.plNo);
     });
 
-    // Aggregate Issued per MatCode
+    // Aggregate Issued per MatCode — issue_date가 설정된 Package의 입고 수량 기준
+    const issuedPkgNos = new Set(Object.entries(_plUpdatesCache).filter(([,v]) => v.issue_date).map(([k]) => k));
     const issMap = {};
-    db.issued.forEach(i => {
-        if(i.matCode) { issMap[i.matCode] = (issMap[i.matCode] || 0) + i.qty; }
-    });
+    db.receiving.filter(r => issuedPkgNos.has(r.plNo) && r.matCode).forEach(r => { issMap[r.matCode] = (issMap[r.matCode] || 0) + r.qty; });
 
     // If DOC/PKG filter active, only show matCodes that appear in recMap
     let activeCodes;
@@ -984,9 +1043,9 @@ function renderStockTable() {
             <td>${item}</td>
             <td>${size}</td>
             <td>${unitStr}</td>
-            <td>${rec.toFixed(2)}</td>
-            <td>${iss.toFixed(2)}</td>
-            <td style="font-weight:700;">${stock.toFixed(2)}</td>
+            <td style="text-align:center;">${rec.toFixed(2)}</td>
+            <td style="text-align:center;">${iss.toFixed(2)}</td>
+            <td style="font-weight:700;text-align:center;">${stock.toFixed(2)}</td>
             <td>${badge}</td>
         </tr>`;
     });
@@ -1192,26 +1251,101 @@ function initFilterOptions() {
     if(bomSys && bomIsoData) {
         const systems = [...new Set(db.bom.map(b => b.system).filter(Boolean))].sort();
         const isos = [...new Set(db.bomIsoList.map(r => r.iso))].sort();
-        const bomItemsSet = new Set(db.bom.map(b => window.extractItemFromMatCode(b.matCode)).filter(v => v && v !== '-'));
-        bomItemsSet.add('CONTROL VALVE');
-        bomItemsSet.add('SAFETY VALVE');
-        const bomItems = [...bomItemsSet].sort();
-        const bomSizes = [...new Set(db.bom.map(b => window.extractSizeFromMatCode(b.matCode)).filter(v => v && v !== '-'))].sort((a,b) => parseFloat(a) - parseFloat(b));
 
         bomSys.innerHTML = '<option value="All">All Systems</option>' + systems.map(s => `<option value="${s}">${s}</option>`).join('');
         bomIsoData.innerHTML = isos.map(i => `<option value="${i}">`).join('');
-        if(bomItemF) bomItemF.innerHTML = '<option value="All">All Items</option>' + bomItems.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
-        if(bomSizeF) bomSizeF.innerHTML = '<option value="All">All Sizes</option>' + bomSizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
+
+        // Category → Item → Size 연동 헬퍼
+        function bomGetItemsForCat(cat) {
+            if (cat === 'Speciality') return db.specialityItems.slice();
+            const src = cat === 'All' ? db.bom : db.bom.filter(b => window.getCategory('', b.matCode) === cat);
+            const set = new Set(src.map(b => window.extractItemFromMatCode(b.matCode)).filter(v => v && v !== '-'));
+            if (cat === 'All' || cat === 'Valve') { set.add('BYPASS VALVE'); set.add('CONTROL VALVE'); set.add('SAFETY VALVE'); }
+            return [...set].sort();
+        }
+        function bomGetSizesForCatItem(cat, item) {
+            if (cat === 'Speciality') return [];
+            let src = cat === 'All' ? db.bom : db.bom.filter(b => window.getCategory('', b.matCode) === cat);
+            if (item !== 'All') src = src.filter(b => window.extractItemFromMatCode(b.matCode) === item);
+            return [...new Set(src.map(b => window.extractSizeFromMatCode(b.matCode)).filter(v => v && v !== '-'))].sort((a,b) => parseFloat(a) - parseFloat(b));
+        }
+        function refreshBomItemOptions(cat) {
+            if (!bomItemF) return;
+            const items = bomGetItemsForCat(cat);
+            bomItemF.innerHTML = '<option value="All">All Items</option>' + items.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
+        }
+        function refreshBomSizeOptions(cat, item) {
+            if (!bomSizeF) return;
+            const sizes = bomGetSizesForCatItem(cat, item);
+            bomSizeF.innerHTML = '<option value="All">All Sizes</option>' + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
+        }
+
+        // 초기 전체 목록
+        refreshBomItemOptions('All');
+        refreshBomSizeOptions('All', 'All');
+
+        // Category 변경 시 Item 갱신 후 Size 갱신
+        const bomCatF = document.getElementById('bomCategoryFilter');
+        if (bomCatF) {
+            bomCatF.addEventListener('change', () => {
+                const cat = bomCatF.value;
+                refreshBomItemOptions(cat);
+                refreshBomSizeOptions(cat, 'All');
+            });
+        }
+        // Item 변경 시 Size 갱신
+        if (bomItemF) {
+            bomItemF.addEventListener('change', () => {
+                const cat = document.getElementById('bomCategoryFilter')?.value || 'All';
+                refreshBomSizeOptions(cat, bomItemF.value);
+            });
+        }
     }
 
     // Shortage Filters — db.bom 기반으로 실제 존재하는 항목만 표시
+    const sCat  = document.getElementById('shortCatFilter');
     const sItem = document.getElementById('shortItemFilter');
     const sSize = document.getElementById('shortSizeFilter');
     if (sItem && db.bom.length > 0) {
-        const items = [...new Set(db.bom.map(b => window.extractItemFromMatCode(b.matCode)).filter(v => v && v !== '-'))].sort();
-        const sizes = [...new Set(db.bom.map(b => window.extractSizeFromMatCode(b.matCode)).filter(v => v && v !== '-'))].sort((a, b) => parseFloat(a) - parseFloat(b));
-        sItem.innerHTML = '<option value="ALL">All Items</option>' + items.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
-        sSize.innerHTML = '<option value="ALL">All Sizes</option>' + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
+        function shortGetItemsForCat(cat) {
+            if (cat === 'Speciality') return db.specialityItems.slice();
+            const src = (cat === 'ALL' || cat === 'All') ? db.bom : db.bom.filter(b => window.getCategory('', b.matCode) === cat);
+            const set = new Set(src.map(b => window.extractItemFromMatCode(b.matCode)).filter(v => v && v !== '-'));
+            if (cat === 'ALL' || cat === 'All' || cat === 'Valve') {
+                set.add('BYPASS VALVE'); set.add('CONTROL VALVE'); set.add('SAFETY VALVE');
+            }
+            return [...set].sort();
+        }
+        function shortGetSizesForCatItem(cat, item) {
+            if (cat === 'Speciality') return [];
+            let src = (cat === 'ALL' || cat === 'All') ? db.bom : db.bom.filter(b => window.getCategory('', b.matCode) === cat);
+            if (item !== 'ALL' && item !== 'All') src = src.filter(b => window.extractItemFromMatCode(b.matCode) === item);
+            return [...new Set(src.map(b => window.extractSizeFromMatCode(b.matCode)).filter(v => v && v !== '-'))].sort((a,b) => parseFloat(a) - parseFloat(b));
+        }
+        function refreshShortItemOptions(cat) {
+            if (!sItem) return;
+            const items = shortGetItemsForCat(cat);
+            sItem.innerHTML = '<option value="ALL">All Items</option>' + items.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
+        }
+        function refreshShortSizeOptions(cat, item) {
+            if (!sSize) return;
+            const sizes = shortGetSizesForCatItem(cat, item);
+            sSize.innerHTML = '<option value="ALL">All Sizes</option>' + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
+        }
+        refreshShortItemOptions('ALL');
+        refreshShortSizeOptions('ALL', 'ALL');
+        if (sCat) {
+            sCat.addEventListener('change', () => {
+                refreshShortItemOptions(sCat.value);
+                refreshShortSizeOptions(sCat.value, 'ALL');
+            });
+        }
+        if (sItem) {
+            sItem.addEventListener('change', () => {
+                const cat = sCat ? sCat.value : 'ALL';
+                refreshShortSizeOptions(cat, sItem.value);
+            });
+        }
     }
 
     // MatCode Master Filters (BOM/Receiving과 동일하게 MatCode 파싱 함수 사용)
@@ -1220,38 +1354,97 @@ function initFilterOptions() {
     const mSize = document.getElementById('masterSizeFilter');
     if (mCat && db.matCodeMaster.length > 0) {
         const cats  = [...new Set(db.matCodeMaster.map(m => m.category).filter(Boolean))].sort();
-        const items = [...new Set(db.matCodeMaster.map(m => window.extractItemFromMatCode(m.matCode)).filter(v => v && v !== '-'))].sort();
-        const sizes = [...new Set(db.matCodeMaster.map(m => window.extractSizeFromMatCode(m.matCode)).filter(v => v && v !== '-'))].sort((a,b) => parseFloat(a) - parseFloat(b));
         mCat.innerHTML  = '<option value="All">All Categories</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
-        mItem.innerHTML = '<option value="All">All Items</option>'      + items.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
-        mSize.innerHTML = '<option value="All">All Sizes</option>'      + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
+
+        function masterGetItemsForCat(cat) {
+            const src = cat === 'All' ? db.matCodeMaster : db.matCodeMaster.filter(m => (m.category || '') === cat);
+            return [...new Set(src.map(m => window.extractItemFromMatCode(m.matCode)).filter(v => v && v !== '-'))].sort();
+        }
+        function masterGetSizesForCatItem(cat, item) {
+            let src = cat === 'All' ? db.matCodeMaster : db.matCodeMaster.filter(m => (m.category || '') === cat);
+            if (item !== 'All') src = src.filter(m => window.extractItemFromMatCode(m.matCode) === item);
+            return [...new Set(src.map(m => window.extractSizeFromMatCode(m.matCode)).filter(v => v && v !== '-'))].sort((a,b) => parseFloat(a) - parseFloat(b));
+        }
+        function refreshMasterItemOptions(cat) {
+            if (!mItem) return;
+            const items = masterGetItemsForCat(cat);
+            mItem.innerHTML = '<option value="All">All Items</option>' + items.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
+        }
+        function refreshMasterSizeOptions(cat, item) {
+            if (!mSize) return;
+            const sizes = masterGetSizesForCatItem(cat, item);
+            mSize.innerHTML = '<option value="All">All Sizes</option>' + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
+        }
+        refreshMasterItemOptions('All');
+        refreshMasterSizeOptions('All', 'All');
+        mCat.addEventListener('change', () => {
+            refreshMasterItemOptions(mCat.value);
+            refreshMasterSizeOptions(mCat.value, 'All');
+        });
+        if (mItem) {
+            mItem.addEventListener('change', () => {
+                refreshMasterSizeOptions(mCat.value, mItem.value);
+            });
+        }
     }
 
-    // PL Filters
-    const plDoc = document.getElementById('plDocFilter');
-    const plPkg = document.getElementById('plPkgFilter');
-    const plCat = document.getElementById('plCategoryFilter');
+    // PL Filters — Category/Item/Size는 BOM과 동일하게 db.bom 기반으로 생성
+    const plDoc  = document.getElementById('plDocFilter');
+    const plPkg  = document.getElementById('plPkgFilter');
+    const plSys  = document.getElementById('plSystemFilter');
+    const plCat  = document.getElementById('plCategoryFilter');
     const plItemF = document.getElementById('plItemFilter');
     const plSizeF = document.getElementById('plSizeFilter');
-    const plTypeF = document.getElementById('plTypeFilter');
     if(plDoc && plPkg) {
         const activeRecv = db.receiving.filter(r => isReceivingActive(r.plNo));
         const docs = [...new Set(activeRecv.map(r => r.docNo))].sort();
         const pkgs = [...new Set(activeRecv.map(r => r.plNo))].sort();
-        const cats = [...new Set(activeRecv.map(r => r.category).filter(Boolean))].sort();
-        const items = [...new Set(activeRecv.map(r => window.extractItemFromMatCode(r.matCode)).filter(v => v && v !== '-'))].sort();
-        const sizes = [...new Set(activeRecv.map(r => window.extractSizeFromMatCode(r.matCode)).filter(v => v && v !== '-'))].sort();
-        const types = [...new Set(activeRecv.map(r => {
-            const et = (r.matCode || '').split('-').pop().toUpperCase();
-            const item = window.extractItemFromMatCode(r.matCode);
-            return (item === 'FLANGE' && (et === 'FF' || et === 'RF')) ? 'WN' + et : null;
-        }).filter(Boolean))].sort();
         plDoc.innerHTML = '<option value="All">All DOCs</option>' + docs.map(d => `<option value="${d}">${d}</option>`).join('');
         plPkg.innerHTML = '<option value="All">All PKGs</option>' + pkgs.map(p => `<option value="${p}">${p}</option>`).join('');
-        if(plCat) plCat.innerHTML = '<option value="All">All Categories</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
-        if(plItemF) plItemF.innerHTML = '<option value="All">All Items</option>' + items.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
-        if(plSizeF) plSizeF.innerHTML = '<option value="All">All Sizes</option>' + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
-        if(plTypeF) plTypeF.innerHTML = '<option value="">All Types</option>' + types.map(t => `<option value="${t}">${t}</option>`).join('');
+
+        // System — BOM과 동일한 목록
+        if (plSys) {
+            const systems = [...new Set(db.bom.map(b => b.system).filter(Boolean))].sort();
+            plSys.innerHTML = '<option value="All">All Systems</option>' + systems.map(s => `<option value="${s}">${s}</option>`).join('');
+        }
+
+        // Category/Item/Size — db.bom 기반 (BOM Management와 동일한 옵션 생성)
+        function plGetItemsForCat(cat) {
+            if (cat === 'Speciality') return db.specialityItems.slice();
+            const src = cat === 'All' ? db.bom : db.bom.filter(b => window.getCategory('', b.matCode) === cat);
+            const set = new Set(src.map(b => window.extractItemFromMatCode(b.matCode)).filter(v => v && v !== '-'));
+            if (cat === 'All' || cat === 'Valve') { set.add('BYPASS VALVE'); set.add('CONTROL VALVE'); set.add('SAFETY VALVE'); }
+            return [...set].sort();
+        }
+        function plGetSizesForCatItem(cat, item) {
+            if (cat === 'Speciality') return [];
+            let src = cat === 'All' ? db.bom : db.bom.filter(b => window.getCategory('', b.matCode) === cat);
+            if (item !== 'All') src = src.filter(b => window.extractItemFromMatCode(b.matCode) === item);
+            return [...new Set(src.map(b => window.extractSizeFromMatCode(b.matCode)).filter(v => v && v !== '-'))].sort((a,b) => parseFloat(a) - parseFloat(b));
+        }
+        function refreshPlItemOptions(cat) {
+            if (!plItemF) return;
+            const items = plGetItemsForCat(cat);
+            plItemF.innerHTML = '<option value="All">All Items</option>' + items.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
+        }
+        function refreshPlSizeOptions(cat, item) {
+            if (!plSizeF) return;
+            const sizes = plGetSizesForCatItem(cat, item);
+            plSizeF.innerHTML = '<option value="All">All Sizes</option>' + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
+        }
+        refreshPlItemOptions('All');
+        refreshPlSizeOptions('All', 'All');
+        if (plCat) {
+            plCat.addEventListener('change', () => {
+                refreshPlItemOptions(plCat.value);
+                refreshPlSizeOptions(plCat.value, 'All');
+            });
+        }
+        if (plItemF) {
+            plItemF.addEventListener('change', () => {
+                refreshPlSizeOptions(plCat ? plCat.value : 'All', plItemF.value);
+            });
+        }
     }
 }
 
@@ -1281,7 +1474,7 @@ function renderTablePagination(total, current, pageSize, infoId, btnPrevId, btnN
 async function renderBomTable() {
     let tbody = document.querySelector('#bomTable tbody');
     if(!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
 
     const search  = (document.getElementById('bomIsoSearch')?.value || '').trim();
     const sys     = document.getElementById('bomSystemFilter')?.value || 'All';
@@ -1292,18 +1485,19 @@ async function renderBomTable() {
     // Item명 → MatCode prefix 역매핑 (extractItemFromMatCode와 동일 기준)
     const ITEM_PREFIX_MAP = {
         'PIPE':['PIS','PIW'], 'NIPPLE':['PIN'],
-        'ELBOW':['EL9L','EL4L','ELS','ELB'],
+        'ELBOW 90D':['EL9L','EL9S'], 'ELBOW 45D':['EL4L','ELS','ELB'],
         'FLANGE':['FLN','FLB','FLS','FLO','FLR'],
         'TEE':['TEE'], 'TEE-RED':['TER'],
         'RED-CON':['RDC'], 'RED-ECC':['RDE'],
         'CAP':['CAP'],
-        'COUPLING':['CPH','CPU'],
-        'SWAGE':['SWC','SWE'],
+        'COUPLING-FULL':['CPF'], 'COUPLING-HALF':['CPH'], 'COUPLING':['CPU'],
+        'SWAGE-CON':['SWC','SCN'], 'SWAGE-ECC':['SWE'],
         'WELDOLET':['WOL'], 'SOCKOLET':['SOL'], 'THREADOLET':['TOL'],
+        'NOZZLE':['NOZ'],
         'GATE VALVE':['GTV'], 'GLOBE VALVE':['GLV'], 'CHECK VALVE':['CHV'],
         'BUTTERFLY VALVE':['BFV'], 'BALL VALVE':['BAV'], 'PLUG VALVE':['PLV'],
         'SAFETY VALVE':['PSV','PRV'], 'VALVE':['GTV','GLV','CHV','BFV','BAV','PLV','PSV','PRV'],
-        'GASKET':['GSKT','GSK'], 'STUD':['STD'], 'NUT':['NUT'], 'BOLT':['BOL'],
+        'GASKET':['GSKT','GSK'], 'STUD BOLT':['STB'], 'NUT':['NUT'], 'BOLT':['BOL'],
         'UNION':['UNI'], 'PLUG':['PLG'], 'BUSHING':['BUS'],
     };
 
@@ -1382,18 +1576,17 @@ async function renderBomTable() {
         }
         const item = window.extractItemFromDesc(desc);
         return `<tr>
-            <td style="text-align:center;"><span class="status-badge ${badgeClass}">${b.mat_code || '-'}</span></td>
-            <td style="text-align:center;"><strong>${displayCat}</strong></td>
-            <td style="text-align:center;">${b.system || '-'}</td>
-            <td style="text-align:center;">${b.iso_dwg_no || '-'}</td>
-            <td style="text-align:center;">${b.line_no || '-'}</td>
-            <td style="text-align:center;" title="${desc}">${desc.length > 50 ? desc.substring(0,47)+'...' : desc}</td>
-            <td style="text-align:center;">${b.tag || '-'}</td>
-            <td style="text-align:center;font-weight:600;">${item}</td>
-            <td style="text-align:center;font-weight:600;">${size}</td>
-            <td style="text-align:center;">${b.uom || 'EA'}</td>
-            <td style="text-align:center;">${parseFloat(b.qty || 0).toFixed(2)}</td>
-            <td></td>
+            <td style="text-align:center;white-space:nowrap;"><span class="status-badge ${badgeClass}">${b.mat_code || '-'}</span></td>
+            <td style="text-align:center;white-space:nowrap;"><strong>${displayCat}</strong></td>
+            <td style="text-align:center;white-space:nowrap;">${b.system || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${b.iso_dwg_no || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${b.line_no || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${b.tag || '-'}</td>
+            <td style="text-align:center;font-weight:600;white-space:nowrap;">${item}</td>
+            <td style="text-align:center;font-weight:600;white-space:nowrap;">${size}</td>
+            <td title="${desc}">${desc.length > 55 ? desc.substring(0, 52) + '...' : desc}</td>
+            <td style="text-align:center;white-space:nowrap;">${b.uom || 'EA'}</td>
+            <td style="text-align:center;white-space:nowrap;">${parseFloat(b.qty || 0).toFixed(2)}</td>
         </tr>`;
     }).join('');
 
@@ -1416,44 +1609,67 @@ function renderReceivingTable() {
     const search = (document.getElementById('plItemSearch')?.value || '').trim().toUpperCase();
     const doc    = document.getElementById('plDocFilter')?.value  || 'All';
     const pkg    = document.getElementById('plPkgFilter')?.value  || 'All';
+    const sys    = document.getElementById('plSystemFilter')?.value || 'All';
     const cat    = document.getElementById('plCategoryFilter')?.value || 'All';
     const itemF  = document.getElementById('plItemFilter')?.value || 'All';
     const sizeF  = document.getElementById('plSizeFilter')?.value || 'All';
-    const typeF  = (document.getElementById('plTypeFilter')?.value || '').trim();
+
+    // System 필터용 matCode → systems 역색인 (db.bom 기반)
+    const matCodeSysMap = {};
+    if (sys !== 'All') {
+        db.bom.forEach(b => {
+            if (!matCodeSysMap[b.matCode]) matCodeSysMap[b.matCode] = new Set();
+            matCodeSysMap[b.matCode].add(b.system);
+        });
+    }
 
     let data = db.receiving.filter(r => {
         if (!isReceivingActive(r.plNo)) return false;
         const matchSearch = !search || r.matCode.toUpperCase().includes(search) || r.plNo.toUpperCase().includes(search) || (r.category||'').toUpperCase().includes(search) || r.desc.toUpperCase().includes(search);
         const matchDoc  = doc  === 'All' || r.docNo    === doc;
         const matchPkg  = pkg  === 'All' || r.plNo     === pkg;
+        const matchSys  = sys  === 'All' || (matCodeSysMap[r.matCode] && matCodeSysMap[r.matCode].has(sys));
         const matchCat  = cat  === 'All' || r.category === cat;
-        const matchItemF = itemF === 'All' || window.extractItemFromMatCode(r.matCode) === itemF;
-        const matchSizeF = sizeF === 'All' || window.extractSizeFromMatCode(r.matCode) === sizeF;
-        const et = (r.matCode || '').split('-').pop().toUpperCase();
-        const ftype = (window.extractItemFromMatCode(r.matCode) === 'FLANGE' && (et === 'FF' || et === 'RF')) ? 'WN' + et : '-';
-        const matchType = !typeF || ftype === typeF;
-        return matchSearch && matchDoc && matchPkg && matchCat && matchItemF && matchSizeF && matchType;
+        const _tagInfo = db.bomTagMap[(r.tag || '').toUpperCase()];
+        const effMat = r.matCode || (_tagInfo ? _tagInfo.matCode : '');
+        const _bomDesc = _tagInfo ? _tagInfo.fullDescription : '';
+        const _mcItem = window.extractItemFromMatCode(effMat);
+        const _rawItem = (_mcItem && _mcItem !== '-') ? _mcItem : window.extractItemFromDesc(_bomDesc || r.desc);
+        const itemFromMat = (r.plNo || '').toUpperCase().includes('BYPS') ? 'BYPASS VALVE' : _rawItem;
+        const matchItemF = itemF === 'All' || itemFromMat === itemF ||
+            (itemFromMat === '-' && window.extractItemFromDesc(r.desc) === itemF);
+        const matchSizeF = sizeF === 'All' || window.extractSizeFromMatCode(effMat) === sizeF;
+        return matchSearch && matchDoc && matchPkg && matchSys && matchCat && matchItemF && matchSizeF;
     }).sort((a, b) => a.docNo.localeCompare(b.docNo) || a.plNo.localeCompare(b.plNo));
-    
-    let slicedPl = data.slice(currentPlPage * PAGE_SIZE, (currentPlPage + 1) * PAGE_SIZE); 
-    
+
+    let slicedPl = data.slice(currentPlPage * PAGE_SIZE, (currentPlPage + 1) * PAGE_SIZE);
+
     slicedPl.forEach(r => {
-        let displayCat = window.getCategory(r.desc, r.matCode);
+        const tagInfo = db.bomTagMap[(r.tag || '').toUpperCase()];
+        const effMat = r.matCode || (tagInfo ? tagInfo.matCode : '');
+        const bomFullDesc = tagInfo ? tagInfo.fullDescription : '';
+        let displayCat = window.getCategory(r.desc, effMat);
         if (!displayCat || displayCat === 'Others') {
             displayCat = r.category || 'Others';
         }
-        
+
         let catForBadge = displayCat;
         if (!['Pipe', 'Fitting', 'Support', 'Valve', 'Speciality', 'Others'].includes(catForBadge)) {
-            catForBadge = 'Valve'; // Tag items are valves
+            catForBadge = 'Valve';
         }
 
         const catBadge = getCatBadge(catForBadge);
         const descDisplay = (r.desc || '').replace(/_/g, '-');
 
-        const size = window.extractSizeFromMatCode(r.matCode);
-        const item = window.extractItemFromMatCode(r.matCode);
-        const etPart = (r.matCode || '').split('-').pop().toUpperCase();
+        const _sizeFromMat = window.extractSizeFromMatCode(effMat);
+        const _sizeDesc = bomFullDesc || r.desc;
+        const size = (_sizeFromMat && _sizeFromMat !== '-')
+            ? _sizeFromMat
+            : (_sizeDesc.match(/(\d+(?:\.\d+)?"\s*[Xx×]\s*\d+(?:\.\d+)?"|DN\s*\d+)/i) || [])[0] || '-';
+        const _mcItemR = window.extractItemFromMatCode(effMat);
+        const _rawItemR = (_mcItemR && _mcItemR !== '-') ? _mcItemR : window.extractItemFromDesc(bomFullDesc || r.desc);
+        const item = (r.plNo || '').toUpperCase().includes('BYPS') ? 'BYPASS VALVE' : _rawItemR;
+        const etPart = (effMat || '').split('-').pop().toUpperCase();
         const flangeType = (item === 'FLANGE' && (etPart === 'FF' || etPart === 'RF'))
             ? 'WN' + etPart : '-';
         const purposeOpts = PURPOSE_OPTS.map(v =>
@@ -1463,17 +1679,17 @@ function renderReceivingTable() {
             style="width:100%;border:1px solid #dde3ee;border-radius:4px;padding:3px 6px;font-size:13px;background:#fff;color:#0A2540;text-align:center;">
             ${purposeOpts}</select>`;
         let tr = `<tr>
-            <td>${r.docNo}</td>
-            <td>${r.plNo}</td>
-            <td><span class="status-badge ok">${r.matCode}</span></td>
-            <td><span class="status-badge ${catBadge}">${displayCat}</span></td>
-            <td>${descDisplay}</td>
-            <td style="text-align:center;white-space:nowrap;">${r.tag || '-'}</td>
+            <td style="white-space:nowrap;">${r.docNo}</td>
+            <td style="white-space:nowrap;">${r.plNo}</td>
+            <td style="white-space:nowrap;"><span class="status-badge ${r.matCode ? 'ok' : (tagInfo ? 'warn' : '')}">${effMat || (tagInfo ? '(BOM)' : '-')}</span></td>
+            <td style="white-space:nowrap;"><span class="status-badge ${catBadge}">${displayCat}</span></td>
+            <td style="text-align:center;">${r.tag || '-'}</td>
             <td style="font-weight:600;">${item}</td>
-            <td style="text-align:center;font-weight:600;color:${flangeType!=='-'?'#1565c0':'#aaa'};">${flangeType}</td>
-            <td style="font-weight:600;">${size}</td>
-            <td>${r.unit || 'EA'}</td>
-            <td>${r.qty.toFixed(2)}</td>
+            <td style="text-align:center;font-weight:600;white-space:nowrap;color:${flangeType!=='-'?'#1565c0':'#aaa'};">${flangeType}</td>
+            <td style="font-weight:600;white-space:nowrap;">${size}</td>
+            <td title="${descDisplay}">${descDisplay.length > 55 ? descDisplay.substring(0, 52) + '...' : descDisplay}</td>
+            <td style="white-space:nowrap;text-align:center;">${r.unit || 'EA'}</td>
+            <td style="white-space:nowrap;text-align:center;">${r.qty.toFixed(2)}</td>
             <td style="padding:3px;">${purposeSel}</td>
         </tr>`;
         tbody.innerHTML += tr;
@@ -2030,7 +2246,10 @@ function attachEventListeners() {
             const bomSystemFilter = document.getElementById('bomSystemFilter');
             if (bomSystemFilter) bomSystemFilter.value = 'All';
             const bomCategoryFilter = document.getElementById('bomCategoryFilter');
-            if (bomCategoryFilter) bomCategoryFilter.value = 'All';
+            if (bomCategoryFilter) {
+                bomCategoryFilter.value = 'All';
+                bomCategoryFilter.dispatchEvent(new Event('change'));
+            }
             const bomItemFilter = document.getElementById('bomItemFilter');
             if (bomItemFilter) bomItemFilter.value = 'All';
             const bomSizeFilter = document.getElementById('bomSizeFilter');
@@ -2100,13 +2319,6 @@ function attachEventListeners() {
     const btnFilterPl = document.getElementById('btnFilterPl');
     if(btnFilterPl) {
         btnFilterPl.addEventListener('click', () => {
-            const item = document.getElementById('plItemSearch').value.trim().toUpperCase();
-            const doc = document.getElementById('plDocFilter').value;
-            const pkg = document.getElementById('plPkgFilter').value;
-            const cat = document.getElementById('plCategoryFilter')?.value || 'All';
-            const itemF = document.getElementById('plItemFilter')?.value || 'All';
-            const sizeF = document.getElementById('plSizeFilter')?.value || 'All';
-
             currentPlPage = 0;
             renderReceivingTable();
         });
@@ -2139,16 +2351,28 @@ function attachEventListeners() {
     const btnExportPl = document.getElementById('btnExportPl');
     if (btnExportPl) {
         btnExportPl.addEventListener('click', () => {
-            const item = (document.getElementById('plItemSearch')?.value || '').trim().toUpperCase();
-            const doc  = document.getElementById('plDocFilter')?.value || 'All';
-            const pkg  = document.getElementById('plPkgFilter')?.value || 'All';
-            const cat  = document.getElementById('plCategoryFilter')?.value || 'All';
+            const item  = (document.getElementById('plItemSearch')?.value || '').trim().toUpperCase();
+            const doc   = document.getElementById('plDocFilter')?.value || 'All';
+            const pkg   = document.getElementById('plPkgFilter')?.value || 'All';
+            const sys   = document.getElementById('plSystemFilter')?.value || 'All';
+            const cat   = document.getElementById('plCategoryFilter')?.value || 'All';
+            const itemF = document.getElementById('plItemFilter')?.value || 'All';
+            const sizeF = document.getElementById('plSizeFilter')?.value || 'All';
 
-            let data = db.receiving;
-            if (doc  !== 'All') data = data.filter(r => r.docNo    === doc);
-            if (pkg  !== 'All') data = data.filter(r => r.plNo     === pkg);
-            if (cat  !== 'All') data = data.filter(r => r.category === cat);
-            if (item)           data = data.filter(r => r.desc.toUpperCase().includes(item));
+            const matCodeSysMap = {};
+            if (sys !== 'All') db.bom.forEach(b => {
+                if (!matCodeSysMap[b.matCode]) matCodeSysMap[b.matCode] = new Set();
+                matCodeSysMap[b.matCode].add(b.system);
+            });
+
+            let data = db.receiving.filter(r => isReceivingActive(r.plNo));
+            if (doc   !== 'All') data = data.filter(r => r.docNo === doc);
+            if (pkg   !== 'All') data = data.filter(r => r.plNo  === pkg);
+            if (sys   !== 'All') data = data.filter(r => matCodeSysMap[r.matCode]?.has(sys));
+            if (cat   !== 'All') data = data.filter(r => r.category === cat);
+            if (itemF !== 'All') data = data.filter(r => window.extractItemFromMatCode(r.matCode) === itemF);
+            if (sizeF !== 'All') data = data.filter(r => window.extractSizeFromMatCode(r.matCode) === sizeF);
+            if (item)            data = data.filter(r => r.desc.toUpperCase().includes(item));
 
             const rows = data.map(r => ({
                 'DOC NO':           r.docNo    || '-',
@@ -2250,10 +2474,45 @@ function attachEventListeners() {
     
     const btnFilterIssue = document.getElementById('btnFilterIssue');
     if (btnFilterIssue) {
+        // Item/Size 드롭박스 동적 갱신 (Receiving 탭과 동일한 원리)
+        function issueGetItemsForCat(cat) {
+            const src = cat === 'All' ? db.bom : db.bom.filter(b => window.getCategory('', b.matCode) === cat);
+            const set = new Set(src.map(b => window.extractItemFromMatCode(b.matCode)).filter(v => v && v !== '-'));
+            if (cat === 'All' || cat === 'Valve') { set.add('BYPASS VALVE'); set.add('CONTROL VALVE'); set.add('SAFETY VALVE'); }
+            return [...set].sort();
+        }
+        function issueGetSizesForItem(cat, item) {
+            let src = cat === 'All' ? db.bom : db.bom.filter(b => window.getCategory('', b.matCode) === cat);
+            if (item !== 'All') src = src.filter(b => window.extractItemFromMatCode(b.matCode) === item);
+            return [...new Set(src.map(b => window.extractSizeFromMatCode(b.matCode)).filter(v => v && v !== '-'))].sort((a, b) => parseFloat(a) - parseFloat(b));
+        }
+        function refreshIssueItemOptions(cat) {
+            const el = document.getElementById('issueItemFilter');
+            if (!el) return;
+            const items = issueGetItemsForCat(cat);
+            el.innerHTML = '<option value="All">All Items</option>' + items.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
+            refreshIssueSizeOptions(cat, 'All');
+        }
+        function refreshIssueSizeOptions(cat, item) {
+            const el = document.getElementById('issueSizeFilter');
+            if (!el) return;
+            const sizes = issueGetSizesForItem(cat, item);
+            el.innerHTML = '<option value="All">All Sizes</option>' + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
+        }
+        document.getElementById('issueCategoryFilter')?.addEventListener('change', function() {
+            refreshIssueItemOptions(this.value);
+        });
+        document.getElementById('issueItemFilter')?.addEventListener('change', function() {
+            const cat = document.getElementById('issueCategoryFilter')?.value || 'All';
+            refreshIssueSizeOptions(cat, this.value);
+        });
+
         btnFilterIssue.addEventListener('click', async () => {
             let sys = document.getElementById('issueSystemFilter')?.value || 'All';
             let iso = (document.getElementById('issueIsoSearch')?.value || '').trim();
             let categoryFilter = document.getElementById('issueCategoryFilter')?.value || 'All';
+            let itemFilter = document.getElementById('issueItemFilter')?.value || 'All';
+            let sizeFilter = document.getElementById('issueSizeFilter')?.value || 'All';
 
             let tbody = document.querySelector('#issueTable tbody');
             tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:16px;color:#888;">Loading...</td></tr>';
@@ -2304,6 +2563,19 @@ function attachEventListeners() {
 
                 // Apply category filter
                 if (categoryFilter !== 'All' && category !== categoryFilter) return;
+
+                // Apply item filter
+                if (itemFilter !== 'All') {
+                    const itemFromMat = window.extractItemFromMatCode(mat);
+                    const item = (itemFromMat && itemFromMat !== '-') ? itemFromMat : window.extractItemFromDesc(b.full_description || '');
+                    if (item !== itemFilter) return;
+                }
+
+                // Apply size filter
+                if (sizeFilter !== 'All') {
+                    const size = window.extractSizeFromMatCode(mat);
+                    if (size !== sizeFilter) return;
+                }
 
                 let totalRec = recMap[mat] || 0;
                 let totalIss = issMap[mat] || 0;
@@ -3165,14 +3437,14 @@ function getShippingFiltered() {
             }
             if (customF) {
                 const cc = (mergeRow(r).custom_clear || '').trim();
-                if (cc !== customF) return false;
+                if (customF === '__none__' ? cc !== '' : cc !== customF) return false;
             }
             // KPI 카드 클릭 필터
             if (_shippingKpiFilter && _shippingKpiFilter !== 'all') {
                 const m = mergeRow(r);
                 const st = m.status || '';
                 const cc = m.custom_clear || '';
-                if (_shippingKpiFilter === 'shipping' && st !== 'Shipping')  return false;
+                if (_shippingKpiFilter === 'shipping' && st !== 'Preparing' && st !== 'Shipping') return false;
                 if (_shippingKpiFilter === 'onsite'   && st !== 'On-Site')   return false;
                 if (_shippingKpiFilter === 'cleared'  && cc !== 'Cleared')   return false;
                 if (_shippingKpiFilter === 'pending'  && cc !== 'Pending') return false;
@@ -3221,23 +3493,26 @@ function renderShippingKpi() {
     const allMerged  = (_shippingData || []).map(mergeRow);
     const total      = allMerged.length;
     const plCount    = new Set(allMerged.map(r => r.packing)).size;
-    const shippingRows = allMerged.filter(r => r.status === 'Shipping');
-    const onsiteRows   = allMerged.filter(r => r.status === 'On-Site');
-    const clearedRows  = allMerged.filter(r => r.custom_clear === 'Cleared');
-    const issuedRows   = allMerged.filter(r => r.issue_date);
-    const pendingRows  = allMerged.filter(r => r.custom_clear === 'Pending');
-    document.getElementById('sc_pl_count').textContent     = plCount.toLocaleString();
-    document.getElementById('sc_total').textContent        = total.toLocaleString();
-    document.getElementById('sc_shipping_pl').textContent  = new Set(shippingRows.map(r => r.packing)).size.toLocaleString();
-    document.getElementById('sc_shipping').textContent     = shippingRows.length.toLocaleString();
+    const shippingRows  = allMerged.filter(r => r.status === 'Preparing' || r.status === 'Shipping');
+    const onsiteRows    = allMerged.filter(r => r.status === 'On-Site');
+    const clearedRows   = allMerged.filter(r => r.custom_clear === 'Cleared');
+    const issuedRows    = allMerged.filter(r => r.issue_date);
+    const pendingRows   = allMerged.filter(r => r.custom_clear === 'Pending');
+    document.getElementById('sc_pl_count').textContent      = plCount.toLocaleString();
+    document.getElementById('sc_total').textContent         = total.toLocaleString();
+    document.getElementById('sc_shipping_pl').textContent   = new Set(shippingRows.map(r => r.packing)).size.toLocaleString();
+    document.getElementById('sc_shipping').textContent      = shippingRows.length.toLocaleString();
     document.getElementById('sc_onsite_pl').textContent    = new Set(onsiteRows.map(r => r.packing)).size.toLocaleString();
     document.getElementById('sc_onsite').textContent       = onsiteRows.length.toLocaleString();
     document.getElementById('sc_cleared_pl').textContent   = new Set(clearedRows.map(r => r.packing)).size.toLocaleString();
     document.getElementById('sc_cleared').textContent      = clearedRows.length.toLocaleString();
-    document.getElementById('sc_issued_pl').textContent    = new Set(issuedRows.map(r => r.packing)).size.toLocaleString();
+    const issuedPlCount = new Set(issuedRows.map(r => r.packing)).size;
+    document.getElementById('sc_issued_pl').textContent    = issuedPlCount.toLocaleString();
     document.getElementById('sc_issued').textContent       = issuedRows.length.toLocaleString();
     document.getElementById('sc_pending_pl').textContent   = new Set(pendingRows.map(r => r.packing)).size.toLocaleString();
     document.getElementById('sc_pending').textContent      = pendingRows.length.toLocaleString();
+    document.getElementById('sc_remaining_pl').textContent = (plCount - issuedPlCount).toLocaleString();
+    document.getElementById('sc_remaining').textContent    = (total - issuedRows.length).toLocaleString();
     document.getElementById('shippingTotalBadge').textContent = `${total.toLocaleString()} packages`;
 }
 
@@ -3293,9 +3568,7 @@ function renderShippingTable(rows) {
         const statusCell = newPkg
             ? `<td style="text-align:center;padding:3px;"><select style="${PL_INPUT_CSS}" data-pkg="${pkg}" data-field="status" data-packing="${r.packing}">${statusOpts}</select></td>`
             : `<td style="${roStyle}">${r.status || '—'}</td>`;
-        const onSiteCell = newPkg
-            ? `<td style="text-align:center;padding:3px;"><input type="text" class="pl-datepicker" style="${PL_INPUT_CSS}" data-pkg="${pkg}" data-field="on_site" data-packing="${r.packing}" value="${r.on_site}" placeholder="YYYY-MM-DD"></td>`
-            : `<td style="${roStyle}">${r.on_site || '—'}</td>`;
+        const onSiteCell = `<td style="text-align:center;padding:3px;"><input type="text" class="pl-datepicker" style="${PL_INPUT_CSS}cursor:pointer;text-align:right;" data-pkg="${pkg}" data-field="on_site" data-packing="${r.packing}" value="${r.on_site}" placeholder="📅"></td>`;
         const clearOpts = ['', 'Pending', 'Cleared'].map(v =>
             `<option value="${v}"${r.custom_clear === v ? ' selected' : ''}>${v || '—'}</option>`
         ).join('');
@@ -3319,10 +3592,10 @@ function renderShippingTable(rows) {
             ${onSiteCell}
             ${customClearCell}
             <td style="text-align:center;padding:3px;">
-                <input type="text" class="pl-datepicker" style="${PL_INPUT_CSS}" data-pkg="${pkg}" data-field="request_date" value="${r.request_date}" placeholder="YYYY-MM-DD">
+                <input type="text" class="pl-datepicker" style="${PL_INPUT_CSS}cursor:pointer;text-align:right;" data-pkg="${pkg}" data-field="request_date" value="${r.request_date}" placeholder="📅">
             </td>
             <td style="text-align:center;padding:3px;">
-                <input type="text" class="pl-datepicker" style="${PL_INPUT_CSS}" data-pkg="${pkg}" data-field="issue_date" value="${r.issue_date}" placeholder="YYYY-MM-DD">
+                <input type="text" class="pl-datepicker" style="${PL_INPUT_CSS}cursor:pointer;text-align:right;" data-pkg="${pkg}" data-field="issue_date" value="${r.issue_date}" placeholder="📅">
             </td>
             ${purposeCell}
             <td style="padding:3px;">
@@ -3332,9 +3605,11 @@ function renderShippingTable(rows) {
     }).join('');
 
     document.querySelectorAll('#shippingTbody .pl-datepicker').forEach(el => {
+        if (el._flatpickr) el._flatpickr.destroy();
         flatpickr(el, {
             dateFormat: 'Y-m-d',
-            allowInput: true,
+            allowInput: false,
+            disableMobile: true,
             locale: { firstDayOfWeek: 1 },
             onChange: (_dates, dateStr, instance) => {
                 instance.element.dispatchEvent(new Event('change', { bubbles: true }));
@@ -3529,6 +3804,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             document.getElementById('plSaveStatus').style.color = '#e65100';
             document.getElementById('plSaveStatus').textContent = 'Unsaved changes.';
+            renderShippingKpi();
         });
         tbody.addEventListener('input', e => {
             const el = e.target;

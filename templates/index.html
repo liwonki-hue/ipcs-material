@@ -46,7 +46,7 @@
                  <div class="section-title">Operations</div>
                  <div class="nav-item" data-target="receiving"><i class="fas fa-truck"></i> Material Receiving</div>
                  <div class="nav-item" data-target="spool_receiving"><i class="fas fa-boxes"></i> Spool Receiving</div>
-                 <div class="nav-item" data-target="issue"><i class="fas fa-file-signature"></i> Material Requisition</div>
+                 <div class="nav-item" data-target="issue"><i class="fas fa-file-signature"></i> Material Finding</div>
                  <div class="nav-item" data-target="mr_history"><i class="fas fa-history"></i> MR History</div>
 
                  <div class="section-title">Reports</div>
@@ -116,7 +116,7 @@
                      <div class="guide-card" style="grid-column:1/-1;">
                          <div class="guide-card-num">5</div>
                          <div class="guide-card-icon"><i class="fas fa-file-signature"></i></div>
-                         <div class="guide-card-title">Material Requisition (MR)</div>
+                         <div class="guide-card-title">Material Finding (MR)</div>
                          <div class="guide-card-body">
                              Issue materials to a specific ISO Drawing in three steps:
                              <ol style="margin:10px 0 0 18px; padding:0; line-height:2.2;">
@@ -487,13 +487,12 @@
                                      <th style="text-align:center;">System</th>
                                      <th style="text-align:center;">ISO Drawing</th>
                                      <th style="text-align:center;">Line No.</th>
-                                     <th style="text-align:center;">Description</th>
                                      <th style="text-align:center;">Tag No.</th>
                                      <th style="text-align:center;">Item</th>
                                      <th style="text-align:center;">Size</th>
+                                     <th style="text-align:center;min-width:220px;">Description</th>
                                      <th style="text-align:center;">Unit</th>
                                      <th style="text-align:center;">Design Qty</th>
-                                     <th style="text-align:center;">Action</th>
                                  </tr>
                              </thead>
                              <tbody></tbody>
@@ -523,38 +522,45 @@
                  </div>
                  
                  <div class="panel filter-panel" style="margin-bottom: 20px;">
-                      <div style="display: flex; align-items: flex-end; justify-content: space-between; width: 100%;">
+                      <div style="display: flex; align-items: flex-end; justify-content: space-between; width: 100%; gap: 10px; flex-wrap: nowrap;">
                           <!-- Left: filters + search -->
-                          <div style="display: flex; align-items: flex-end; gap: 12px; width: 65%;">
-                              <div class="form-group" style="flex: 2;">
+                          <div style="display: flex; align-items: flex-end; gap: 10px; flex: 1; min-width: 0;">
+                              <div class="form-group" style="flex: 2; min-width: 0; margin-bottom: 0;">
                                   <label>Search Item</label>
                                   <input type="text" id="plItemSearch" class="form-control" style="width: 100%;" placeholder="Search by Item name...">
                               </div>
-                              <div class="form-group" style="flex: 1;">
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
                                   <label>PKG</label>
                                   <select id="plDocFilter" class="form-control" style="width: 100%;"><option value="All">All DOCs</option></select>
                               </div>
-                              <div class="form-group" style="flex: 1;">
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
                                   <label>PKG NO</label>
                                   <select id="plPkgFilter" class="form-control" style="width: 100%;"><option value="All">All PKGs</option></select>
                               </div>
-                              <div class="form-group" style="flex: 1;">
-                                  <label>Category</label>
-                                  <select id="plCategoryFilter" class="form-control" style="width: 100%;"><option value="All">All Categories</option></select>
+                              <div class="form-group" style="flex: 1; min-width: 0;">
+                                  <label>System</label>
+                                  <select id="plSystemFilter" class="form-control" style="width: 100%;"><option value="All">All Systems</option></select>
                               </div>
-                              <div class="form-group" style="flex: 1;">
+                              <div class="form-group" style="flex: 1; min-width: 0;">
+                                  <label>Category</label>
+                                  <select id="plCategoryFilter" class="form-control" style="width: 100%;">
+                                      <option value="All">All Categories</option>
+                                      <option value="Pipe">Pipe</option>
+                                      <option value="Fitting">Fitting</option>
+                                      <option value="Valve">Valve</option>
+                                      <option value="Others">Others</option>
+                                      <option value="Speciality">Speciality</option>
+                                  </select>
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0;">
                                   <label>Item</label>
                                   <select id="plItemFilter" class="form-control" style="width: 100%;"><option value="All">All Items</option></select>
                               </div>
-                              <div class="form-group" style="flex: 1;">
-                                  <label>Type</label>
-                                  <select id="plTypeFilter" class="form-control" style="width: 100%;"><option value="">All Types</option></select>
-                              </div>
-                              <div class="form-group" style="flex: 1;">
+                              <div class="form-group" style="flex: 1; min-width: 0;">
                                   <label>Size</label>
                                   <select id="plSizeFilter" class="form-control" style="width: 100%;"><option value="All">All Sizes</option></select>
                               </div>
-                              <div style="padding-bottom: 1px;">
+                              <div style="padding-bottom: 1px; flex-shrink: 0;">
                                   <button class="btn btn-primary" id="btnFilterPl" style="height: 38px; white-space: nowrap; display: flex; align-items: center; gap: 8px;"><i class="fas fa-search"></i> Search PL</button>
                               </div>
                           </div>
@@ -578,16 +584,16 @@
                                      <tr>
                                          <th>PKG</th>
                                          <th>PKG NO</th>
-                                         <th>MatCode</th>
-                                         <th>Category</th>
-                                         <th>Full Description</th>
-                                         <th>TAG NO</th>
-                                         <th>Item</th>
-                                         <th>Type</th>
-                                         <th>Size</th>
+                                         <th style="width:130px;">MatCode</th>
+                                         <th style="width:60px;">Category</th>
+                                         <th style="width:80px;">TAG NO</th>
+                                         <th style="width:70px;">Item</th>
+                                         <th style="width:20px;">Type</th>
+                                         <th style="width:50px;">Size</th>
+                                         <th style="min-width:460px;">Full Description</th>
                                          <th>Unit</th>
                                          <th>Qty</th>
-                                         <th>Purpose</th>
+                                         <th style="min-width:110px;">Purpose</th>
                                      </tr>
                                  </thead>
                                  <tbody>
@@ -640,7 +646,7 @@
             <section id="issue" class="view-section">
                 <div class="page-header">
                      <div>
-                         <h1>Material Requisition</h1>
+                         <h1>Material Finding</h1>
                          <p class="subtitle">Search ISO Drawing -> Add to MR Table -> Generate Slip.</p>
                      </div>
                  </div>
@@ -667,6 +673,18 @@
                                  <option value="Valve">Valve</option>
                                  <option value="Speciality">Speciality</option>
                                  <option value="Others">Others</option>
+                             </select>
+                         </div>
+                         <div class="form-group" style="flex: 1;">
+                             <label>Item</label>
+                             <select id="issueItemFilter" class="form-control" style="width: 100%;">
+                                 <option value="All">All Items</option>
+                             </select>
+                         </div>
+                         <div class="form-group" style="flex: 1;">
+                             <label>Size</label>
+                             <select id="issueSizeFilter" class="form-control" style="width: 100%;">
+                                 <option value="All">All Sizes</option>
                              </select>
                          </div>
                          <div class="form-group" style="flex: 0 0 160px;">
@@ -798,7 +816,21 @@
                          <span id="stockCountLabel" style="font-size:13px; color:#666;"></span>
                      </div>
                      <div class="table-responsive">
-                         <table class="data-table" id="stockTable">
+                         <table class="data-table" id="stockTable" style="table-layout:fixed;width:100%;">
+                             <colgroup>
+                                 <col style="width:110px;">
+                                 <col style="width:175px;">
+                                 <col style="width:165px;">
+                                 <col style="width:85px;">
+                                 <col>
+                                 <col style="width:120px;">
+                                 <col style="width:70px;">
+                                 <col style="width:55px;">
+                                 <col style="width:80px;">
+                                 <col style="width:75px;">
+                                 <col style="width:80px;">
+                                 <col style="width:90px;">
+                             </colgroup>
                              <thead>
                                  <tr>
                                      <th>PKG</th>
@@ -809,9 +841,9 @@
                                      <th>Item</th>
                                      <th>Size</th>
                                      <th>Unit</th>
-                                     <th>Total Received</th>
-                                     <th>Total Issued</th>
-                                     <th>Stock (Balance)</th>
+                                     <th style="white-space:normal;text-align:center;">Total<br>Received</th>
+                                     <th style="white-space:normal;text-align:center;">Total<br>Issued</th>
+                                     <th style="white-space:normal;text-align:center;">Stock<br>(Balance)</th>
                                      <th>Status</th>
                                  </tr>
                              </thead>
@@ -833,29 +865,30 @@
 
                 <div class="panel filter-panel" style="margin-bottom: 20px;">
                     <div style="display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap;">
-                        <div class="form-group" style="flex: 0 0 260px;">
+                        <div class="form-group" style="flex: 0 0 410px;">
                             <label>Search</label>
                             <input type="text" id="shortSearch" class="form-control" placeholder="MatCode / Description / Item / Size" style="width:100%;">
                         </div>
                         <div class="form-group">
                             <label>Category</label>
-                            <select id="shortCatFilter" class="form-control" style="width: 130px;">
+                            <select id="shortCatFilter" class="form-control" style="width: 280px;">
                                 <option value="ALL">All Categories</option>
                                 <option value="Pipe">Pipe</option>
                                 <option value="Fitting">Fitting</option>
                                 <option value="Others">Others</option>
                                 <option value="Valve">Valve</option>
+                                <option value="Speciality">Speciality</option>
                             </select>
                         </div>
                         <div class="form-group">
                             <label>Item</label>
-                            <select id="shortItemFilter" class="form-control" style="width: 130px;">
+                            <select id="shortItemFilter" class="form-control" style="width: 230px;">
                                 <option value="ALL">All Items</option>
                             </select>
                         </div>
                         <div class="form-group">
                             <label>Size</label>
-                            <select id="shortSizeFilter" class="form-control" style="width: 110px;">
+                            <select id="shortSizeFilter" class="form-control" style="width: 210px;">
                                 <option value="ALL">All Sizes</option>
                             </select>
                         </div>
@@ -863,7 +896,7 @@
                             <button class="btn btn-primary" onclick="_shortagePage=1;renderShortageTable();" style="height: 38px; display: flex; align-items: center; gap: 8px;">
                                 <i class="fas fa-search"></i> Search
                             </button>
-                            <button class="btn btn-outline" onclick="['shortSearch','shortCatFilter','shortItemFilter','shortSizeFilter'].forEach(function(id){var el=document.getElementById(id);if(el)el.value=el.tagName==='SELECT'?'ALL':''});_shortagePage=1;renderShortageTable();" style="height: 38px;">
+                            <button class="btn btn-outline" onclick="(function(){var cat=document.getElementById('shortCatFilter');var si=document.getElementById('shortSearch');if(si)si.value='';if(cat){cat.value='ALL';cat.dispatchEvent(new Event('change'));}var ii=document.getElementById('shortItemFilter');var sz=document.getElementById('shortSizeFilter');if(ii)ii.value='ALL';if(sz)sz.value='ALL';_shortagePage=1;renderShortageTable();})()" style="height: 38px;">
                                 Reset
                             </button>
                         </div>
@@ -878,15 +911,15 @@
                     <div class="table-responsive">
                         <table class="data-table" id="shortageTable" style="table-layout:fixed;width:100%;">
                             <colgroup>
-                                <col style="width:120px;">
+                                <col style="width:190px;">
                                 <col style="width:250px;">
                                 <col>
-                                <col style="width:175px;">
-                                <col style="width:115px;">
-                                <col style="width:80px;">
-                                <col style="width:120px;">
-                                <col style="width:130px;">
-                                <col style="width:130px;">
+                                <col style="width:305px;">
+                                <col style="width:145px;">
+                                <col style="width:110px;">
+                                <col style="width:150px;">
+                                <col style="width:160px;">
+                                <col style="width:160px;">
                             </colgroup>
                             <thead>
                                 <tr>
@@ -1014,7 +1047,7 @@
                 </div>
 
                 <!-- Summary Cards -->
-                <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:16px;margin-bottom:20px;" id="shippingCards">
+                <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:16px;margin-bottom:20px;" id="shippingCards">
                     <!-- All -->
                     <div class="panel shipping-kpi-card active-kpi" id="skpi_all" onclick="setShippingKpiFilter('all')" style="padding:16px;text-align:center;cursor:pointer;border:2px solid #0A2540;">
                         <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Packing Lists / Packages</div>
@@ -1036,7 +1069,7 @@
                             <span style="font-size:26px;font-weight:700;color:#e65100;" id="sc_shipping">—</span>
                             <span style="font-size:12px;color:#888;">PKG</span>
                         </div>
-                        <div style="font-size:11px;color:#e65100;margin-top:2px;">Status: Shipping</div>
+                        <div style="font-size:11px;color:#e65100;margin-top:2px;">Preparing + Shipping</div>
                     </div>
                     <!-- On-Site -->
                     <div class="panel shipping-kpi-card" id="skpi_onsite" onclick="setShippingKpiFilter('onsite')" style="padding:16px;text-align:center;cursor:pointer;border:2px solid transparent;">
@@ -1076,7 +1109,7 @@
                     </div>
                     <!-- Issued -->
                     <div class="panel shipping-kpi-card" id="skpi_issued" onclick="setShippingKpiFilter('issued')" style="padding:16px;text-align:center;cursor:pointer;border:2px solid transparent;">
-                        <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Issued</div>
+                        <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Issued (DESM)</div>
                         <div style="display:flex;align-items:baseline;justify-content:center;gap:6px;margin:4px 0 2px;">
                             <span style="font-size:26px;font-weight:700;color:#6a1b9a;" id="sc_issued_pl">—</span>
                             <span style="font-size:12px;color:#888;">PL</span>
@@ -1085,6 +1118,18 @@
                             <span style="font-size:12px;color:#888;">PKG</span>
                         </div>
                         <div style="font-size:11px;color:#6a1b9a;margin-top:2px;">Issue Date set</div>
+                    </div>
+                    <!-- Remaining -->
+                    <div class="panel shipping-kpi-card" id="skpi_remaining" style="padding:16px;text-align:center;border:2px solid transparent;">
+                        <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Remaining</div>
+                        <div style="display:flex;align-items:baseline;justify-content:center;gap:6px;margin:4px 0 2px;">
+                            <span style="font-size:26px;font-weight:700;color:#e65100;" id="sc_remaining_pl">—</span>
+                            <span style="font-size:12px;color:#888;">PL</span>
+                            <span style="font-size:16px;color:#ccc;">/</span>
+                            <span style="font-size:26px;font-weight:700;color:#e65100;" id="sc_remaining">—</span>
+                            <span style="font-size:12px;color:#888;">PKG</span>
+                        </div>
+                        <div style="font-size:11px;color:#e65100;margin-top:2px;">Packing List − Issued</div>
                     </div>
                 </div>
 
@@ -1123,6 +1168,7 @@
                                 <option value="">All</option>
                                 <option value="Cleared">Cleared</option>
                                 <option value="Pending">Pending</option>
+                                <option value="__none__">Not Set</option>
                             </select>
                         </div>
                         <button class="btn btn-primary" id="btnShippingFilter" style="height:38px;white-space:nowrap;flex-shrink:0;">
@@ -1156,17 +1202,17 @@
                     <div class="table-responsive">
                         <table class="data-table" id="shippingTable" style="table-layout:fixed;width:100%;">
                             <colgroup>
+                                <col style="width:155px;">
+                                <col style="width:255px;">
+                                <col style="width:330px;">
+                                <col style="width:80px;">
+                                <col style="width:65px;">
+                                <col style="width:115px;">
                                 <col style="width:135px;">
-                                <col style="width:235px;">
-                                <col style="width:310px;">
-                                <col style="width:70px;">
-                                <col style="width:55px;">
-                                <col style="width:115px;">
-                                <col style="width:115px;">
-                                <col style="width:115px;">
-                                <col style="width:115px;">
-                                <col style="width:115px;">
-                                <col style="width:110px;">
+                                <col style="width:135px;">
+                                <col style="width:135px;">
+                                <col style="width:135px;">
+                                <col style="width:130px;">
                                 <col>
                             </colgroup>
                             <thead>
@@ -1177,12 +1223,12 @@
                                     <th style="text-align:center;">Q'ty</th>
                                     <th style="text-align:center;">Unit</th>
                                     <th style="text-align:center;">Status</th>
-                                    <th style="text-align:center;">On-Site Date</th>
-                                    <th style="text-align:center;">Custom Clear</th>
-                                    <th style="text-align:center;">Request Date</th>
-                                    <th style="text-align:center;">Issue Date</th>
-                                    <th style="text-align:center;">Purpose</th>
-                                    <th style="text-align:center;">Remark</th>
+                                    <th style="text-align:center;width:130px;">On-Site Date</th>
+                                    <th style="text-align:center;width:130px;">Custom Clear</th>
+                                    <th style="text-align:center;width:130px;">Request Date</th>
+                                    <th style="text-align:center;width:130px;">Issue Date</th>
+                                    <th style="text-align:center;width:130px;">Purpose</th>
+                                    <th style="text-align:center;min-width:80px;">Remark</th>
                                 </tr>
                             </thead>
                             <tbody id="shippingTbody">
