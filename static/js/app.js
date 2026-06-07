@@ -22,6 +22,7 @@ let db = {
     bomTagMap: {},     // bom_detail: tag → {matCode, fullDescription} (NULL matCode 입고 레코드 매칭용)
     specialityItems: [], // Speciality category distinct items (mat_code NULL → desc 기반)
     receiving: [],
+    supportReceiving: [], // support_receiving 테이블 (구조 지지물 입고, 개발 중)
     mrTable: [],
     issued: []
 };
@@ -1399,7 +1400,7 @@ function initFilterOptions() {
         setupCatItemSize(plCat, plItemF, plSizeF, getBomItemsForCat, getBomSizesForCatItem, 'All');
     }
 
-    // Support Receiving Filters
+    // Support Receiving Filters — db.supportReceiving 기반 (개발 중, 현재 비어 있음)
     const srecDoc  = document.getElementById('srecDocFilter');
     const srecPkg  = document.getElementById('srecPkgFilter');
     const srecSys  = document.getElementById('srecSystemFilter');
@@ -1407,15 +1408,11 @@ function initFilterOptions() {
     const srecItemF = document.getElementById('srecItemFilter');
     const srecSizeF = document.getElementById('srecSizeFilter');
     if (srecDoc && srecPkg) {
-        const activeRecv = db.receiving.filter(r => isReceivingActive(r.plNo));
-        const docs = [...new Set(activeRecv.map(r => r.docNo))].sort();
-        const pkgs = [...new Set(activeRecv.map(r => r.plNo))].sort();
+        const docs = [...new Set(db.supportReceiving.map(r => r.docNo))].sort();
+        const pkgs = [...new Set(db.supportReceiving.map(r => r.plNo))].sort();
         srecDoc.innerHTML = '<option value="All">All DOCs</option>' + docs.map(d => `<option value="${d}">${d}</option>`).join('');
         srecPkg.innerHTML = '<option value="All">All PKGs</option>' + pkgs.map(p => `<option value="${p}">${p}</option>`).join('');
-        if (srecSys) {
-            const systems = [...new Set(db.bom.map(b => b.system).filter(Boolean))].sort();
-            srecSys.innerHTML = '<option value="All">All Systems</option>' + systems.map(s => `<option value="${s}">${s}</option>`).join('');
-        }
+        if (srecSys) srecSys.innerHTML = '<option value="All">All Systems</option>';
         setupCatItemSize(srecCat, srecItemF, srecSizeF, getBomItemsForCat, getBomSizesForCatItem, 'All');
     }
 }
@@ -1704,6 +1701,14 @@ function renderReceivingTable() {
 window._plGoPage = function(p) { currentPlPage = p; renderReceivingTable(); };
 
 function renderSupportReceivingTable() {
+    const tbody = document.querySelector('#srecTable tbody');
+    if (!tbody) return;
+    if (db.supportReceiving.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:#999;padding:40px;">No data</td></tr>';
+        const pg = document.getElementById('srecPagination');
+        if (pg) pg.innerHTML = '';
+        return;
+    }
     _renderRecvCore({
         tableId: 'srecTable', searchId: 'srecItemSearch',
         docId: 'srecDocFilter', pkgId: 'srecPkgFilter', sysId: 'srecSystemFilter',
@@ -2401,25 +2406,13 @@ function attachEventListeners() {
             const search = (document.getElementById('srecItemSearch')?.value || '').trim().toUpperCase();
             const doc   = document.getElementById('srecDocFilter')?.value || 'All';
             const pkg   = document.getElementById('srecPkgFilter')?.value || 'All';
-            const sys   = document.getElementById('srecSystemFilter')?.value || 'All';
             const cat   = document.getElementById('srecCategoryFilter')?.value || 'All';
-            const itemF = document.getElementById('srecItemFilter')?.value || 'All';
-            const sizeF = document.getElementById('srecSizeFilter')?.value || 'All';
-            const matCodeSysMap = {};
-            if (sys !== 'All') {
-                db.bom.forEach(b => {
-                    if (!matCodeSysMap[b.matCode]) matCodeSysMap[b.matCode] = new Set();
-                    matCodeSysMap[b.matCode].add(b.system);
-                });
-            }
-            let data = db.receiving.filter(r => {
-                if (!isReceivingActive(r.plNo)) return false;
-                const ms = !search || r.matCode.toUpperCase().includes(search) || r.plNo.toUpperCase().includes(search) || (r.category||'').toUpperCase().includes(search) || r.desc.toUpperCase().includes(search);
+            let data = db.supportReceiving.filter(r => {
+                const ms = !search || (r.matCode||'').toUpperCase().includes(search) || (r.plNo||'').toUpperCase().includes(search) || (r.category||'').toUpperCase().includes(search) || (r.desc||'').toUpperCase().includes(search);
                 const md = doc === 'All' || r.docNo === doc;
                 const mp = pkg === 'All' || r.plNo === pkg;
-                const msys = sys === 'All' || (matCodeSysMap[r.matCode] && matCodeSysMap[r.matCode].has(sys));
                 const mc = cat === 'All' || r.category === cat;
-                return ms && md && mp && msys && mc;
+                return ms && md && mp && mc;
             });
             const rows = data.map(r => ({
                 'PKG': r.docNo, 'PKG NO': r.plNo, 'MatCode': r.matCode || '',
