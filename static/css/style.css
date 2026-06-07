@@ -100,6 +100,8 @@ ul { list-style: none; }
 .form-group label { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
 .form-control { padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 4px; font-family: inherit; font-size: 13px; outline: none; transition: var(--transition-fast); }
 .form-control:focus { border-color: var(--color-primary); }
+.filter-panel .form-control { height: 38px; }
+.filter-panel .form-group { min-width: 130px !important; }
 .input-group { display: flex; gap: 5px; }
 .input-group .form-control { flex: 1; }
 

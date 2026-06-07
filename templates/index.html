@@ -40,11 +40,13 @@
 
                  <div class="section-title">Master Data</div>
                  <div class="nav-item" data-target="matcode_master"><i class="fas fa-barcode"></i> MatCode Master</div>
-                 <div class="nav-item" data-target="bom_management"><i class="fas fa-layer-group"></i> BOM Management</div>
+                 <div class="nav-item" data-target="piping_bom"><i class="fas fa-layer-group"></i> Piping BOM</div>
+                 <div class="nav-item" data-target="support_bom"><i class="fas fa-tools"></i> Support BOM</div>
                  <div class="nav-item" data-target="spool_bom"><i class="fas fa-cubes"></i> Spool BOM</div>
 
                  <div class="section-title">Operations</div>
                  <div class="nav-item" data-target="receiving"><i class="fas fa-truck"></i> Material Receiving</div>
+                 <div class="nav-item" data-target="support_receiving"><i class="fas fa-tools"></i> Support Receiving</div>
                  <div class="nav-item" data-target="spool_receiving"><i class="fas fa-boxes"></i> Spool Receiving</div>
                  <div class="nav-item" data-target="issue"><i class="fas fa-file-signature"></i> Material Finding</div>
                  <div class="nav-item" data-target="mr_history"><i class="fas fa-history"></i> MR History</div>
@@ -102,7 +104,7 @@
                      <div class="guide-card">
                          <div class="guide-card-num">3</div>
                          <div class="guide-card-icon"><i class="fas fa-layer-group"></i></div>
-                         <div class="guide-card-title">BOM Management</div>
+                         <div class="guide-card-title">Piping BOM</div>
                          <div class="guide-card-body">View the full Bill of Materials organized by System and ISO Drawing. Filter by system, ISO, or category to quickly locate specific items and check required quantities.</div>
                      </div>
 
@@ -388,11 +390,11 @@
                  </div>
             </section>
 
-            <!-- 3. BOM Management Tab -->
-            <section id="bom_management" class="view-section">
+            <!-- 3. Piping BOM Tab -->
+            <section id="piping_bom" class="view-section">
                 <div class="page-header">
                      <div>
-                         <h1>BOM Management</h1>
+                         <h1>Piping BOM</h1>
                          <p class="subtitle">Manage piping BOM data. Design changes can be updated here.</p>
                      </div>
                      <div class="actions">
@@ -500,6 +502,66 @@
                          </table>
                      </div>
                      <div id="bomPagination"></div>
+                 </div>
+            </section>
+
+            <!-- 3-2. Support BOM Tab -->
+            <section id="support_bom" class="view-section">
+                <div class="page-header">
+                     <div>
+                         <h1>Support BOM</h1>
+                         <p class="subtitle">Pipe support BOM data by ISO drawing and support tag.</p>
+                     </div>
+                 </div>
+
+                 <div class="panel filter-panel" style="margin-bottom: 20px;">
+                      <div style="display: flex; align-items: flex-end; justify-content: space-between; width: 100%; gap: 10px; flex-wrap: nowrap;">
+                          <div style="display: flex; align-items: flex-end; gap: 10px; flex: 1; min-width: 0;">
+                              <div class="form-group" style="flex: 2; min-width: 0; margin-bottom: 0;">
+                                  <label>Search (ISO / Support Tag / Item / MATL)</label>
+                                  <input type="text" id="sbomSearch" class="form-control" style="width: 100%;" placeholder="ISO DWG, Support Tag, Item, MATL...">
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                                  <label>System</label>
+                                  <select id="sbomSystemFilter" class="form-control" style="width: 100%;"><option value="All">All Systems</option></select>
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                                  <label>Item</label>
+                                  <select id="sbomItemFilter" class="form-control" style="width: 100%;"><option value="All">All Items</option></select>
+                              </div>
+                              <div style="padding-bottom: 1px; display: flex; gap: 8px; flex-shrink: 0;">
+                                  <button class="btn btn-primary" id="btnFilterSbom" style="height: 38px; white-space: nowrap;"><i class="fas fa-search"></i> Search</button>
+                                  <button class="btn btn-outline" id="btnClearSbomFilters" style="height: 38px; white-space: nowrap;">Clear</button>
+                              </div>
+                          </div>
+                          <div style="padding-bottom: 1px; display: flex; gap: 8px; flex-shrink: 0;">
+                              <button class="btn btn-outline" id="btnExportSbom" style="height: 38px; white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export</button>
+                          </div>
+                      </div>
+                  </div>
+
+                 <div class="panel data-panel">
+                     <div class="table-responsive">
+                         <table class="data-table" id="sbomTable">
+                             <thead>
+                                 <tr>
+                                     <th style="text-align:center;">CATEGORY</th>
+                                     <th style="text-align:center;">SYSTEM</th>
+                                     <th style="text-align:center;min-width:200px;">ISO DWG NO.</th>
+                                     <th style="text-align:center;min-width:180px;">SUPPORT TAG</th>
+                                     <th style="text-align:center;">PART NO</th>
+                                     <th style="text-align:center;">ID NO</th>
+                                     <th style="text-align:center;min-width:160px;">ITEM</th>
+                                     <th style="text-align:center;">MATL</th>
+                                     <th style="text-align:center;min-width:130px;">SIZE OR TYPE</th>
+                                     <th style="text-align:center;">LENGTH (mm)</th>
+                                     <th style="text-align:center;">Q'TY</th>
+                                 </tr>
+                             </thead>
+                             <tbody></tbody>
+                         </table>
+                     </div>
+                     <div id="sbomPagination"></div>
                  </div>
             </section>
 
@@ -630,6 +692,98 @@
                  </div>
             </section>
 
+            <!-- 4-2. Support Receiving Tab -->
+            <section id="support_receiving" class="view-section">
+                <div class="page-header">
+                     <div>
+                         <h1>Support Receiving</h1>
+                         <p class="subtitle">Support Receiving</p>
+                     </div>
+                     <div class="actions">
+                         <input type="file" id="srecFileInput" accept=".xlsx,.xls" style="display:none;">
+                     </div>
+                 </div>
+
+                 <div class="panel filter-panel" style="margin-bottom: 20px;">
+                      <div style="display: flex; align-items: flex-end; justify-content: space-between; width: 100%; gap: 10px; flex-wrap: nowrap;">
+                          <div style="display: flex; align-items: flex-end; gap: 10px; flex: 1; min-width: 0;">
+                              <div class="form-group" style="flex: 2; min-width: 0; margin-bottom: 0;">
+                                  <label>Search Item</label>
+                                  <input type="text" id="srecItemSearch" class="form-control" style="width: 100%;" placeholder="Search by Item name...">
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                                  <label>PKG</label>
+                                  <select id="srecDocFilter" class="form-control" style="width: 100%;"><option value="All">All DOCs</option></select>
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                                  <label>PKG NO</label>
+                                  <select id="srecPkgFilter" class="form-control" style="width: 100%;"><option value="All">All PKGs</option></select>
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0;">
+                                  <label>System</label>
+                                  <select id="srecSystemFilter" class="form-control" style="width: 100%;"><option value="All">All Systems</option></select>
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0;">
+                                  <label>Category</label>
+                                  <select id="srecCategoryFilter" class="form-control" style="width: 100%;">
+                                      <option value="All">All Categories</option>
+                                      <option value="Pipe">Pipe</option>
+                                      <option value="Fitting">Fitting</option>
+                                      <option value="Valve">Valve</option>
+                                      <option value="Others">Others</option>
+                                      <option value="Speciality">Speciality</option>
+                                  </select>
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0;">
+                                  <label>Item</label>
+                                  <select id="srecItemFilter" class="form-control" style="width: 100%;"><option value="All">All Items</option></select>
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0;">
+                                  <label>Size</label>
+                                  <select id="srecSizeFilter" class="form-control" style="width: 100%;"><option value="All">All Sizes</option></select>
+                              </div>
+                              <div style="padding-bottom: 1px; flex-shrink: 0;">
+                                  <button class="btn btn-primary" id="btnFilterSrec" style="height: 38px; white-space: nowrap; display: flex; align-items: center; gap: 8px;"><i class="fas fa-search"></i> Search</button>
+                              </div>
+                          </div>
+                          <div style="display: flex; gap: 8px; align-items: flex-end; padding-bottom: 1px;">
+                              <button class="btn btn-outline" id="btnExportSrec" style="height: 38px; white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export Excel</button>
+                              <button class="btn btn-outline" id="btnUploadSrec" style="height: 38px; white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-upload" style="color:#1565c0;"></i> Upload Packing List</button>
+                          </div>
+                      </div>
+                  </div>
+
+                 <div class="matching-container">
+                     <div class="panel data-panel pl-panel" style="flex: 1;">
+                         <div class="panel-header">
+                             <h3>Support Receiving List</h3>
+                         </div>
+                         <div class="table-responsive">
+                             <table class="data-table" id="srecTable">
+                                 <thead>
+                                     <tr>
+                                         <th>PKG</th>
+                                         <th>PKG NO</th>
+                                         <th style="width:130px;">MatCode</th>
+                                         <th style="width:60px;">Category</th>
+                                         <th style="width:80px;">TAG NO</th>
+                                         <th style="width:70px;">Item</th>
+                                         <th style="width:20px;">Type</th>
+                                         <th style="width:50px;">Size</th>
+                                         <th style="min-width:460px;">Full Description</th>
+                                         <th>Unit</th>
+                                         <th>Qty</th>
+                                         <th style="min-width:110px;">Purpose</th>
+                                     </tr>
+                                 </thead>
+                                 <tbody></tbody>
+                             </table>
+                         </div>
+                         <div id="srecPagination"></div>
+                     </div>
+                 </div>
+            </section>
+
             <section id="issue" class="view-section">
                 <div class="page-header">
                      <div>
@@ -680,33 +834,38 @@
                      </div>
                  </div>
 
-                 <div class="panel data-panel" style="margin-bottom: 20px;">
-                     <div class="panel-header" style="background:rgba(10,37,64,0.03); padding:10px 15px; margin-bottom:0; border-bottom:1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                         <h3 style="margin:0; font-size:14px; font-weight:600;"><i class="fas fa-search-plus"></i> ISO Material List</h3>
+                 <!-- Step 1: Piping Material List -->
+                 <div class="panel data-panel" style="margin-bottom: 20px; border: 1px solid #ddd;">
+                     <div class="panel-header" style="background:#f8f9fa; padding:6px 15px; margin-bottom:0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; min-height:44px; border-bottom:1px solid #ddd;">
+                         <h3 style="margin:0; font-size:14px; font-weight:600; color:#222;"><i class="fas fa-layer-group"></i> Step 1: Piping Material List</h3>
                          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                             <label style="display:flex; align-items:center; gap:5px; font-size:12px; font-weight:500; cursor:pointer; margin:0; padding:0 8px; height:32px; background:#fff3e0; border:1px solid #ffb74d; border-radius:4px; white-space:nowrap;">
-                                 <input type="checkbox" id="toggleHideNoStock" style="margin:0; width:13px; height:13px;">
-                                 Hide Zero-Stock Items
-                             </label>
-                             <button class="btn btn-outline btn-small" id="btnFillBomQty" title="Apply BOM Qty to All" style="height:32px; font-size:12px; white-space:nowrap;"><i class="fas fa-layer-group"></i> BOM Qty</button>
-                             <button class="btn btn-outline btn-small" id="btnFillStockQty" title="Apply Stock Qty to All" style="height:32px; font-size:12px; white-space:nowrap;"><i class="fas fa-boxes"></i> Stock Qty</button>
-                             <button class="btn btn-outline btn-small" id="btnClearQty" title="Clear All Qty" style="height:32px; font-size:12px; white-space:nowrap;"><i class="fas fa-eraser"></i> Clear</button>
-                             <button class="btn btn-primary" id="btnAddToMr" style="height:38px; min-width:140px; display:flex; align-items:center; justify-content:center; gap:8px; padding:0 16px;"><i class="fas fa-plus-circle"></i> Add To MR</button>
+                             <button class="btn btn-primary" id="btnAddToMr" style="height:30px; min-width:120px; display:flex; align-items:center; justify-content:center; gap:6px; padding:0 12px; background:#333; color:white; border:none; border-radius:4px; font-size:12px; font-weight:600;"><i class="fas fa-plus-circle"></i> Add To MR</button>
                          </div>
                      </div>
                      <div class="table-responsive">
-                         <table class="data-table" id="issueTable">
+                         <table class="data-table" id="issueTable" style="text-align:center;table-layout:fixed;width:100%;">
+                             <colgroup>
+                                 <col style="width:375px;"><!-- ISO Drawing -->
+                                 <col style="width:135px;"><!-- Category -->
+                                 <col style="width:305px;"><!-- Mat Code -->
+                                 <col style="width:auto;"><!-- Description -->
+                                 <col style="width:105px;"><!-- Unit -->
+                                 <col style="width:140px;"><!-- BOM (Req) -->
+                                 <col style="width:140px;"><!-- Receiving -->
+                                 <col style="width:140px;"><!-- Stock -->
+                                 <col style="width:170px;"><!-- Request Qty -->
+                             </colgroup>
                              <thead>
                                  <tr>
-                                     <th>ISO Drawing</th>
-                                     <th>Category</th>
-                                     <th>Mat Code</th>
-                                     <th>Description</th>
-                                     <th>Unit</th>
-                                     <th>BOM (Req)</th>
-                                     <th>Receiving</th>
-                                     <th>Stock</th>
-                                     <th>Request Qty</th>
+                                     <th style="text-align:center;">ISO Drawing</th>
+                                     <th style="text-align:center;">Category</th>
+                                     <th style="text-align:center;">Mat Code</th>
+                                     <th style="text-align:center;">Description</th>
+                                     <th style="text-align:center;">Unit</th>
+                                     <th style="text-align:center;">BOM (Req)</th>
+                                     <th style="text-align:center;">Receiving</th>
+                                     <th style="text-align:center;">Stock</th>
+                                     <th style="text-align:center;">Request Qty</th>
                                  </tr>
                              </thead>
                              <tbody>
@@ -716,9 +875,53 @@
                      </div>
                  </div>
 
-                 <div class="panel data-panel" style="border: 1px solid var(--color-primary);">
-                     <div class="panel-header" style="background:var(--color-primary); color:white; padding:10px 15px; margin-bottom:0;">
-                         <h3 style="margin:0; font-size:14px; font-weight:600; color:white;"><i class="fas fa-clipboard-list"></i> Step 3: Pending MR Table (For Issue Slip)</h3>
+                 <!-- Step 2: Support Material List -->
+                 <div class="panel data-panel" style="margin-bottom: 20px; border: 1px solid #ddd;">
+                     <div class="panel-header" style="background:#f8f9fa; padding:6px 15px; margin-bottom:0; display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; min-height:44px; border-bottom:1px solid #ddd;">
+                         <h3 style="margin:0; font-size:14px; font-weight:600; color:#222;"><i class="fas fa-tools"></i> Step 2: Support Material List</h3>
+                         <div style="display:flex; align-items:center; gap:8px;">
+                             <span id="suppMatCount" style="font-size:12px; color:#666;"></span>
+                             <button id="btnSuppAddToMr" style="height:30px; min-width:120px; display:flex; align-items:center; justify-content:center; gap:6px; padding:0 12px; background:#333; color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer; font-size:12px;"><i class="fas fa-plus-circle"></i> Add To MR</button>
+                         </div>
+                     </div>
+                     <div class="table-responsive">
+                         <table class="data-table" id="suppMatTable" style="text-align:center;table-layout:fixed;width:100%;">
+                             <colgroup>
+                                 <col style="width:375px;"><!-- ISO Drawing -->
+                                 <col style="width:320px;"><!-- SUPPORT TAG -->
+                                 <col style="width:260px;"><!-- ITEM -->
+                                 <col style="width:175px;"><!-- MATL -->
+                                 <col style="width:auto;"><!-- SIZE OR TYPE -->
+                                 <col style="width:105px;"><!-- Unit -->
+                                 <col style="width:140px;"><!-- BOM (Req) -->
+                                 <col style="width:140px;"><!-- Receiving -->
+                                 <col style="width:140px;"><!-- Stock -->
+                                 <col style="width:170px;"><!-- Request Qty -->
+                             </colgroup>
+                             <thead>
+                                 <tr>
+                                     <th style="text-align:center;">ISO Drawing</th>
+                                     <th style="text-align:center;">SUPPORT TAG</th>
+                                     <th style="text-align:center;">ITEM</th>
+                                     <th style="text-align:center;">MATL</th>
+                                     <th style="text-align:center;">SIZE OR TYPE</th>
+                                     <th style="text-align:center;">Unit</th>
+                                     <th style="text-align:center;">BOM (Req)</th>
+                                     <th style="text-align:center;">Receiving</th>
+                                     <th style="text-align:center;">Stock</th>
+                                     <th style="text-align:center;">Request Qty</th>
+                                 </tr>
+                             </thead>
+                             <tbody id="suppMatTbody">
+                                 <tr><td colspan="10" style="text-align:center;color:#888;">Select an ISO Drawing and click Search BOM.</td></tr>
+                             </tbody>
+                         </table>
+                     </div>
+                 </div>
+
+                 <div class="panel data-panel" style="border: 1px solid #ddd;">
+                     <div class="panel-header" style="background:#f8f9fa; padding:6px 15px; margin-bottom:0; min-height:44px; display:flex; align-items:center; border-bottom:1px solid #ddd;">
+                         <h3 style="margin:0; font-size:14px; font-weight:600; color:#222;"><i class="fas fa-clipboard-list"></i> Step 3: Pending MR Table (For Issue Slip)</h3>
                      </div>
                      <div class="table-responsive">
                          <table class="data-table" id="mrTableOutput">

@@ -372,8 +372,10 @@ async function syncFromSupabase() {
             const id = activeView.id;
             // Use setTimeout to ensure UI is ready for rendering large tables
             setTimeout(() => {
-                if(id === 'bom_management') renderBomTable();
+                if(id === 'piping_bom') renderBomTable();
+                if(id === 'support_bom') renderSupportBomTable();
                 if(id === 'receiving') renderReceivingTable();
+                if(id === 'support_receiving') renderSupportReceivingTable();
                 if(id === 'matcode_master') renderMatCodeMaster();
             }, 200);
         }
@@ -418,8 +420,10 @@ function initNavigation() {
         
         if(targetId === 'dashboard') updateDashboard();
         if(targetId === 'issue') renderIssueOptions();
-        if(targetId === 'bom_management') renderBomTable();
+        if(targetId === 'piping_bom') renderBomTable();
+        if(targetId === 'support_bom') renderSupportBomTable();
         if(targetId === 'receiving') renderReceivingTable();
+        if(targetId === 'support_receiving') renderSupportReceivingTable();
         if(targetId === 'matcode_master') renderMatCodeMaster();
         if(targetId === 'stock_ledger') { initStockFilters(); renderStockTable(); }
         if(targetId === 'mr_history') renderMrHistory();
@@ -916,17 +920,7 @@ function initStockFilters() {
         btnExportStock.addEventListener('click', () => {
             const masterMap = {};
             db.matCodeMaster.forEach(m => { masterMap[m.matCode] = m; });
-            const recMap = {}, docMap = {}, pkgMap = {};
-            db.receiving.filter(r => isReceivingActive(r.plNo) && isKpiReceiving(r)).forEach(r => {
-                const tagInfo = db.bomTagMap[(r.tag || '').toUpperCase()];
-                const effMat = r.matCode || (tagInfo ? tagInfo.matCode : '');
-                if (!effMat) return;
-                recMap[effMat] = (recMap[effMat] || 0) + r.qty;
-                if (!docMap[effMat]) docMap[effMat] = new Set();
-                if (!pkgMap[effMat]) pkgMap[effMat] = new Set();
-                docMap[effMat].add(r.docNo);
-                pkgMap[effMat].add(r.plNo);
-            });
+            const { recMap, docMap, pkgMap } = buildRecvMaps(r => isReceivingActive(r.plNo) && isKpiReceiving(r));
             const recDescMap = {};
             db.receiving.forEach(r => { if (r.matCode && !recDescMap[r.matCode]) recDescMap[r.matCode] = r.desc; });
             const issuedPkgNos = new Set(Object.entries(_plUpdatesCache).filter(([,v]) => v.issue_date).map(([k]) => k));
@@ -967,6 +961,21 @@ function initStockFilters() {
     }
 }
 
+function buildRecvMaps(filterFn) {
+    const recMap = {}, docMap = {}, pkgMap = {};
+    db.receiving.filter(filterFn).forEach(r => {
+        const tagInfo = db.bomTagMap[(r.tag || '').toUpperCase()];
+        const effMat = r.matCode || (tagInfo ? tagInfo.matCode : '');
+        if (!effMat) return;
+        recMap[effMat] = (recMap[effMat] || 0) + r.qty;
+        if (!docMap[effMat]) docMap[effMat] = new Set();
+        if (!pkgMap[effMat]) pkgMap[effMat] = new Set();
+        docMap[effMat].add(r.docNo);
+        pkgMap[effMat].add(r.plNo);
+    });
+    return { recMap, docMap, pkgMap };
+}
+
 function renderStockTable() {
     let tbody = document.querySelector('#stockTable tbody');
     if(!tbody) return;
@@ -986,25 +995,12 @@ function renderStockTable() {
     const bomLookup = {};
     db.bom.forEach(b => { bomLookup[b.matCode] = { unit: b.uom }; });
 
-    // Aggregate Receiving per MatCode: recMap, pkgMap (docNo set, plNo set)
-    // 매칭 원칙: TAG 우선, TAG 없으면 matCode
-    const recMap = {};
-    const docMap = {};   // matCode → Set of docNo
-    const pkgMap = {};   // matCode → Set of plNo
-    db.receiving.filter(r => isReceivingActive(r.plNo) && isKpiReceiving(r) &&
+    // Aggregate Receiving per MatCode (TAG 우선 원칙)
+    const { recMap, docMap, pkgMap } = buildRecvMaps(r =>
+        isReceivingActive(r.plNo) && isKpiReceiving(r) &&
         (fDoc === 'All' || r.docNo === fDoc) &&
         (fPkg === 'All' || r.plNo  === fPkg)
-    ).forEach(r => {
-        const tagInfo = db.bomTagMap[(r.tag || '').toUpperCase()];
-        const effMat = r.matCode || (tagInfo ? tagInfo.matCode : '');
-        if (!effMat) return;
-        if(!recMap[effMat]) recMap[effMat] = 0;
-        recMap[effMat] += r.qty;
-        if(!docMap[effMat]) docMap[effMat] = new Set();
-        if(!pkgMap[effMat]) pkgMap[effMat] = new Set();
-        docMap[effMat].add(r.docNo);
-        pkgMap[effMat].add(r.plNo);
-    });
+    );
 
     // Aggregate Issued per MatCode — issue_date가 설정된 Package의 입고 수량 기준
     const issuedPkgNos = new Set(Object.entries(_plUpdatesCache).filter(([,v]) => v.issue_date).map(([k]) => k));
@@ -1269,7 +1265,56 @@ window._matCodeGoPage = function(p) { _matCodePage = p; renderMatCodeMaster(); }
 
 // --- 3. BOM & Receiving Paginations ---
 let currentBomPage = 1;
+let currentSupportBomPage = 1;
 let currentPlPage = 1;
+let currentSrecPage = 1;
+
+// Category/Item/Size 필터 공통 헬퍼
+function getBomItemsForCat(cat) {
+    if (cat === 'Speciality') return db.specialityItems.slice();
+    const src = (cat === 'All' || cat === 'ALL') ? db.bom : db.bom.filter(b => window.getCategory('', b.matCode) === cat);
+    const set = new Set(src.map(b => window.extractItemFromMatCode(b.matCode)).filter(v => v && v !== '-'));
+    if (cat === 'All' || cat === 'ALL' || cat === 'Valve') {
+        set.add('BYPASS VALVE'); set.add('CONTROL VALVE'); set.add('SAFETY VALVE');
+    }
+    return [...set].sort();
+}
+function getBomSizesForCatItem(cat, item) {
+    if (cat === 'Speciality') return [];
+    let src = (cat === 'All' || cat === 'ALL') ? db.bom : db.bom.filter(b => window.getCategory('', b.matCode) === cat);
+    if (item !== 'All' && item !== 'ALL') src = src.filter(b => window.extractItemFromMatCode(b.matCode) === item);
+    return [...new Set(src.map(b => window.extractSizeFromMatCode(b.matCode)).filter(v => v && v !== '-'))].sort((a, b) => parseFloat(a) - parseFloat(b));
+}
+function getMasterItemsForCat(cat) {
+    const src = cat === 'All' ? db.matCodeMaster : db.matCodeMaster.filter(m => (m.category || '') === cat);
+    return [...new Set(src.map(m => window.extractItemFromMatCode(m.matCode)).filter(v => v && v !== '-'))].sort();
+}
+function getMasterSizesForCatItem(cat, item) {
+    let src = cat === 'All' ? db.matCodeMaster : db.matCodeMaster.filter(m => (m.category || '') === cat);
+    if (item !== 'All') src = src.filter(m => window.extractItemFromMatCode(m.matCode) === item);
+    return [...new Set(src.map(m => window.extractSizeFromMatCode(m.matCode)).filter(v => v && v !== '-'))].sort((a, b) => parseFloat(a) - parseFloat(b));
+}
+function setupCatItemSize(catEl, itemEl, sizeEl, getItems, getSizes, allVal) {
+    const fillItem = (cat) => {
+        if (!itemEl) return;
+        const items = getItems(cat);
+        itemEl.innerHTML = `<option value="${allVal}">All Items</option>` + items.map(i => `<option value="${i.replace(/"/g, '&quot;')}">${i}</option>`).join('');
+    };
+    const fillSize = (cat, item) => {
+        if (!sizeEl) return;
+        const sizes = getSizes(cat, item);
+        sizeEl.innerHTML = `<option value="${allVal}">All Sizes</option>` + sizes.map(s => `<option value="${s.replace(/"/g, '&quot;')}">${s}</option>`).join('');
+    };
+    fillItem(allVal);
+    fillSize(allVal, allVal);
+    if (catEl) catEl.addEventListener('change', () => {
+        fillItem(catEl.value);
+        fillSize(catEl.value, allVal);
+    });
+    if (itemEl) itemEl.addEventListener('change', () => {
+        fillSize(catEl ? catEl.value : allVal, itemEl.value);
+    });
+}
 
 function initFilterOptions() {
     // BOM Filters
@@ -1285,97 +1330,38 @@ function initFilterOptions() {
         bomSys.innerHTML = '<option value="All">All Systems</option>' + systems.map(s => `<option value="${s}">${s}</option>`).join('');
         bomIsoData.innerHTML = isos.map(i => `<option value="${i}">`).join('');
 
-        // Category → Item → Size 연동 헬퍼
-        function bomGetItemsForCat(cat) {
-            if (cat === 'Speciality') return db.specialityItems.slice();
-            const src = cat === 'All' ? db.bom : db.bom.filter(b => window.getCategory('', b.matCode) === cat);
-            const set = new Set(src.map(b => window.extractItemFromMatCode(b.matCode)).filter(v => v && v !== '-'));
-            if (cat === 'All' || cat === 'Valve') { set.add('BYPASS VALVE'); set.add('CONTROL VALVE'); set.add('SAFETY VALVE'); }
-            return [...set].sort();
-        }
-        function bomGetSizesForCatItem(cat, item) {
-            if (cat === 'Speciality') return [];
-            let src = cat === 'All' ? db.bom : db.bom.filter(b => window.getCategory('', b.matCode) === cat);
-            if (item !== 'All') src = src.filter(b => window.extractItemFromMatCode(b.matCode) === item);
-            return [...new Set(src.map(b => window.extractSizeFromMatCode(b.matCode)).filter(v => v && v !== '-'))].sort((a,b) => parseFloat(a) - parseFloat(b));
-        }
-        function refreshBomItemOptions(cat) {
-            if (!bomItemF) return;
-            const items = bomGetItemsForCat(cat);
-            bomItemF.innerHTML = '<option value="All">All Items</option>' + items.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
-        }
-        function refreshBomSizeOptions(cat, item) {
-            if (!bomSizeF) return;
-            const sizes = bomGetSizesForCatItem(cat, item);
-            bomSizeF.innerHTML = '<option value="All">All Sizes</option>' + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
-        }
-
-        // 초기 전체 목록
-        refreshBomItemOptions('All');
-        refreshBomSizeOptions('All', 'All');
-
-        // Category 변경 시 Item 갱신 후 Size 갱신
+        // Category → Item → Size 연동
         const bomCatF = document.getElementById('bomCategoryFilter');
-        if (bomCatF) {
-            bomCatF.addEventListener('change', () => {
-                const cat = bomCatF.value;
-                refreshBomItemOptions(cat);
-                refreshBomSizeOptions(cat, 'All');
-            });
-        }
-        // Item 변경 시 Size 갱신
-        if (bomItemF) {
-            bomItemF.addEventListener('change', () => {
-                const cat = document.getElementById('bomCategoryFilter')?.value || 'All';
-                refreshBomSizeOptions(cat, bomItemF.value);
-            });
-        }
+        setupCatItemSize(bomCatF, bomItemF, bomSizeF, getBomItemsForCat, getBomSizesForCatItem, 'All');
     }
+
+    // Support BOM Filters — support_bom 테이블 기준으로 동적 로드
+    (async () => {
+        const sbomSys = document.getElementById('sbomSystemFilter');
+        const sbomItemF = document.getElementById('sbomItemFilter');
+        if (!sbomSys) return;
+        try {
+            const [sysRes, itemRes] = await Promise.all([
+                supabaseClient.from('v_support_bom_systems').select('system'),
+                supabaseClient.from('v_support_bom_items').select('item'),
+            ]);
+            if (sysRes.data) {
+                const systems = sysRes.data.map(r => r.system).filter(Boolean);
+                sbomSys.innerHTML = '<option value="All">All Systems</option>' + systems.map(s => `<option value="${s}">${s}</option>`).join('');
+            }
+            if (itemRes.data && sbomItemF) {
+                const items = itemRes.data.map(r => r.item).filter(Boolean);
+                sbomItemF.innerHTML = '<option value="All">All Items</option>' + items.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
+            }
+        } catch(e) { /* 테이블 미존재 시 무시 */ }
+    })();
 
     // Shortage Filters — db.bom 기반으로 실제 존재하는 항목만 표시
     const sCat  = document.getElementById('shortCatFilter');
     const sItem = document.getElementById('shortItemFilter');
     const sSize = document.getElementById('shortSizeFilter');
     if (sItem && db.bom.length > 0) {
-        function shortGetItemsForCat(cat) {
-            if (cat === 'Speciality') return db.specialityItems.slice();
-            const src = (cat === 'ALL' || cat === 'All') ? db.bom : db.bom.filter(b => window.getCategory('', b.matCode) === cat);
-            const set = new Set(src.map(b => window.extractItemFromMatCode(b.matCode)).filter(v => v && v !== '-'));
-            if (cat === 'ALL' || cat === 'All' || cat === 'Valve') {
-                set.add('BYPASS VALVE'); set.add('CONTROL VALVE'); set.add('SAFETY VALVE');
-            }
-            return [...set].sort();
-        }
-        function shortGetSizesForCatItem(cat, item) {
-            if (cat === 'Speciality') return [];
-            let src = (cat === 'ALL' || cat === 'All') ? db.bom : db.bom.filter(b => window.getCategory('', b.matCode) === cat);
-            if (item !== 'ALL' && item !== 'All') src = src.filter(b => window.extractItemFromMatCode(b.matCode) === item);
-            return [...new Set(src.map(b => window.extractSizeFromMatCode(b.matCode)).filter(v => v && v !== '-'))].sort((a,b) => parseFloat(a) - parseFloat(b));
-        }
-        function refreshShortItemOptions(cat) {
-            if (!sItem) return;
-            const items = shortGetItemsForCat(cat);
-            sItem.innerHTML = '<option value="ALL">All Items</option>' + items.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
-        }
-        function refreshShortSizeOptions(cat, item) {
-            if (!sSize) return;
-            const sizes = shortGetSizesForCatItem(cat, item);
-            sSize.innerHTML = '<option value="ALL">All Sizes</option>' + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
-        }
-        refreshShortItemOptions('ALL');
-        refreshShortSizeOptions('ALL', 'ALL');
-        if (sCat) {
-            sCat.addEventListener('change', () => {
-                refreshShortItemOptions(sCat.value);
-                refreshShortSizeOptions(sCat.value, 'ALL');
-            });
-        }
-        if (sItem) {
-            sItem.addEventListener('change', () => {
-                const cat = sCat ? sCat.value : 'ALL';
-                refreshShortSizeOptions(cat, sItem.value);
-            });
-        }
+        setupCatItemSize(sCat, sItem, sSize, getBomItemsForCat, getBomSizesForCatItem, 'ALL');
     }
 
     // MatCode Master Filters (BOM/Receiving과 동일하게 MatCode 파싱 함수 사용)
@@ -1386,36 +1372,7 @@ function initFilterOptions() {
         const cats  = [...new Set(db.matCodeMaster.map(m => m.category).filter(Boolean))].sort();
         mCat.innerHTML  = '<option value="All">All Categories</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
 
-        function masterGetItemsForCat(cat) {
-            const src = cat === 'All' ? db.matCodeMaster : db.matCodeMaster.filter(m => (m.category || '') === cat);
-            return [...new Set(src.map(m => window.extractItemFromMatCode(m.matCode)).filter(v => v && v !== '-'))].sort();
-        }
-        function masterGetSizesForCatItem(cat, item) {
-            let src = cat === 'All' ? db.matCodeMaster : db.matCodeMaster.filter(m => (m.category || '') === cat);
-            if (item !== 'All') src = src.filter(m => window.extractItemFromMatCode(m.matCode) === item);
-            return [...new Set(src.map(m => window.extractSizeFromMatCode(m.matCode)).filter(v => v && v !== '-'))].sort((a,b) => parseFloat(a) - parseFloat(b));
-        }
-        function refreshMasterItemOptions(cat) {
-            if (!mItem) return;
-            const items = masterGetItemsForCat(cat);
-            mItem.innerHTML = '<option value="All">All Items</option>' + items.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
-        }
-        function refreshMasterSizeOptions(cat, item) {
-            if (!mSize) return;
-            const sizes = masterGetSizesForCatItem(cat, item);
-            mSize.innerHTML = '<option value="All">All Sizes</option>' + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
-        }
-        refreshMasterItemOptions('All');
-        refreshMasterSizeOptions('All', 'All');
-        mCat.addEventListener('change', () => {
-            refreshMasterItemOptions(mCat.value);
-            refreshMasterSizeOptions(mCat.value, 'All');
-        });
-        if (mItem) {
-            mItem.addEventListener('change', () => {
-                refreshMasterSizeOptions(mCat.value, mItem.value);
-            });
-        }
+        setupCatItemSize(mCat, mItem, mSize, getMasterItemsForCat, getMasterSizesForCatItem, 'All');
     }
 
     // PL Filters — Category/Item/Size는 BOM과 동일하게 db.bom 기반으로 생성
@@ -1439,42 +1396,27 @@ function initFilterOptions() {
         }
 
         // Category/Item/Size — db.bom 기반 (BOM Management와 동일한 옵션 생성)
-        function plGetItemsForCat(cat) {
-            if (cat === 'Speciality') return db.specialityItems.slice();
-            const src = cat === 'All' ? db.bom : db.bom.filter(b => window.getCategory('', b.matCode) === cat);
-            const set = new Set(src.map(b => window.extractItemFromMatCode(b.matCode)).filter(v => v && v !== '-'));
-            if (cat === 'All' || cat === 'Valve') { set.add('BYPASS VALVE'); set.add('CONTROL VALVE'); set.add('SAFETY VALVE'); }
-            return [...set].sort();
+        setupCatItemSize(plCat, plItemF, plSizeF, getBomItemsForCat, getBomSizesForCatItem, 'All');
+    }
+
+    // Support Receiving Filters
+    const srecDoc  = document.getElementById('srecDocFilter');
+    const srecPkg  = document.getElementById('srecPkgFilter');
+    const srecSys  = document.getElementById('srecSystemFilter');
+    const srecCat  = document.getElementById('srecCategoryFilter');
+    const srecItemF = document.getElementById('srecItemFilter');
+    const srecSizeF = document.getElementById('srecSizeFilter');
+    if (srecDoc && srecPkg) {
+        const activeRecv = db.receiving.filter(r => isReceivingActive(r.plNo));
+        const docs = [...new Set(activeRecv.map(r => r.docNo))].sort();
+        const pkgs = [...new Set(activeRecv.map(r => r.plNo))].sort();
+        srecDoc.innerHTML = '<option value="All">All DOCs</option>' + docs.map(d => `<option value="${d}">${d}</option>`).join('');
+        srecPkg.innerHTML = '<option value="All">All PKGs</option>' + pkgs.map(p => `<option value="${p}">${p}</option>`).join('');
+        if (srecSys) {
+            const systems = [...new Set(db.bom.map(b => b.system).filter(Boolean))].sort();
+            srecSys.innerHTML = '<option value="All">All Systems</option>' + systems.map(s => `<option value="${s}">${s}</option>`).join('');
         }
-        function plGetSizesForCatItem(cat, item) {
-            if (cat === 'Speciality') return [];
-            let src = cat === 'All' ? db.bom : db.bom.filter(b => window.getCategory('', b.matCode) === cat);
-            if (item !== 'All') src = src.filter(b => window.extractItemFromMatCode(b.matCode) === item);
-            return [...new Set(src.map(b => window.extractSizeFromMatCode(b.matCode)).filter(v => v && v !== '-'))].sort((a,b) => parseFloat(a) - parseFloat(b));
-        }
-        function refreshPlItemOptions(cat) {
-            if (!plItemF) return;
-            const items = plGetItemsForCat(cat);
-            plItemF.innerHTML = '<option value="All">All Items</option>' + items.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
-        }
-        function refreshPlSizeOptions(cat, item) {
-            if (!plSizeF) return;
-            const sizes = plGetSizesForCatItem(cat, item);
-            plSizeF.innerHTML = '<option value="All">All Sizes</option>' + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
-        }
-        refreshPlItemOptions('All');
-        refreshPlSizeOptions('All', 'All');
-        if (plCat) {
-            plCat.addEventListener('change', () => {
-                refreshPlItemOptions(plCat.value);
-                refreshPlSizeOptions(plCat.value, 'All');
-            });
-        }
-        if (plItemF) {
-            plItemF.addEventListener('change', () => {
-                refreshPlSizeOptions(plCat ? plCat.value : 'All', plItemF.value);
-            });
-        }
+        setupCatItemSize(srecCat, srecItemF, srecSizeF, getBomItemsForCat, getBomSizesForCatItem, 'All');
     }
 }
 
@@ -1545,8 +1487,9 @@ async function renderBomTable() {
     const dataQ  = applyFilters(
         supabaseClient.from('bom_detail')
             .select('mat_code, category, system, iso_dwg_no, line_no, tag, full_description, uom, qty')
-            .range((currentBomPage - 1) * PAGE_SIZE, currentBomPage * PAGE_SIZE)  // +1 for hasMore
-            .order('iso_dwg_no')
+            .range((currentBomPage - 1) * PAGE_SIZE, currentBomPage * PAGE_SIZE)
+            .order('system', { ascending: true, nullsFirst: false })
+            .order('iso_dwg_no', { ascending: true, nullsFirst: false })
     );
     const countQ = applyFilters(
         supabaseClient.from('bom_detail')
@@ -1603,20 +1546,81 @@ async function renderBomTable() {
 }
 window._bomGoPage = function(p) { currentBomPage = p; renderBomTable(); };
 
-function renderReceivingTable() {
-    let tbody = document.querySelector('#plTable tbody');
-    if(!tbody) return;
-    tbody.innerHTML = '';
-    
-    const search = (document.getElementById('plItemSearch')?.value || '').trim().toUpperCase();
-    const doc    = document.getElementById('plDocFilter')?.value  || 'All';
-    const pkg    = document.getElementById('plPkgFilter')?.value  || 'All';
-    const sys    = document.getElementById('plSystemFilter')?.value || 'All';
-    const cat    = document.getElementById('plCategoryFilter')?.value || 'All';
-    const itemF  = document.getElementById('plItemFilter')?.value || 'All';
-    const sizeF  = document.getElementById('plSizeFilter')?.value || 'All';
+async function renderSupportBomTable() {
+    const tbody = document.querySelector('#sbomTable tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
 
-    // System 필터용 matCode → systems 역색인 (db.bom 기반)
+    const search = (document.getElementById('sbomSearch')?.value || '').trim();
+    const sys    = document.getElementById('sbomSystemFilter')?.value || 'All';
+    const item   = document.getElementById('sbomItemFilter')?.value || 'All';
+
+    const applyFilters = (q) => {
+        if (sys !== 'All') q = q.eq('system', sys);
+        if (item !== 'All') q = q.eq('item', item);
+        if (search) q = q.or(
+            `iso_dwg_no.ilike.%${search}%,support_tag.ilike.%${search}%,item.ilike.%${search}%,matl.ilike.%${search}%,id_no.ilike.%${search}%`
+        );
+        return q;
+    };
+
+    const from = (currentSupportBomPage - 1) * PAGE_SIZE;
+    const to   = currentSupportBomPage * PAGE_SIZE - 1;
+
+    const [dataRes, countRes] = await Promise.all([
+        applyFilters(supabaseClient.from('support_bom')
+            .select('category,system,iso_dwg_no,support_tag,part_no,id_no,item,matl,size_or_type,length_mm,qty')
+            .range(from, to)
+            .order('system', { ascending: true, nullsFirst: false })
+            .order('iso_dwg_no').order('support_tag').order('part_no')),
+        applyFilters(supabaseClient.from('support_bom')
+            .select('*', { count: 'exact', head: true })),
+    ]);
+
+    if (dataRes.error) {
+        tbody.innerHTML = `<tr><td colspan="11" style="color:red;text-align:center;">Error: ${dataRes.error.message}</td></tr>`;
+        return;
+    }
+
+    const data = dataRes.data || [];
+    const totalCount = countRes.count ?? data.length;
+
+    if (data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#888;padding:20px;">No data found.</td></tr>';
+    } else {
+        tbody.innerHTML = data.map(r => `<tr>
+            <td style="text-align:center;white-space:nowrap;">${r.category || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;font-weight:600;">${r.system || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${r.iso_dwg_no || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${r.support_tag || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${r.part_no ?? '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${r.id_no || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${r.item || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${r.matl || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${r.size_or_type || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${r.length_mm || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${r.qty ?? '-'}</td>
+        </tr>`).join('');
+    }
+
+    const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+    renderPagination('sbomPagination', currentSupportBomPage, totalPages, '_sbomGoPage');
+}
+window._sbomGoPage = function(p) { currentSupportBomPage = p; renderSupportBomTable(); };
+
+function _renderRecvCore(cfg) {
+    let tbody = document.querySelector(`#${cfg.tableId} tbody`);
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    const search = (document.getElementById(cfg.searchId)?.value || '').trim().toUpperCase();
+    const doc    = document.getElementById(cfg.docId)?.value  || 'All';
+    const pkg    = document.getElementById(cfg.pkgId)?.value  || 'All';
+    const sys    = document.getElementById(cfg.sysId)?.value  || 'All';
+    const cat    = document.getElementById(cfg.catId)?.value  || 'All';
+    const itemF  = document.getElementById(cfg.itemId)?.value || 'All';
+    const sizeF  = document.getElementById(cfg.sizeId)?.value || 'All';
+
     const matCodeSysMap = {};
     if (sys !== 'All') {
         db.bom.forEach(b => {
@@ -1625,55 +1629,44 @@ function renderReceivingTable() {
         });
     }
 
-    let data = db.receiving.filter(r => {
+    const data = db.receiving.filter(r => {
         if (!isReceivingActive(r.plNo)) return false;
         const matchSearch = !search || r.matCode.toUpperCase().includes(search) || r.plNo.toUpperCase().includes(search) || (r.category||'').toUpperCase().includes(search) || r.desc.toUpperCase().includes(search);
-        const matchDoc  = doc  === 'All' || r.docNo    === doc;
-        const matchPkg  = pkg  === 'All' || r.plNo     === pkg;
+        const matchDoc  = doc  === 'All' || r.docNo === doc;
+        const matchPkg  = pkg  === 'All' || r.plNo  === pkg;
         const matchSys  = sys  === 'All' || (matCodeSysMap[r.matCode] && matCodeSysMap[r.matCode].has(sys));
         const matchCat  = cat  === 'All' || r.category === cat;
-        const _tagInfo = db.bomTagMap[(r.tag || '').toUpperCase()];
-        const effMat = r.matCode || (_tagInfo ? _tagInfo.matCode : '');
-        const _bomDesc = _tagInfo ? _tagInfo.fullDescription : '';
-        const _mcItem = window.extractItemFromMatCode(effMat);
-        const _rawItem = (_mcItem && _mcItem !== '-') ? _mcItem : window.extractItemFromDesc(_bomDesc || r.desc);
+        const _tagInfo  = db.bomTagMap[(r.tag || '').toUpperCase()];
+        const effMat    = r.matCode || (_tagInfo ? _tagInfo.matCode : '');
+        const _bomDesc  = _tagInfo ? _tagInfo.fullDescription : '';
+        const _mcItem   = window.extractItemFromMatCode(effMat);
+        const _rawItem  = (_mcItem && _mcItem !== '-') ? _mcItem : window.extractItemFromDesc(_bomDesc || r.desc);
         const itemFromMat = (r.plNo || '').toUpperCase().includes('BYPS') ? 'BYPASS VALVE' : _rawItem;
-        const matchItemF = itemF === 'All' || itemFromMat === itemF ||
-            (itemFromMat === '-' && window.extractItemFromDesc(r.desc) === itemF);
+        const matchItemF = itemF === 'All' || itemFromMat === itemF || (itemFromMat === '-' && window.extractItemFromDesc(r.desc) === itemF);
         const matchSizeF = sizeF === 'All' || window.extractSizeFromMatCode(effMat) === sizeF;
         return matchSearch && matchDoc && matchPkg && matchSys && matchCat && matchItemF && matchSizeF;
     }).sort((a, b) => a.docNo.localeCompare(b.docNo) || a.plNo.localeCompare(b.plNo));
 
-    let slicedPl = data.slice((currentPlPage - 1) * PAGE_SIZE, currentPlPage * PAGE_SIZE);
-
-    const rows = slicedPl.map(r => {
-        const tagInfo = db.bomTagMap[(r.tag || '').toUpperCase()];
-        const effMat = r.matCode || (tagInfo ? tagInfo.matCode : '');
+    const page = cfg.getPage();
+    const rows = data.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map(r => {
+        const tagInfo    = db.bomTagMap[(r.tag || '').toUpperCase()];
+        const effMat     = r.matCode || (tagInfo ? tagInfo.matCode : '');
         const bomFullDesc = tagInfo ? tagInfo.fullDescription : '';
-        let displayCat = window.getCategory(r.desc, effMat);
-        if (!displayCat || displayCat === 'Others') {
-            displayCat = r.category || 'Others';
-        }
-
-        let catForBadge = displayCat;
-        if (!['Pipe', 'Fitting', 'Support', 'Valve', 'Speciality', 'Others'].includes(catForBadge)) {
-            catForBadge = 'Valve';
-        }
-
-        const catBadge = getCatBadge(catForBadge);
+        let displayCat   = window.getCategory(r.desc, effMat);
+        if (!displayCat || displayCat === 'Others') displayCat = r.category || 'Others';
+        let catForBadge  = displayCat;
+        if (!['Pipe', 'Fitting', 'Support', 'Valve', 'Speciality', 'Others'].includes(catForBadge)) catForBadge = 'Valve';
+        const catBadge   = getCatBadge(catForBadge);
         const descDisplay = (r.desc || '').replace(/_/g, '-');
-
         const _sizeFromMat = window.extractSizeFromMatCode(effMat);
-        const _sizeDesc = bomFullDesc || r.desc;
         const size = (_sizeFromMat && _sizeFromMat !== '-')
             ? _sizeFromMat
-            : (_sizeDesc.match(/(\d+(?:\.\d+)?"\s*[Xx×]\s*\d+(?:\.\d+)?"|DN\s*\d+)/i) || [])[0] || '-';
-        const _mcItemR = window.extractItemFromMatCode(effMat);
+            : ((bomFullDesc || r.desc).match(/(\d+(?:\.\d+)?"\s*[Xx×]\s*\d+(?:\.\d+)?"|DN\s*\d+)/i) || [])[0] || '-';
+        const _mcItemR  = window.extractItemFromMatCode(effMat);
         const _rawItemR = (_mcItemR && _mcItemR !== '-') ? _mcItemR : window.extractItemFromDesc(bomFullDesc || r.desc);
-        const item = (r.plNo || '').toUpperCase().includes('BYPS') ? 'BYPASS VALVE' : _rawItemR;
-        const etPart = (effMat || '').split('-').pop().toUpperCase();
-        const flangeType = (item === 'FLANGE' && (etPart === 'FF' || etPart === 'RF'))
-            ? 'WN' + etPart : '-';
+        const item      = (r.plNo || '').toUpperCase().includes('BYPS') ? 'BYPASS VALVE' : _rawItemR;
+        const etPart    = (effMat || '').split('-').pop().toUpperCase();
+        const flangeType = (item === 'FLANGE' && (etPart === 'FF' || etPart === 'RF')) ? 'WN' + etPart : '-';
         const purposeOpts = PURPOSE_OPTS.map(v =>
             `<option value="${v}"${r.purpose === v ? ' selected' : ''}>${v || '—'}</option>`
         ).join('');
@@ -1696,11 +1689,30 @@ function renderReceivingTable() {
         </tr>`;
     });
     tbody.innerHTML = rows.join('');
+    renderPagination(cfg.paginationId, page, Math.max(1, Math.ceil(data.length / PAGE_SIZE)), cfg.goPageFn);
+}
 
-    const plTotalPages = Math.max(1, Math.ceil(data.length / PAGE_SIZE));
-    renderPagination('plPagination', currentPlPage, plTotalPages, '_plGoPage');
+function renderReceivingTable() {
+    _renderRecvCore({
+        tableId: 'plTable', searchId: 'plItemSearch',
+        docId: 'plDocFilter', pkgId: 'plPkgFilter', sysId: 'plSystemFilter',
+        catId: 'plCategoryFilter', itemId: 'plItemFilter', sizeId: 'plSizeFilter',
+        getPage: () => currentPlPage,
+        paginationId: 'plPagination', goPageFn: '_plGoPage'
+    });
 }
 window._plGoPage = function(p) { currentPlPage = p; renderReceivingTable(); };
+
+function renderSupportReceivingTable() {
+    _renderRecvCore({
+        tableId: 'srecTable', searchId: 'srecItemSearch',
+        docId: 'srecDocFilter', pkgId: 'srecPkgFilter', sysId: 'srecSystemFilter',
+        catId: 'srecCategoryFilter', itemId: 'srecItemFilter', sizeId: 'srecSizeFilter',
+        getPage: () => currentSrecPage,
+        paginationId: 'srecPagination', goPageFn: '_srecGoPage'
+    });
+}
+window._srecGoPage = function(p) { currentSrecPage = p; renderSupportReceivingTable(); };
 
 // --- 5. Material Issue (ISO/MR Table) ---
 function renderIssueOptions() {
@@ -2051,7 +2063,7 @@ function attachEventListeners() {
                     if (plInput) plInput.value = term;
                     renderReceivingTable();
                 } else if (term.includes('B0-MV') || term.includes('B1-MV') || term.includes('VLV')) {
-                    showSection('bom_management');
+                    showSection('piping_bom');
                     const bomInput = document.getElementById('bomIsoSearch');
                     if (bomInput) bomInput.value = term;
                     renderBomTable();
@@ -2254,6 +2266,59 @@ function attachEventListeners() {
         });
     }
 
+    // Support BOM Filter Button
+    const btnFilterSbom = document.getElementById('btnFilterSbom');
+    if(btnFilterSbom) {
+        btnFilterSbom.addEventListener('click', () => {
+            currentSupportBomPage = 1;
+            renderSupportBomTable();
+        });
+    }
+
+    // Support BOM Clear Filters Button
+    const btnClearSbomFilters = document.getElementById('btnClearSbomFilters');
+    if (btnClearSbomFilters) {
+        btnClearSbomFilters.addEventListener('click', () => {
+            const el = document.getElementById('sbomSearch');
+            if (el) el.value = '';
+            const sys = document.getElementById('sbomSystemFilter');
+            if (sys) sys.value = 'All';
+            const item = document.getElementById('sbomItemFilter');
+            if (item) item.value = 'All';
+            currentSupportBomPage = 1;
+            renderSupportBomTable();
+        });
+    }
+
+    // Support BOM Export Button
+    const btnExportSbom = document.getElementById('btnExportSbom');
+    if (btnExportSbom) {
+        btnExportSbom.addEventListener('click', async () => {
+            btnExportSbom.disabled = true;
+            btnExportSbom.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exporting...';
+            try {
+                const search = (document.getElementById('sbomSearch')?.value || '').trim();
+                const sys  = document.getElementById('sbomSystemFilter')?.value || 'All';
+                const item = document.getElementById('sbomItemFilter')?.value || 'All';
+                let query = supabaseClient.from('support_bom')
+                    .select('category,system,iso_dwg_no,support_tag,part_no,id_no,item,matl,size_or_type,length_mm,qty')
+                    .order('system', { ascending: true, nullsFirst: false })
+                    .order('iso_dwg_no').order('support_tag');
+                if (sys !== 'All') query = query.eq('system', sys);
+                if (item !== 'All') query = query.eq('item', item);
+                if (search) query = query.or(`iso_dwg_no.ilike.%${search}%,support_tag.ilike.%${search}%,item.ilike.%${search}%,matl.ilike.%${search}%,id_no.ilike.%${search}%`);
+                const { data, error } = await query;
+                if (error) throw error;
+                exportToExcel(data, 'support_bom_export.xlsx');
+            } catch(err) {
+                alert('Export failed: ' + err.message);
+            } finally {
+                btnExportSbom.disabled = false;
+                btnExportSbom.innerHTML = '<i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export';
+            }
+        });
+    }
+
     // MatCode Master Filter Button
     const btnFilterMaster = document.getElementById('btnFilterMaster');
     if(btnFilterMaster) {
@@ -2317,6 +2382,71 @@ function attachEventListeners() {
         btnFilterPl.addEventListener('click', () => {
             currentPlPage = 1;
             renderReceivingTable();
+        });
+    }
+
+    // Support Receiving Filter Button
+    const btnFilterSrec = document.getElementById('btnFilterSrec');
+    if (btnFilterSrec) {
+        btnFilterSrec.addEventListener('click', () => {
+            currentSrecPage = 1;
+            renderSupportReceivingTable();
+        });
+    }
+
+    // Support Receiving Export Button
+    const btnExportSrec = document.getElementById('btnExportSrec');
+    if (btnExportSrec) {
+        btnExportSrec.addEventListener('click', () => {
+            const search = (document.getElementById('srecItemSearch')?.value || '').trim().toUpperCase();
+            const doc   = document.getElementById('srecDocFilter')?.value || 'All';
+            const pkg   = document.getElementById('srecPkgFilter')?.value || 'All';
+            const sys   = document.getElementById('srecSystemFilter')?.value || 'All';
+            const cat   = document.getElementById('srecCategoryFilter')?.value || 'All';
+            const itemF = document.getElementById('srecItemFilter')?.value || 'All';
+            const sizeF = document.getElementById('srecSizeFilter')?.value || 'All';
+            const matCodeSysMap = {};
+            if (sys !== 'All') {
+                db.bom.forEach(b => {
+                    if (!matCodeSysMap[b.matCode]) matCodeSysMap[b.matCode] = new Set();
+                    matCodeSysMap[b.matCode].add(b.system);
+                });
+            }
+            let data = db.receiving.filter(r => {
+                if (!isReceivingActive(r.plNo)) return false;
+                const ms = !search || r.matCode.toUpperCase().includes(search) || r.plNo.toUpperCase().includes(search) || (r.category||'').toUpperCase().includes(search) || r.desc.toUpperCase().includes(search);
+                const md = doc === 'All' || r.docNo === doc;
+                const mp = pkg === 'All' || r.plNo === pkg;
+                const msys = sys === 'All' || (matCodeSysMap[r.matCode] && matCodeSysMap[r.matCode].has(sys));
+                const mc = cat === 'All' || r.category === cat;
+                return ms && md && mp && msys && mc;
+            });
+            const rows = data.map(r => ({
+                'PKG': r.docNo, 'PKG NO': r.plNo, 'MatCode': r.matCode || '',
+                'Category': r.category || '', 'TAG NO': r.tag || '',
+                'Full Description': r.desc, 'Unit': r.unit || 'EA', 'Qty': r.qty,
+                'Purpose': r.purpose || '',
+            }));
+            exportToExcel(rows, 'support_receiving_export.xlsx');
+        });
+    }
+
+    // Support Receiving Upload Button
+    const btnUploadSrec = document.getElementById('btnUploadSrec');
+    if (btnUploadSrec) {
+        btnUploadSrec.addEventListener('click', () => document.getElementById('srecFileInput').click());
+    }
+
+    // Support Receiving Purpose 자동저장 (이벤트 위임)
+    const srecTbody = document.querySelector('#srecTable tbody');
+    if (srecTbody) {
+        srecTbody.addEventListener('change', async e => {
+            if (!e.target.classList.contains('pl-purpose-sel')) return;
+            const id = e.target.dataset.recvId;
+            const val = e.target.value;
+            if (!id) return;
+            const { error } = await supabaseClient.schema('material').from('receiving').update({ purpose: val }).eq('id', id);
+            if (error) console.error('Purpose update failed:', error.message);
         });
     }
 
@@ -2470,38 +2600,13 @@ function attachEventListeners() {
     
     const btnFilterIssue = document.getElementById('btnFilterIssue');
     if (btnFilterIssue) {
-        // Item/Size 드롭박스 동적 갱신 (Receiving 탭과 동일한 원리)
-        function issueGetItemsForCat(cat) {
-            const src = cat === 'All' ? db.bom : db.bom.filter(b => window.getCategory('', b.matCode) === cat);
-            const set = new Set(src.map(b => window.extractItemFromMatCode(b.matCode)).filter(v => v && v !== '-'));
-            if (cat === 'All' || cat === 'Valve') { set.add('BYPASS VALVE'); set.add('CONTROL VALVE'); set.add('SAFETY VALVE'); }
-            return [...set].sort();
-        }
-        function issueGetSizesForItem(cat, item) {
-            let src = cat === 'All' ? db.bom : db.bom.filter(b => window.getCategory('', b.matCode) === cat);
-            if (item !== 'All') src = src.filter(b => window.extractItemFromMatCode(b.matCode) === item);
-            return [...new Set(src.map(b => window.extractSizeFromMatCode(b.matCode)).filter(v => v && v !== '-'))].sort((a, b) => parseFloat(a) - parseFloat(b));
-        }
-        function refreshIssueItemOptions(cat) {
-            const el = document.getElementById('issueItemFilter');
-            if (!el) return;
-            const items = issueGetItemsForCat(cat);
-            el.innerHTML = '<option value="All">All Items</option>' + items.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
-            refreshIssueSizeOptions(cat, 'All');
-        }
-        function refreshIssueSizeOptions(cat, item) {
-            const el = document.getElementById('issueSizeFilter');
-            if (!el) return;
-            const sizes = issueGetSizesForItem(cat, item);
-            el.innerHTML = '<option value="All">All Sizes</option>' + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
-        }
-        document.getElementById('issueCategoryFilter')?.addEventListener('change', function() {
-            refreshIssueItemOptions(this.value);
-        });
-        document.getElementById('issueItemFilter')?.addEventListener('change', function() {
-            const cat = document.getElementById('issueCategoryFilter')?.value || 'All';
-            refreshIssueSizeOptions(cat, this.value);
-        });
+        // Item/Size 드롭박스 동적 갱신
+        setupCatItemSize(
+            document.getElementById('issueCategoryFilter'),
+            document.getElementById('issueItemFilter'),
+            document.getElementById('issueSizeFilter'),
+            getBomItemsForCat, getBomSizesForCatItem, 'All'
+        );
 
         btnFilterIssue.addEventListener('click', async () => {
             let sys = document.getElementById('issueSystemFilter')?.value || 'All';
@@ -2549,6 +2654,14 @@ function attachEventListeners() {
                 'Speciality': '#6a1b9a', 'Others': '#546e7a'
             };
 
+            // 카테고리 정렬: Pipe → Fitting → Valve → Speciality → Others
+            const CAT_ORDER = { 'Pipe': 1, 'Fitting': 2, 'Valve': 3, 'Speciality': 4, 'Others': 5 };
+            bomRows.sort((a, b) => {
+                const ca = CAT_ORDER[window.getCategory(a.full_description, a.mat_code)] || 9;
+                const cb = CAT_ORDER[window.getCategory(b.full_description, b.mat_code)] || 9;
+                return ca - cb;
+            });
+
             let htmlString = '';
             let displayCount = 0;
             bomRows.forEach(b => {
@@ -2585,15 +2698,15 @@ function attachEventListeners() {
                 let stockStyle = stockQty >= qty ? 'background:#f1f8e9;' : (stockQty > 0 ? 'background:#fff8e1;' : '');
 
                 htmlString += `<tr style="${stockStyle}">
-                    <td>${b.iso_dwg_no || '-'}</td>
-                    <td><span style="font-size:11px;font-weight:600;color:${catColor};background:${catColor}18;padding:2px 7px;border-radius:10px;white-space:nowrap;">${category}</span></td>
-                    <td><strong>${mat}</strong></td>
-                    <td title="${safeDesc}">${safeDesc.length > 45 ? safeDesc.substring(0,45)+'...' : safeDesc}</td>
-                    <td>${b.uom || 'EA'}</td>
-                    <td>${qty.toFixed(2)}</td>
-                    <td>${totalRec.toFixed(2)}</td>
-                    <td><strong style="color:${stockQty >= qty ? '#2e7d32' : (stockQty > 0 ? '#e65100' : '#c62828')};">${stockQty.toFixed(2)}</strong></td>
-                    <td>
+                    <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${b.iso_dwg_no||''}">${b.iso_dwg_no || '-'}</td>
+                    <td style="text-align:center;"><span style="font-size:11px;font-weight:600;color:${catColor};background:${catColor}18;padding:2px 7px;border-radius:10px;white-space:nowrap;">${category}</span></td>
+                    <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${mat}"><strong>${mat}</strong></td>
+                    <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${safeDesc}">${safeDesc.length > 40 ? safeDesc.substring(0,40)+'...' : safeDesc}</td>
+                    <td style="text-align:center;">${b.uom || 'EA'}</td>
+                    <td style="text-align:center;">${qty.toFixed(2)}</td>
+                    <td style="text-align:center;">${totalRec.toFixed(2)}</td>
+                    <td style="text-align:center;"><strong style="color:${stockQty >= qty ? '#2e7d32' : (stockQty > 0 ? '#e65100' : '#c62828')};">${stockQty.toFixed(2)}</strong></td>
+                    <td style="text-align:center;">
                         <input type="number" class="form-control" style="width:80px;" min="0" max="${stockQty}" value="${Math.max(0, defaultReq)}"
                         data-matcode="${mat}" data-iso="${b.iso_dwg_no||'-'}" data-size="${window.extractSizeFromMatCode(mat).replace(/"/g, '&quot;')}" data-unit="${b.uom||'EA'}" data-desc="${safeDesc}" data-category="${category}">
                     </td>
@@ -2601,11 +2714,56 @@ function attachEventListeners() {
                 displayCount++;
             });
 
-            tbody.innerHTML = htmlString || `<tr><td colspan="9" style="text-align:center;color:#888;">No materials found for the selected category.</td></tr>`;
+            tbody.innerHTML = htmlString || `<tr><td colspan="9" style="text-align:center;color:#888;">No BOM materials found for the selected ISO Drawing.</td></tr>`;
 
             if (!iso || iso === 'All') {
                 tbody.innerHTML += `<tr><td colspan="9" style="text-align:center;color:var(--color-warning);font-size:12px;padding:8px;">
                     <i class="fas fa-info-circle"></i> Specify an ISO Drawing to view all materials for that drawing.</td></tr>`;
+            }
+
+            // Step 2: Support Material List 렌더링
+            const suppTbody = document.getElementById('suppMatTbody');
+            const suppCount = document.getElementById('suppMatCount');
+            if (suppTbody) {
+                if (iso && iso !== 'All') {
+                    suppTbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#aaa;padding:12px;">Loading...</td></tr>';
+                    const { data: suppRows } = await supabaseClient.from('support_bom')
+                        .select('iso_dwg_no, support_tag, item, matl, size_or_type, qty')
+                        .eq('iso_dwg_no', iso)
+                        .order('support_tag').order('part_no');
+
+                    if (suppRows && suppRows.length > 0) {
+                        if (suppCount) suppCount.textContent = `${suppRows.length} items`;
+                        suppTbody.innerHTML = suppRows.map(s => {
+                            const bomQty = s.qty ?? 0;
+                            const safeTag  = (s.support_tag || '-').replace(/"/g, '&quot;');
+                            const safeItem = (s.item || '-').replace(/"/g, '&quot;');
+                            const safeSize = (s.size_or_type || '-').replace(/"/g, '&quot;');
+                            const safeIso  = (s.iso_dwg_no || '-').replace(/"/g, '&quot;');
+                            return `<tr>
+                            <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${safeIso}">${s.iso_dwg_no || '-'}</td>
+                            <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;" title="${safeTag}">${s.support_tag || '-'}</td>
+                            <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${safeItem}">${s.item || '-'}</td>
+                            <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${s.matl || '-'}</td>
+                            <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${safeSize}">${s.size_or_type || '-'}</td>
+                            <td style="text-align:center;">EA</td>
+                            <td style="text-align:center;">${bomQty}</td>
+                            <td style="text-align:center;color:#aaa;">-</td>
+                            <td style="text-align:center;color:#aaa;">-</td>
+                            <td style="text-align:center;">
+                                <input type="number" class="form-control supp-req-qty" style="width:80px;" min="0" value="${bomQty}"
+                                    data-iso="${safeIso}" data-tag="${safeTag}" data-item="${safeItem}" data-size="${safeSize}">
+                            </td>
+                        </tr>`;
+                        }).join('');
+                    } else {
+                        if (suppCount) suppCount.textContent = '';
+                        suppTbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#aaa;padding:12px;">No support materials for this ISO.</td></tr>';
+                    }
+                } else {
+                    if (suppCount) suppCount.textContent = '';
+                    suppTbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#888;">Select an ISO Drawing and click Search BOM.</td></tr>';
+                }
             }
         });
     }
@@ -2657,6 +2815,39 @@ function attachEventListeners() {
                 renderMrTable(); // newly defined to update the MR section
             } else {
                 alert("No valid quantities were selected to add to MR.");
+            }
+        });
+    }
+
+    // Step 2: Support Material "Add To MR" 버튼
+    const btnSuppAddToMr = document.getElementById('btnSuppAddToMr');
+    if (btnSuppAddToMr) {
+        btnSuppAddToMr.addEventListener('click', () => {
+            const inputs = document.querySelectorAll('#suppMatTbody .supp-req-qty');
+            let addedCount = 0;
+            if (!sessionMrNo) {
+                sessionMrNo = "MR-" + new Date().getFullYear() + "-" + (Math.floor(Math.random() * 9000) + 1000);
+            }
+            inputs.forEach(inp => {
+                const reqQty = parseFloat(inp.value) || 0;
+                if (reqQty <= 0) return;
+                db.mrTable.push({
+                    mrNo:    sessionMrNo,
+                    iso:     inp.getAttribute('data-iso'),
+                    matCode: '[SUP] ' + inp.getAttribute('data-tag'),
+                    desc:    inp.getAttribute('data-item'),
+                    size:    inp.getAttribute('data-size'),
+                    unit:    'EA',
+                    reqQty:  reqQty,
+                    isSupport: true,
+                });
+                addedCount++;
+            });
+            if (addedCount > 0) {
+                alert(`Successfully saved ${addedCount} support item(s) to MR Table (${sessionMrNo}).`);
+                renderMrTable();
+            } else {
+                alert("No valid quantities selected.");
             }
         });
     }
@@ -2935,25 +3126,31 @@ function renderMrTable() {
     });
 
     tbody.innerHTML = db.mrTable.map(m => {
-        const records = pkgSorted[m.matCode] || [];
-        let remaining = m.reqQty;
-        const allocated = [];
-        for (const rec of records) {
-            if (remaining <= 0) break;
-            allocated.push({ plNo: rec.plNo, take: Math.min(remaining, rec.qty) });
-            remaining -= allocated[allocated.length - 1].take;
-        }
+        // Support 항목은 PKG NO 할당 없이 표시
         let pkgDisplay;
-        if (allocated.length === 0) {
-            pkgDisplay = '<span style="color:#999;">-</span>';
-        } else if (allocated.length === 1) {
-            pkgDisplay = `<span style="font-weight:600;color:#0d47a1;">${allocated[0].plNo}</span>`;
+        if (m.isSupport) {
+            pkgDisplay = '<span style="font-size:11px;color:#3949ab;background:#e8eaf6;padding:2px 7px;border-radius:10px;">Support</span>';
         } else {
-            pkgDisplay = allocated.map(a =>
-                `<span style="font-weight:600;color:#0d47a1;">${a.plNo}</span><span style="font-size:10px;color:#555;"> (${a.take % 1 === 0 ? a.take : a.take.toFixed(2)})</span>`
-            ).join('<br>');
+            const records = pkgSorted[m.matCode] || [];
+            let remaining = m.reqQty;
+            const allocated = [];
+            for (const rec of records) {
+                if (remaining <= 0) break;
+                allocated.push({ plNo: rec.plNo, take: Math.min(remaining, rec.qty) });
+                remaining -= allocated[allocated.length - 1].take;
+            }
+            if (allocated.length === 0) {
+                pkgDisplay = '<span style="color:#999;">-</span>';
+            } else if (allocated.length === 1) {
+                pkgDisplay = `<span style="font-weight:600;color:#0d47a1;">${allocated[0].plNo}</span>`;
+            } else {
+                pkgDisplay = allocated.map(a =>
+                    `<span style="font-weight:600;color:#0d47a1;">${a.plNo}</span><span style="font-size:10px;color:#555;"> (${a.take % 1 === 0 ? a.take : a.take.toFixed(2)})</span>`
+                ).join('<br>');
+            }
         }
-        return `<tr>
+        const rowStyle = m.isSupport ? 'background:#f5f5ff;' : '';
+        return `<tr style="${rowStyle}">
             <td><strong>${m.mrNo}</strong></td>
             <td>${m.iso}</td>
             <td style="line-height:1.8;">${pkgDisplay}</td>
