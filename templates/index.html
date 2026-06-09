@@ -54,6 +54,7 @@
                  <div class="section-title">Reports</div>
                  <div class="nav-item" data-target="stock_ledger"><i class="fas fa-warehouse"></i> Material Stock</div>
                  <div class="nav-item" data-target="material_shortage"><i class="fas fa-exclamation-triangle"></i> Material Shortage</div>
+                 <div class="nav-item" data-target="surplus_material"><i class="fas fa-boxes"></i> Surplus Material</div>
 
                  <div class="section-title">Logistics</div>
                  <div class="nav-item" data-target="shipping"><i class="fas fa-ship"></i> Shipping / Custom Clearance</div>
@@ -166,7 +167,7 @@
                   <div class="header-actions">
                       <div class="search-bar" style="width: 250px;">
                           <i class="fas fa-search"></i>
-                          <input type="text" id="globalSearchInput" placeholder="Search MatCode, Tag No...">
+                          <input type="text" id="globalSearchInput" placeholder="Search MatCode, ISO Drawing, System, Tag No...">
                       </div>
                       <button class="btn btn-outline btn-small" id="btnSyncData"><i class="fas fa-upload"></i> Sync Data</button>
                       <button class="btn btn-primary btn-small" id="btnResetData"><i class="fas fa-sync-alt"></i> Refresh</button>
@@ -1133,7 +1134,95 @@
                 </div>
             </section>
 
-            <!-- 8. MR History -->
+            <!-- 8. Surplus Material -->
+            <section id="surplus_material" class="view-section">
+                <div class="page-header">
+                    <div>
+                        <h1>Surplus Material</h1>
+                        <p class="subtitle">Items with receiving quantity exceeding BOM requirement.</p>
+                    </div>
+                </div>
+
+                <div class="panel filter-panel" style="margin-bottom: 20px;">
+                    <div style="display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap;">
+                        <div class="form-group" style="flex: 0 0 410px;">
+                            <label>Search</label>
+                            <input type="text" id="surplusSearch" class="form-control" placeholder="MatCode / Description / Item / Size" style="width:100%;">
+                        </div>
+                        <div class="form-group">
+                            <label>Category</label>
+                            <select id="surplusCatFilter" class="form-control" style="width: 280px;">
+                                <option value="ALL">All Categories</option>
+                                <option value="Pipe">Pipe</option>
+                                <option value="Fitting">Fitting</option>
+                                <option value="Others">Others</option>
+                                <option value="Valve">Valve</option>
+                                <option value="Speciality">Speciality</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Item</label>
+                            <select id="surplusItemFilter" class="form-control" style="width: 230px;">
+                                <option value="ALL">All Items</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Size</label>
+                            <select id="surplusSizeFilter" class="form-control" style="width: 210px;">
+                                <option value="ALL">All Sizes</option>
+                            </select>
+                        </div>
+                        <div style="padding-bottom: 1px; display: flex; gap: 8px;">
+                            <button class="btn btn-primary" onclick="_surplusPage=1;renderSurplusTable();" style="height: 38px; display: flex; align-items: center; gap: 8px;">
+                                <i class="fas fa-search"></i> Search
+                            </button>
+                            <button class="btn btn-outline" onclick="(function(){var cat=document.getElementById('surplusCatFilter');var si=document.getElementById('surplusSearch');if(si)si.value='';if(cat){cat.value='ALL';cat.dispatchEvent(new Event('change'));}var ii=document.getElementById('surplusItemFilter');var sz=document.getElementById('surplusSizeFilter');if(ii)ii.value='ALL';if(sz)sz.value='ALL';_surplusPage=1;renderSurplusTable();})()" style="height: 38px;">
+                                Reset
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel data-panel">
+                    <div class="panel-header">
+                        <h3><i class="fas fa-boxes"></i> Surplus Items (Received > BOM)</h3>
+                        <span id="surplusCount" style="font-size:13px;color:#666;"></span>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="data-table" id="surplusTable" style="table-layout:fixed;width:100%;">
+                            <colgroup>
+                                <col style="width:190px;">
+                                <col style="width:250px;">
+                                <col>
+                                <col style="width:305px;">
+                                <col style="width:145px;">
+                                <col style="width:110px;">
+                                <col style="width:150px;">
+                                <col style="width:160px;">
+                                <col style="width:160px;">
+                            </colgroup>
+                            <thead>
+                                <tr>
+                                    <th style="text-align:center;">Category</th>
+                                    <th style="text-align:center;">MatCode</th>
+                                    <th style="text-align:center;">Full Description</th>
+                                    <th style="text-align:center;">Item</th>
+                                    <th style="text-align:center;">Size (Inch)</th>
+                                    <th style="text-align:center;">Unit</th>
+                                    <th style="text-align:center;">BOM QTY</th>
+                                    <th style="text-align:center;">Receiving QTY</th>
+                                    <th style="text-align:center;">Surplus QTY</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="surplusPagination"></div>
+                </div>
+            </section>
+
+            <!-- 9. MR History -->
             <section id="mr_history" class="view-section">
                 <div class="page-header">
                     <div>
@@ -1401,12 +1490,12 @@
                                 <col style="width:80px;">
                                 <col style="width:65px;">
                                 <col style="width:115px;">
-                                <col style="width:135px;">
-                                <col style="width:135px;">
-                                <col style="width:135px;">
-                                <col style="width:135px;">
+                                <col style="width:125px;">
+                                <col style="width:125px;">
+                                <col style="width:125px;">
+                                <col style="width:125px;">
                                 <col style="width:130px;">
-                                <col>
+                                <col style="width:110px;">
                             </colgroup>
                             <thead>
                                 <tr>
@@ -1416,12 +1505,12 @@
                                     <th style="text-align:center;">Q'ty</th>
                                     <th style="text-align:center;">Unit</th>
                                     <th style="text-align:center;">Status</th>
-                                    <th style="text-align:center;width:130px;">On-Site Date</th>
-                                    <th style="text-align:center;width:130px;">Custom Clear</th>
-                                    <th style="text-align:center;width:130px;">Request Date</th>
-                                    <th style="text-align:center;width:130px;">Issue Date</th>
+                                    <th style="text-align:center;width:120px;">On-Site Date</th>
+                                    <th style="text-align:center;width:120px;">Custom Clear</th>
+                                    <th style="text-align:center;width:120px;">Request Date</th>
+                                    <th style="text-align:center;width:120px;">Issue Date</th>
                                     <th style="text-align:center;width:130px;">Purpose</th>
-                                    <th style="text-align:center;min-width:80px;">Remark</th>
+                                    <th style="text-align:center;min-width:110px;">Remark</th>
                                 </tr>
                             </thead>
                             <tbody id="shippingTbody">
@@ -1853,6 +1942,6 @@
     <script src="{{ url_for('static', filename='vendor/js/jquery.min.js') }}"></script>
     <script src="{{ url_for('static', filename='vendor/js/jquery.dataTables.min.js') }}"></script>
     <!-- Preloaded backend data (Removed large data.js) -->
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260607b"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260609a"></script>
 </body>
 </html>

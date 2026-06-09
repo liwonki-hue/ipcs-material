@@ -202,6 +202,20 @@ ul { list-style: none; }
 .modal-body { padding: 20px; flex: 1; }
 .modal-footer { padding: 20px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 10px; }
 
+/* Package List — flatpickr altInput styling (YY-MM-DD 표시용) */
+#shippingTbody .flatpickr-alt-input {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid #dde3ee;
+    border-radius: 4px;
+    padding: 3px 5px;
+    font-size: 12px;
+    background: #fff;
+    color: #0A2540;
+    text-align: right;
+    cursor: pointer;
+}
+
 /* Print Styles */
 @media print {
     @page { size: A4 portrait; margin: 10mm; }

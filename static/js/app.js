@@ -32,6 +32,7 @@ let sessionMrNo = null;
 
 // Cached ISO stage data for client-side re-filtering (donut chart clicks)
 let cachedIsoData = [];
+let _knownSystems = new Set(); // db.bom 로드 후 갱신, 전역 검색 시스템 매칭용
 
 // Material Shortage 탭 자동 갱신 타이머
 let shortageRefreshTimer = null;
@@ -52,6 +53,7 @@ async function syncShortageData() {
                 uom: b.uom || 'EA',
                 qty: parseFloat(b.total_qty || b.qty) || 0
             })).filter(b => b.qty > 0 && b.matCode);
+            _knownSystems = new Set(db.bom.map(b => b.system).filter(Boolean).map(s => s.toUpperCase()));
         }
         if (recvRaw.length > 0) {
             db.receiving = recvRaw.map(r => ({
@@ -361,6 +363,7 @@ async function syncFromSupabase() {
         }
 
         await loadPlUpdates();
+        _knownSystems = new Set(db.bom.map(b => b.system).filter(Boolean).map(s => s.toUpperCase()));
         // Shipping 캐시 무효화 — 전역 동기화 후 다음 탭 진입 시 재빌드
         _shippingData = null;
         _spoolShippingCache = null;
@@ -434,7 +437,6 @@ function initNavigation() {
 
         // Material Shortage 탭: 진입 시 즉시 싱크 + 폴링 시작, 이탈 시 정리
         if (targetId === 'material_shortage') {
-            initShortageFilters();
             syncShortageData();
             if (!shortageRefreshTimer) {
                 shortageRefreshTimer = setInterval(syncShortageData, SHORTAGE_REFRESH_INTERVAL_MS);
@@ -444,6 +446,10 @@ function initNavigation() {
                 clearInterval(shortageRefreshTimer);
                 shortageRefreshTimer = null;
             }
+        }
+
+        if (targetId === 'surplus_material') {
+            renderSurplusTable();
         }
     };
 
@@ -1090,122 +1096,183 @@ function renderStockTable() {
 let _stockPage = 1;
 window._stockGoPage = function(p) { _stockPage = p; renderStockTable(); };
 
-// --- Material Shortage ---
-let _shortagePage = 1;
-let _shortageList = [];
-
+// --- Material Shortage / Surplus 공용 ---
 const CAT_ORDER = { 'Pipe': 0, 'Fitting': 1, 'Valve': 2, 'Spool': 3, 'Support': 4, 'Others': 5, 'Speciality': 6 };
 
-function initShortageFilters() {}
-
-function renderShortageTable() {
-    const tbody = document.querySelector('#shortageTable tbody');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-
-    // Aggregate BOM qty per matCode (sum across all systems)
-    const bomMap = {};
+function _buildBomMap() {
+    const m = {};
     db.bom.forEach(b => {
         if (!b.matCode) return;
-        if (!bomMap[b.matCode]) bomMap[b.matCode] = { qty: 0, uom: b.uom };
-        bomMap[b.matCode].qty += b.qty;
+        if (!m[b.matCode]) m[b.matCode] = { qty: 0, uom: b.uom };
+        m[b.matCode].qty += b.qty;
     });
+    return m;
+}
 
-    // Aggregate Receiving qty per matCode — On-Site 도착 + Permanent/미분류만 BOM 비교 대상
-    // 매칭 원칙: TAG 우선, TAG 없으면 matCode
-    const recMap = {};
+function _buildRecMap() {
+    const m = {};
     db.receiving
         .filter(r => (r.purpose === 'Permanent' || r.purpose === '') && isReceivingActive(r.plNo))
         .forEach(r => {
             const tagInfo = db.bomTagMap[(r.tag || '').toUpperCase()];
             const effMat = r.matCode || (tagInfo ? tagInfo.matCode : '');
             if (!effMat) return;
-            if (!recMap[effMat]) recMap[effMat] = { qty: 0, desc: r.desc, unit: r.unit };
-            recMap[effMat].qty += r.qty;
+            if (!m[effMat]) m[effMat] = { qty: 0, desc: r.desc, unit: r.unit };
+            m[effMat].qty += r.qty;
         });
+    return m;
+}
 
-    // masterMap for item / size / category lookup
-    const masterMap = {};
-    db.matCodeMaster.forEach(m => { masterMap[m.matCode] = m; });
+function _buildMasterMap() {
+    const m = {};
+    db.matCodeMaster.forEach(md => { m[md.matCode] = md; });
+    return m;
+}
+
+function _sortByCatItemSize(list) {
+    list.sort((a, b) => {
+        const oa = CAT_ORDER[a.cat] ?? 9, ob = CAT_ORDER[b.cat] ?? 9;
+        if (oa !== ob) return oa - ob;
+        const ia = (a.item || '').toUpperCase(), ib = (b.item || '').toUpperCase();
+        if (ia !== ib) return ia.localeCompare(ib);
+        return (parseFloat((a.size || '0').replace(/[^0-9.]/g, '')) || 0) -
+               (parseFloat((b.size || '0').replace(/[^0-9.]/g, '')) || 0);
+    });
+}
+
+function _enrichRow(matCode, bomMap, recMap, masterMap) {
+    const mData = masterMap[matCode] || {};
+    const desc = db.bomDesc[matCode] || (recMap[matCode]?.desc !== '-' ? recMap[matCode]?.desc : null) || mData.itemDesc || '-';
+    const _itemMc = window.extractItemFromMatCode(matCode);
+    const item = (_itemMc && _itemMc !== '-') ? _itemMc : window.extractItemFromDesc(desc);
+    const _sc = window.extractSizeFromMatCode(matCode);
+    const size = (_sc && _sc !== '-') ? _sc : (mData.size1 || '-');
+    const cat = mData.category || window.getCategory(mData.itemDesc || '', matCode);
+    const unit = recMap[matCode]?.unit || bomMap[matCode]?.uom || 'EA';
+    const bomQty = bomMap[matCode]?.qty ?? 0;
+    const recQty = recMap[matCode]?.qty ?? 0;
+    return { matCode, cat, desc, item, size, unit, bomQty, recQty };
+}
+
+const _TABLE_ROW_TPL = ({ matCode, cat, desc, item, size, unit, bomQty, recQty, diffQty, diffColor }) => `<tr>
+    <td style="text-align:center;"><strong>${cat}</strong></td>
+    <td style="text-align:center;font-weight:600;color:var(--color-primary);white-space:nowrap;">${matCode}</td>
+    <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${desc}">${desc}</td>
+    <td style="text-align:center;">${item}</td>
+    <td style="text-align:center;">${size}</td>
+    <td style="text-align:center;">${unit}</td>
+    <td style="text-align:center;">${Math.round(bomQty).toLocaleString()}</td>
+    <td style="text-align:center;">${Math.round(recQty).toLocaleString()}</td>
+    <td style="text-align:center;font-weight:700;color:${diffColor};">${Math.round(diffQty).toLocaleString()}</td>
+</tr>`;
+
+// --- Material Shortage ---
+let _shortagePage = 1;
+let _shortageList = [];
+
+function renderShortageTable() {
+    const tbody = document.querySelector('#shortageTable tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    const bomMap = _buildBomMap();
+    const recMap = _buildRecMap();
+    const masterMap = _buildMasterMap();
 
     const catFilter  = (document.getElementById('shortCatFilter')  || {}).value || 'ALL';
     const itemFilter = (document.getElementById('shortItemFilter') || {}).value || 'ALL';
     const sizeFilter = (document.getElementById('shortSizeFilter') || {}).value || 'ALL';
     const searchQ    = ((document.getElementById('shortSearch')    || {}).value || '').toUpperCase();
 
-    const shortageList = [];
+    const list = [];
     Object.keys(bomMap).forEach(matCode => {
-        const bomQty = bomMap[matCode].qty;
-        const recQty = recMap[matCode] ? recMap[matCode].qty : 0;
-        const shortage = bomQty - recQty;
-        if (shortage <= 0.01) return;
-
-        const mData = masterMap[matCode] || {};
-        const cat = mData.category || window.getCategory(mData.itemDesc || '', matCode);
-        if (catFilter !== 'ALL' && cat !== catFilter) return;
-
-        const desc = db.bomDesc[matCode] || (recMap[matCode] && recMap[matCode].desc !== '-' ? recMap[matCode].desc : null) || mData.itemDesc || '-';
-        const _itemMc = window.extractItemFromMatCode(matCode);
-        const item = (_itemMc && _itemMc !== '-') ? _itemMc : window.extractItemFromDesc(desc);
-        const _sc = window.extractSizeFromMatCode(matCode);
-        const size = (_sc && _sc !== '-') ? _sc : (mData.size1 || '-');
-        const unit = (recMap[matCode] ? recMap[matCode].unit : null) || bomMap[matCode].uom || 'EA';
-
-        if (itemFilter !== 'ALL' && item !== itemFilter) return;
-        if (sizeFilter !== 'ALL' && size !== sizeFilter) return;
-        if (searchQ && !matCode.toUpperCase().includes(searchQ) && !desc.toUpperCase().includes(searchQ) && !item.toUpperCase().includes(searchQ) && !size.toUpperCase().includes(searchQ)) return;
-
-        shortageList.push({ matCode, cat, desc, item, size, unit, bomQty, recQty, shortage });
+        const row = _enrichRow(matCode, bomMap, recMap, masterMap);
+        const diffQty = row.bomQty - row.recQty;
+        if (diffQty <= 0.01) return;
+        if (catFilter  !== 'ALL' && row.cat  !== catFilter)  return;
+        if (itemFilter !== 'ALL' && row.item !== itemFilter) return;
+        if (sizeFilter !== 'ALL' && row.size !== sizeFilter) return;
+        if (searchQ && ![row.matCode, row.desc, row.item, row.size].some(v => v.toUpperCase().includes(searchQ))) return;
+        list.push({ ...row, diffQty });
     });
+    _sortByCatItemSize(list);
 
-    // Category → Item → Size 순 정렬
-    shortageList.sort((a, b) => {
-        const oa = CAT_ORDER[a.cat] ?? 9;
-        const ob = CAT_ORDER[b.cat] ?? 9;
-        if (oa !== ob) return oa - ob;
-        const ia = (a.item || '').toUpperCase();
-        const ib = (b.item || '').toUpperCase();
-        if (ia !== ib) return ia.localeCompare(ib);
-        const sa = parseFloat((a.size || '0').replace(/[^0-9.]/g, '')) || 0;
-        const sb = parseFloat((b.size || '0').replace(/[^0-9.]/g, '')) || 0;
-        return sa - sb;
-    });
-
-    _shortageList = shortageList;
-    _shortagePage = Math.min(_shortagePage, Math.max(1, Math.ceil(shortageList.length / PAGE_SIZE)));
-
+    _shortageList = list;
+    _shortagePage = Math.min(_shortagePage, Math.max(1, Math.ceil(list.length / PAGE_SIZE)));
     const countEl = document.getElementById('shortageCount');
-    if (countEl) countEl.textContent = shortageList.length > 0 ? `${shortageList.length} items` : '';
+    if (countEl) countEl.textContent = list.length > 0 ? `${list.length} items` : '';
 
-    if (shortageList.length === 0) {
+    if (list.length === 0) {
         tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#666;padding:20px;">No shortage items found.</td></tr>';
         const sp = document.getElementById('shortagePagination'); if (sp) sp.innerHTML = '';
         return;
     }
-
     const start = (_shortagePage - 1) * PAGE_SIZE;
-    const pageRows = shortageList.slice(start, start + PAGE_SIZE);
-
-    tbody.innerHTML = pageRows.map(({ matCode, cat, desc, item, size, unit, bomQty, recQty, shortage }) => `<tr>
-            <td style="text-align:center;"><strong>${cat}</strong></td>
-            <td style="text-align:center;font-weight:600;color:var(--color-primary);white-space:nowrap;">${matCode}</td>
-            <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${desc}">${desc}</td>
-            <td style="text-align:center;">${item}</td>
-            <td style="text-align:center;">${size}</td>
-            <td style="text-align:center;">${unit}</td>
-            <td style="text-align:center;">${Math.round(bomQty).toLocaleString()}</td>
-            <td style="text-align:center;">${Math.round(recQty).toLocaleString()}</td>
-            <td style="text-align:center;font-weight:700;color:#d32f2f;">${Math.round(shortage).toLocaleString()}</td>
-        </tr>`).join('');
-
-    renderPagination('shortagePagination', _shortagePage, Math.max(1, Math.ceil(shortageList.length / PAGE_SIZE)), 'goShortagePage');
+    tbody.innerHTML = list.slice(start, start + PAGE_SIZE)
+        .map(r => _TABLE_ROW_TPL({ ...r, diffColor: '#d32f2f' })).join('');
+    renderPagination('shortagePagination', _shortagePage, Math.max(1, Math.ceil(list.length / PAGE_SIZE)), 'goShortagePage');
 }
 
 function goShortagePage(p) {
-    const totalPages = Math.max(1, Math.ceil(_shortageList.length / PAGE_SIZE));
-    if (p < 1 || p > totalPages) return;
+    const total = Math.max(1, Math.ceil(_shortageList.length / PAGE_SIZE));
+    if (p < 1 || p > total) return;
     _shortagePage = p;
     renderShortageTable();
+}
+
+// --- Surplus Material ---
+let _surplusPage = 1;
+let _surplusList = [];
+
+function renderSurplusTable() {
+    const tbody = document.querySelector('#surplusTable tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    const bomMap = _buildBomMap();
+    const recMap = _buildRecMap();
+    const masterMap = _buildMasterMap();
+
+    const catFilter  = (document.getElementById('surplusCatFilter')  || {}).value || 'ALL';
+    const itemFilter = (document.getElementById('surplusItemFilter') || {}).value || 'ALL';
+    const sizeFilter = (document.getElementById('surplusSizeFilter') || {}).value || 'ALL';
+    const searchQ    = ((document.getElementById('surplusSearch')    || {}).value || '').toUpperCase();
+
+    const allMatCodes = new Set([...Object.keys(bomMap), ...Object.keys(recMap)]);
+    const list = [];
+    allMatCodes.forEach(matCode => {
+        const row = _enrichRow(matCode, bomMap, recMap, masterMap);
+        const diffQty = row.recQty - row.bomQty;
+        if (diffQty <= 0.01) return;
+        if (catFilter  !== 'ALL' && row.cat  !== catFilter)  return;
+        if (itemFilter !== 'ALL' && row.item !== itemFilter) return;
+        if (sizeFilter !== 'ALL' && row.size !== sizeFilter) return;
+        if (searchQ && ![row.matCode, row.desc, row.item, row.size].some(v => v.toUpperCase().includes(searchQ))) return;
+        list.push({ ...row, diffQty });
+    });
+    _sortByCatItemSize(list);
+
+    _surplusList = list;
+    _surplusPage = Math.min(_surplusPage, Math.max(1, Math.ceil(list.length / PAGE_SIZE)));
+    const countEl = document.getElementById('surplusCount');
+    if (countEl) countEl.textContent = list.length > 0 ? `${list.length} items` : '';
+
+    if (list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#666;padding:20px;">No surplus items found.</td></tr>';
+        const sp = document.getElementById('surplusPagination'); if (sp) sp.innerHTML = '';
+        return;
+    }
+    const start = (_surplusPage - 1) * PAGE_SIZE;
+    tbody.innerHTML = list.slice(start, start + PAGE_SIZE)
+        .map(r => _TABLE_ROW_TPL({ ...r, diffColor: '#1976d2' })).join('');
+    renderPagination('surplusPagination', _surplusPage, Math.max(1, Math.ceil(list.length / PAGE_SIZE)), 'goSurplusPage');
+}
+
+function goSurplusPage(p) {
+    const total = Math.max(1, Math.ceil(_surplusList.length / PAGE_SIZE));
+    if (p < 1 || p > total) return;
+    _surplusPage = p;
+    renderSurplusTable();
 }
 
 // --- 2. MatCode Master ---
@@ -1363,6 +1430,14 @@ function initFilterOptions() {
     const sSize = document.getElementById('shortSizeFilter');
     if (sItem && db.bom.length > 0) {
         setupCatItemSize(sCat, sItem, sSize, getBomItemsForCat, getBomSizesForCatItem, 'ALL');
+    }
+
+    // Surplus Filters — db.bom 기반 동일 연동
+    const surplusCat  = document.getElementById('surplusCatFilter');
+    const surplusItem = document.getElementById('surplusItemFilter');
+    const surplusSize = document.getElementById('surplusSizeFilter');
+    if (surplusItem && db.bom.length > 0) {
+        setupCatItemSize(surplusCat, surplusItem, surplusSize, getBomItemsForCat, getBomSizesForCatItem, 'ALL');
     }
 
     // MatCode Master Filters (BOM/Receiving과 동일하게 MatCode 파싱 함수 사용)
@@ -2067,7 +2142,19 @@ function attachEventListeners() {
                     const plInput = document.getElementById('plItemSearch');
                     if (plInput) plInput.value = term;
                     renderReceivingTable();
-                } else if (term.includes('B0-MV') || term.includes('B1-MV') || term.includes('VLV')) {
+                } else if (_knownSystems.has(term)) {
+                    // System 정확 매칭 검색: ST, HP, LS, CH 등
+                    showSection('piping_bom');
+                    const sysEl = document.getElementById('bomSystemFilter');
+                    if (sysEl) {
+                        const match = [...sysEl.options].find(o => o.value.toUpperCase() === term);
+                        if (match) sysEl.value = match.value;
+                    }
+                    const bomInput = document.getElementById('bomIsoSearch');
+                    if (bomInput) bomInput.value = '';
+                    renderBomTable();
+                } else if (/^B\d/i.test(term) || term.includes('B0-') || term.includes('B1-') || term.includes('B2-') || term.includes('VLV')) {
+                    // ISO Drawing like 검색: B126, B0-ST, B227-HP 등
                     showSection('piping_bom');
                     const bomInput = document.getElementById('bomIsoSearch');
                     if (bomInput) bomInput.value = term;
@@ -3809,6 +3896,8 @@ function renderShippingTable(rows) {
         if (el._flatpickr) el._flatpickr.destroy();
         flatpickr(el, {
             dateFormat: 'Y-m-d',
+            altInput: true,
+            altFormat: 'y-m-d',
             allowInput: false,
             disableMobile: true,
             locale: { firstDayOfWeek: 1 },
