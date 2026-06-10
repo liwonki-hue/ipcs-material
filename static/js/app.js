@@ -37,6 +37,7 @@ let _knownSystems = new Set(); // db.bom 로드 후 갱신, 전역 검색 시스
 // Material Shortage 탭 자동 갱신 타이머
 let shortageRefreshTimer = null;
 const SHORTAGE_REFRESH_INTERVAL_MS = 60 * 1000; // 60초
+let _stockFiltersInitialized = false;
 
 async function syncShortageData() {
     if (!supabaseClient) return;
@@ -863,6 +864,17 @@ function updateCategoryCharts() {
 
 // --- 6. Stock Ledger ---
 function initStockFilters() {
+    const stockCatEl  = document.getElementById('stockCatFilter');
+    const stockItemEl = document.getElementById('stockItemFilter');
+    const stockSizeEl = document.getElementById('stockSizeFilter');
+
+    // 선택값 보존 (탭 재진입 시 초기화 방지)
+    const savedDoc  = document.getElementById('stockDocFilter')?.value  || 'All';
+    const savedPkg  = document.getElementById('stockPkgFilter')?.value  || 'All';
+    const savedCat  = stockCatEl?.value  || 'All';
+    const savedItem = stockItemEl?.value || 'All';
+    const savedSize = stockSizeEl?.value || 'All';
+
     const docs  = [...new Set(db.receiving.map(r => r.docNo).filter(Boolean))].sort();
     const pkgs  = [...new Set(db.receiving.map(r => r.plNo).filter(Boolean))].sort();
     const cats  = [...new Set(db.receiving.map(r => r.category).filter(Boolean))].sort();
@@ -873,10 +885,6 @@ function initStockFilters() {
     sel('stockDocFilter', docs, 'All DOCs');
     sel('stockPkgFilter', pkgs, 'All PKGs');
     sel('stockCatFilter', cats, 'All Categories');
-
-    const stockCatEl  = document.getElementById('stockCatFilter');
-    const stockItemEl = document.getElementById('stockItemFilter');
-    const stockSizeEl = document.getElementById('stockSizeFilter');
 
     function stockGetItemsForCat(cat) {
         const src = cat === 'All' ? db.receiving : db.receiving.filter(r => (r.category || '') === cat);
@@ -897,20 +905,33 @@ function initStockFilters() {
         const sizes = stockGetSizesForCatItem(cat, item);
         stockSizeEl.innerHTML = '<option value="All">All Sizes</option>' + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
     }
-    refreshStockItemOptions('All');
-    refreshStockSizeOptions('All', 'All');
-    if (stockCatEl) {
-        stockCatEl.addEventListener('change', () => {
-            refreshStockItemOptions(stockCatEl.value);
-            refreshStockSizeOptions(stockCatEl.value, 'All');
-        });
-    }
-    if (stockItemEl) {
-        stockItemEl.addEventListener('change', () => {
-            const cat = stockCatEl ? stockCatEl.value : 'All';
-            refreshStockSizeOptions(cat, stockItemEl.value);
-        });
-    }
+
+    // 카테고리 → 아이템 → 사이즈 순서로 재빌드 후 저장값 복원
+    if (stockCatEl && [...stockCatEl.options].some(o => o.value === savedCat)) stockCatEl.value = savedCat;
+    refreshStockItemOptions(stockCatEl?.value || 'All');
+    const docEl = document.getElementById('stockDocFilter');
+    const pkgEl = document.getElementById('stockPkgFilter');
+    if (docEl && [...docEl.options].some(o => o.value === savedDoc)) docEl.value = savedDoc;
+    if (pkgEl && [...pkgEl.options].some(o => o.value === savedPkg)) pkgEl.value = savedPkg;
+    if (stockItemEl && [...stockItemEl.options].some(o => o.value === savedItem)) stockItemEl.value = savedItem;
+    refreshStockSizeOptions(stockCatEl?.value || 'All', stockItemEl?.value || 'All');
+    if (stockSizeEl && [...stockSizeEl.options].some(o => o.value === savedSize)) stockSizeEl.value = savedSize;
+
+    // 이벤트 리스너 1회만 등록 (탭 재진입 시 중복 방지)
+    if (!_stockFiltersInitialized) {
+        _stockFiltersInitialized = true;
+        if (stockCatEl) {
+            stockCatEl.addEventListener('change', () => {
+                refreshStockItemOptions(stockCatEl.value);
+                refreshStockSizeOptions(stockCatEl.value, 'All');
+            });
+        }
+        if (stockItemEl) {
+            stockItemEl.addEventListener('change', () => {
+                const cat = stockCatEl ? stockCatEl.value : 'All';
+                refreshStockSizeOptions(cat, stockItemEl.value);
+            });
+        }
 
     const btn   = document.getElementById('btnStockSearch');
     const clear = document.getElementById('btnStockClear');
@@ -970,6 +991,7 @@ function initStockFilters() {
             XLSX.writeFile(wb, `Stock_Export_${today}.xlsx`);
         });
     }
+    } // end _stockFiltersInitialized guard
 }
 
 function buildRecvMaps(filterFn) {
@@ -1344,7 +1366,7 @@ let currentSrecPage = 1;
 // Category/Item/Size 필터 공통 헬퍼
 function getBomItemsForCat(cat) {
     if (cat === 'Speciality') return db.specialityItems.slice();
-    const src = (cat === 'All' || cat === 'ALL') ? db.bom : db.bom.filter(b => window.getCategory('', b.matCode) === cat);
+    const src = (cat === 'All' || cat === 'ALL') ? db.bom : db.bom.filter(b => b.category === cat);
     const set = new Set(src.map(b => window.extractItemFromMatCode(b.matCode)).filter(v => v && v !== '-'));
     if (cat === 'All' || cat === 'ALL' || cat === 'Valve') {
         set.add('BYPASS VALVE'); set.add('CONTROL VALVE'); set.add('SAFETY VALVE');
@@ -1353,7 +1375,7 @@ function getBomItemsForCat(cat) {
 }
 function getBomSizesForCatItem(cat, item) {
     if (cat === 'Speciality') return [];
-    let src = (cat === 'All' || cat === 'ALL') ? db.bom : db.bom.filter(b => window.getCategory('', b.matCode) === cat);
+    let src = (cat === 'All' || cat === 'ALL') ? db.bom : db.bom.filter(b => b.category === cat);
     if (item !== 'All' && item !== 'ALL') src = src.filter(b => window.extractItemFromMatCode(b.matCode) === item);
     return [...new Set(src.map(b => window.extractSizeFromMatCode(b.matCode)).filter(v => v && v !== '-'))].sort((a, b) => parseFloat(a) - parseFloat(b));
 }
