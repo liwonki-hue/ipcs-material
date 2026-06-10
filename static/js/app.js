@@ -154,6 +154,9 @@ window.extractItemFromDesc = function(desc) {
     if (!desc) return '-';
     // Check compound item names first (order matters — longer first)
     const COMPOUND = [
+        'FLEXIBLE HOSE', 'FLEXIBLE JOINT',
+        'AIR TRAP', 'STEAM TRAP', 'LINE MIXER', 'SPRAY NOZZLE',
+        'RESTRICTION ORIFICE',
         'TEE-RED', 'REDUCER-CON', 'REDUCER-ECC',
         'FLANGE-BLIND', 'FLANGE-SLIP', 'FLANGE-WELD', 'FLANGE-LAP',
         'COUPLING-HALF', 'COUPLING-FULL',
@@ -171,8 +174,9 @@ window.extractItemFromDesc = function(desc) {
     // Skip leading dimension prefix (e.g., 3", 1/2", DN80, 2"x1")
     const s = desc.replace(/^[\d"'\s\/\-×xX]+/, '').trim();
     if (!s) return '-';
-    const m = s.match(/^([A-Za-z][A-Za-z\s]*?)(?:\s*[-\/,]|$)/);
-    const raw = m ? m[1].trim().toUpperCase() : s.split(/[\s\-\/,_]/)[0].toUpperCase();
+    // ( 도 구분자로 처리 (FLEXIBLE HOSE (AIR HOSE REEL) 등 괄호 형식 대응)
+    const m = s.match(/^([A-Za-z][A-Za-z\s]*?)(?:\s*[-\/,(]|$)/);
+    const raw = m ? m[1].trim().toUpperCase() : s.split(/[\s\-\/,_(]/)[0].toUpperCase();
     // Normalize short item names to full names
     const ITEM_MAP = {
         'BALL': 'BALL VALVE', 'GATE': 'GATE VALVE',
