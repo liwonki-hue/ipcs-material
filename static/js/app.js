@@ -184,6 +184,7 @@ window.extractItemFromDesc = function(desc) {
         'GLOBE': 'GLOBE VALVE', 'CHECK': 'CHECK VALVE',
         'CHCK': 'CHECK VALVE', 'BUTTERFLY': 'BUTTERFLY VALVE',
         'BTFY': 'BUTTERFLY VALVE', 'CONTROL': 'CONTROL VALVE',
+        'FILTER FOR Y': 'FILTER',
     };
     if (ITEM_MAP[raw]) return ITEM_MAP[raw];
     return raw;
@@ -202,7 +203,7 @@ window.extractItemFromMatCode = function(matCode) {
         'CPF':'COUPLING-FULL', 'CPH':'COUPLING-HALF', 'CPU':'COUPLING',
         'SWC':'SWAGE-CON', 'SWE':'SWAGE-ECC', 'SCN':'SWAGE-CON',
         'WOL':'WELDOLET', 'SOL':'SOCKOLET', 'TOL':'THREADOLET',
-        'NOZ':'NOZZLE',
+        'NOZ':'NOZZLE', 'FNO':'FLOW ELEMENT', 'STP':'STEAM TRAP (HIGH)', 'ATP':'AIR TRAP',
         'VLV':'VALVE', 'VBL':'BALL VALVE', 'VGA':'GATE VALVE', 'VGL':'GLOBE VALVE',
         'VCH':'CHECK VALVE', 'CHV':'CHECK VALVE', 'VBF':'BUTTERFLY VALVE',
         'BAV':'BALL VALVE', 'GTV':'GATE VALVE', 'GLV':'GLOBE VALVE',
@@ -1750,8 +1751,7 @@ function _renderRecvCore(cfg) {
         const tagInfo    = db.bomTagMap[(r.tag || '').toUpperCase()];
         const effMat     = r.matCode || (tagInfo ? tagInfo.matCode : '');
         const bomFullDesc = tagInfo ? tagInfo.fullDescription : '';
-        let displayCat   = window.getCategory(r.desc, effMat);
-        if (!displayCat || displayCat === 'Others') displayCat = r.category || 'Others';
+        let displayCat   = (r.category && r.category !== 'BULK') ? r.category : window.getCategory(r.desc, effMat) || 'Others';
         let catForBadge  = displayCat;
         if (!['Pipe', 'Fitting', 'Support', 'Valve', 'Speciality', 'Others'].includes(catForBadge)) catForBadge = 'Valve';
         const catBadge   = getCatBadge(catForBadge);
