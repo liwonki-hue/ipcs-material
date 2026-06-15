@@ -5,9 +5,7 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 let supabaseClient = null;
 try {
     if (typeof window.supabase !== 'undefined' && SUPABASE_URL) {
-        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-            db: { schema: 'material' }
-        });
+        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
     }
 } catch (e) {
     console.error("Supabase initialization failed:", e);
@@ -255,7 +253,7 @@ const getCatBadge = cat => CAT_BADGE[cat] || 'ok';
 async function fetchAllRows(tableName) {
     let allData = [];
     let from = 0;
-    let step = 1000;
+    let step = 5000;
     let hasMore = true;
 
     while (hasMore) {
@@ -613,8 +611,7 @@ function updateDashboard() {
             console.error('v_iso_stage_status error:', listRes.error);
             const tbody = document.getElementById('priorityIsoTbody');
             if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#c62828;padding:20px;">
-                <i class="fas fa-exclamation-triangle"></i> View not ready. Run in Supabase SQL Editor:<br>
-                <code style="font-size:11px;">GRANT SELECT ON material.v_iso_stage_status TO anon;</code>
+                <i class="fas fa-exclamation-triangle"></i> ISO stage data load failed.
             </td></tr>`;
             return;
         }
@@ -2551,7 +2548,7 @@ function attachEventListeners() {
             const id = e.target.dataset.recvId;
             const val = e.target.value;
             if (!id) return;
-            const { error } = await supabaseClient.schema('material').from('receiving').update({ purpose: val }).eq('id', id);
+            const { error } = await supabaseClient.from('receiving').update({ purpose: val }).eq('id', id);
             if (error) console.error('Purpose update failed:', error.message);
         });
     }
@@ -3610,14 +3607,12 @@ const PL_EDIT_HEADERS = {
     'apikey': SUPABASE_KEY,
     'Authorization': `Bearer ${SUPABASE_KEY}`,
     'Content-Type': 'application/json',
-    'Accept-Profile': 'material',
-    'Content-Profile': 'material',
 };
 
 async function loadPlUpdates() {
     try {
         const r = await fetch(`${SUPABASE_URL}/rest/v1/pl_updates?select=*`, {
-            headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Accept-Profile': 'material' }
+            headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
         });
         const rows = await r.json();
         if (Array.isArray(rows)) rows.forEach(row => { _plUpdatesCache[row.pkg_no] = row; });
