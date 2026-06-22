@@ -595,10 +595,6 @@
                                   <select id="plPkgFilter" class="form-control" style="width: 100%;"><option value="All">All PKGs</option></select>
                               </div>
                               <div class="form-group" style="flex: 1; min-width: 0;">
-                                  <label>System</label>
-                                  <select id="plSystemFilter" class="form-control" style="width: 100%;"><option value="All">All Systems</option></select>
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0;">
                                   <label>Category</label>
                                   <select id="plCategoryFilter" class="form-control" style="width: 100%;">
                                       <option value="All">All Categories</option>
@@ -616,6 +612,15 @@
                               <div class="form-group" style="flex: 1; min-width: 0;">
                                   <label>Size</label>
                                   <select id="plSizeFilter" class="form-control" style="width: 100%;"><option value="All">All Sizes</option></select>
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0;">
+                                  <label>Status</label>
+                                  <select id="plStatusFilter" class="form-control" style="width: 100%;">
+                                      <option value="All">All Status</option>
+                                      <option value="Preparing">Preparing</option>
+                                      <option value="Shipping">Shipping</option>
+                                      <option value="On-Site">On-Site</option>
+                                  </select>
                               </div>
                               <div style="padding-bottom: 1px; flex-shrink: 0;">
                                   <button class="btn btn-primary" id="btnFilterPl" style="height: 38px; white-space: nowrap; display: flex; align-items: center; gap: 8px;"><i class="fas fa-search"></i> Search PL</button>
@@ -645,11 +650,13 @@
                                          <th style="width:60px;">Category</th>
                                          <th style="width:80px;">TAG NO</th>
                                          <th style="width:70px;">Item</th>
-                                         <th style="width:20px;">Type</th>
+                                         <th style="width:40px;">Type</th>
+                                         <th style="width:120px;">Mat</th>
                                          <th style="width:50px;">Size</th>
-                                         <th style="min-width:460px;">Full Description</th>
+                                         <th style="width:70px;">Rating</th>
                                          <th>Unit</th>
-                                         <th>Qty</th>
+                                         <th style="width:50px;">Qty</th>
+                                         <th style="width:80px;">Status</th>
                                          <th style="min-width:110px;">Purpose</th>
                                      </tr>
                                  </thead>
@@ -721,8 +728,13 @@
                                   <select id="srecPkgFilter" class="form-control" style="width: 100%;"><option value="All">All PKGs</option></select>
                               </div>
                               <div class="form-group" style="flex: 1; min-width: 0;">
-                                  <label>System</label>
-                                  <select id="srecSystemFilter" class="form-control" style="width: 100%;"><option value="All">All Systems</option></select>
+                                  <label>Status</label>
+                                  <select id="srecStatusFilter" class="form-control" style="width: 100%;">
+                                      <option value="All">All Status</option>
+                                      <option value="Preparing">Preparing</option>
+                                      <option value="Shipping">Shipping</option>
+                                      <option value="On-Site">On-Site</option>
+                                  </select>
                               </div>
                               <div class="form-group" style="flex: 1; min-width: 0;">
                                   <label>Category</label>
@@ -769,11 +781,13 @@
                                          <th style="width:60px;">Category</th>
                                          <th style="width:80px;">TAG NO</th>
                                          <th style="width:70px;">Item</th>
-                                         <th style="width:20px;">Type</th>
+                                         <th style="width:40px;">Type</th>
+                                         <th style="width:120px;">Mat</th>
                                          <th style="width:50px;">Size</th>
-                                         <th style="min-width:460px;">Full Description</th>
+                                         <th style="width:70px;">Rating</th>
                                          <th>Unit</th>
-                                         <th>Qty</th>
+                                         <th style="width:50px;">Qty</th>
+                                         <th style="width:80px;">Status</th>
                                          <th style="min-width:110px;">Purpose</th>
                                      </tr>
                                  </thead>
@@ -1402,7 +1416,7 @@
                         <div style="font-size:11px;color:#6a1b9a;margin-top:2px;">Issue Date set</div>
                     </div>
                     <!-- Remaining -->
-                    <div class="panel shipping-kpi-card" id="skpi_remaining" style="padding:16px;text-align:center;border:2px solid transparent;">
+                    <div class="panel shipping-kpi-card" id="skpi_remaining" onclick="setShippingKpiFilter('remaining')" style="padding:16px;text-align:center;cursor:pointer;border:2px solid transparent;">
                         <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Remaining</div>
                         <div style="display:flex;align-items:baseline;justify-content:center;gap:6px;margin:4px 0 2px;">
                             <span style="font-size:26px;font-weight:700;color:#e65100;" id="sc_remaining_pl">—</span>
@@ -1490,12 +1504,11 @@
                                 <col style="width:80px;">
                                 <col style="width:65px;">
                                 <col style="width:115px;">
+                                <col style="width:100px;">
                                 <col style="width:125px;">
-                                <col style="width:125px;">
-                                <col style="width:125px;">
-                                <col style="width:125px;">
+                                <col style="width:100px;">
                                 <col style="width:130px;">
-                                <col style="width:110px;">
+                                <col style="width:180px;">
                             </colgroup>
                             <thead>
                                 <tr>
@@ -1507,14 +1520,13 @@
                                     <th style="text-align:center;">Status</th>
                                     <th style="text-align:center;width:120px;">On-Site Date</th>
                                     <th style="text-align:center;width:120px;">Custom Clear</th>
-                                    <th style="text-align:center;width:120px;">Request Date</th>
-                                    <th style="text-align:center;width:120px;">Issue Date</th>
+                                    <th style="text-align:center;width:140px;">Issue Date</th>
                                     <th style="text-align:center;width:130px;">Purpose</th>
                                     <th style="text-align:center;min-width:110px;">Remark</th>
                                 </tr>
                             </thead>
                             <tbody id="shippingTbody">
-                                <tr><td colspan="12" style="text-align:center;color:#888;padding:30px;">
+                                <tr><td colspan="11" style="text-align:center;color:#888;padding:30px;">
                                     <i class="fas fa-spinner fa-spin"></i> Loading...
                                 </td></tr>
                             </tbody>

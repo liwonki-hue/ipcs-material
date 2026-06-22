@@ -17,7 +17,7 @@ let db = {
     bom: [],           // bom_agg: aggregated by matCode+category+system
     bomIsoList: [],    // bom_iso_list: distinct system+iso_dwg_no pairs for dropdowns
     bomDesc: {},       // bom_desc view: matCode → full_description (BOM 설계 원문)
-    bomTagMap: {},     // bom_detail: tag → {matCode, fullDescription} (NULL matCode 입고 레코드 매칭용)
+    bomTagMap: {},     // bom_detail: tag → {matCode, fullDescription, lineNo} (NULL matCode 입고 레코드 매칭용)
     specialityItems: [], // Speciality category distinct items (mat_code NULL → desc 기반)
     receiving: [],
     supportReceiving: [], // support_receiving 테이블 (구조 지지물 입고, 개발 중)
@@ -151,10 +151,12 @@ window.getCategory = function(desc, matCode) {
 
 window.extractItemFromDesc = function(desc) {
     if (!desc) return '-';
+    // Strip leading "#N " prefix (e.g., "#1 Steam Trap..." → "Steam Trap...")
+    const desc2 = desc.replace(/^#\d+\s+/, '');
     // Check compound item names first (order matters — longer first)
     const COMPOUND = [
         'FLEXIBLE HOSE', 'FLEXIBLE JOINT',
-        'AIR TRAP', 'STEAM TRAP', 'LINE MIXER', 'SPRAY NOZZLE',
+        'AIR TRAP', 'STEAM TRAP', 'FLOW NOZZLE', 'LINE MIXER', 'SPRAY NOZZLE',
         'RESTRICTION ORIFICE',
         'TEE-RED', 'REDUCER-CON', 'REDUCER-ECC',
         'FLANGE-BLIND', 'FLANGE-SLIP', 'FLANGE-WELD', 'FLANGE-LAP',
@@ -163,15 +165,29 @@ window.extractItemFromDesc = function(desc) {
         'ELBOW LR', 'ELBOW SR',
         'NIPPLE', 'WELDOLET', 'SOCKOLET', 'THREADOLET',
     ];
-    const upper = desc.toUpperCase().trim();
+    const upper = desc2.toUpperCase().trim();
+    // Steam Trap 세부 재질 감지 — "(High Alloy)" 공백 유무 모두 처리
+    if (/STEAM TRAP\s*\(HIGH ALLOY\)/i.test(desc2)) return 'STEAM TRAP (HIGH ALLOY)';
+    if (/STEAM TRAP\s*\(LOW ALLOY\)/i.test(desc2))  return 'STEAM TRAP (LOW ALLOY)';
     for (const c of COMPOUND) {
         if (upper.startsWith(c)) return c;
     }
     // Safety / Control Valve 직접 감지 (description 전체 기준)
     if (/SAFETY VALVE|\bPSV\b|\bPRV\b/.test(upper)) return 'SAFETY VALVE';
     if (/\b(TCV|LCV|FCV|PCV)\b/.test(upper) || /\bXV\b/.test(upper) || /CONTROL VALVE/.test(upper)) return 'CONTROL VALVE';
-    // Skip leading dimension prefix (e.g., 3", 1/2", DN80, 2"x1")
-    const s = desc.replace(/^[\d"'\s\/\-×xX]+/, '').trim();
+    // 1단계: 앞의 치수 제거 (3", DN80, 2"x1" 등) — 숫자·따옴표·슬래시 연속 제거
+    let s = desc2.replace(/^[\d"'\s\/\-×xX]+/, '').trim();
+    // 2단계: 치수 뒤에 오는 스펙 표기 제거 (300#, Sch 120, Class 150, 단독 # 등)
+    // "10\" 300# Flow Nozzle" → 1단계 후 "# Flow Nozzle" (300의 숫자는 위에서 소비됨)
+    s = s.replace(/^#\s*/, '').trim();                              // 단독 # 제거
+    s = s.replace(/^\d+#\s+/i, '')                                  // "300# " 형태
+         .replace(/^Sch(?:edule)?\s+\d+\s+/i, '')                   // "Sch 120 " 형태
+         .replace(/^Class\s+\d+\s+/i, '').trim();                   // "Class 150 " 형태
+    // 2단계 제거 후 COMPOUND 재검사
+    const sUpper = s.toUpperCase();
+    for (const c of COMPOUND) {
+        if (sUpper.startsWith(c)) return c;
+    }
     if (!s) return '-';
     // ( 도 구분자로 처리 (FLEXIBLE HOSE (AIR HOSE REEL) 등 괄호 형식 대응)
     const m = s.match(/^([A-Za-z][A-Za-z\s]*?)(?:\s*[-\/,(]|$)/);
@@ -241,6 +257,51 @@ window.extractSizeFromMatCode = function(matCode) {
     return '-';
 };
 
+// D-code가 없는 Speciality 품목 등을 위해 description에서 인치 사이즈 파싱
+window.extractSizeFromDesc = function(desc) {
+    if (!desc || desc === '-') return '-';
+    const m = desc.match(/(\d+(?:[- ]\d+\/\d+)?)"/);
+    return m ? m[1] + '"' : '-';
+};
+
+// 통합 사이즈 추출: matCode D-code → description → size1 → item 기본값 순으로 폴백
+window.getEffectiveSize = function(matCode, fullDesc, size1) {
+    const fromCode = window.extractSizeFromMatCode(matCode);
+    if (fromCode && fromCode !== '-') return fromCode;
+    const fromDesc = window.extractSizeFromDesc(fullDesc);
+    if (fromDesc && fromDesc !== '-') return fromDesc;
+    if (size1 && size1 !== '-') return size1;
+    // Steam Trap: description에 사이즈 없을 때 기본값 1" (확인된 사실)
+    if (/STEAM TRAP/i.test(fullDesc || '')) return '1"';
+    return '-';
+};
+
+// Speciality LINE NO 앞부분에서 사이즈 추출: "6\"-PW-..." → "6\""
+window.extractSizeFromLineNo = function(lineNo) {
+    if (!lineNo) return '-';
+    const m = lineNo.match(/^(\d+(?:[- ]\d+\/\d+)?)"/);
+    return m ? m[1] + '"' : '-';
+};
+
+// TAG 정보로부터 사이즈 추출: lineNo → description → item 기본값 순으로 폴백
+// buildRecvMaps, issMap, stockGetSizesForCatItem 에서 공통 사용
+window.getSizeFromTagInfo = function(tagInfo) {
+    if (!tagInfo) return '-';
+    const fromLine = window.extractSizeFromLineNo(tagInfo.lineNo);
+    if (fromLine && fromLine !== '-') return fromLine;
+    const fromDesc = window.extractSizeFromDesc(tagInfo.fullDescription);
+    if (fromDesc && fromDesc !== '-') return fromDesc;
+    if (/STEAM TRAP/i.test(tagInfo.fullDescription || '')) return '1"';
+    return '-';
+};
+
+// 재고 테이블 복합키 파싱: "STR-STAI-40-150-WN__6\"" → {matCode, sizeOverride}
+window.parseStockKey = function(key) {
+    const sep = key.indexOf('__');
+    if (sep === -1) return { matCode: key, sizeOverride: null };
+    return { matCode: key.substring(0, sep), sizeOverride: key.substring(sep + 2) };
+};
+
 function showLoading(show) {
     const loader = document.getElementById('globalLoader');
     if (loader) loader.style.display = show ? 'flex' : 'none';
@@ -291,7 +352,7 @@ async function syncFromSupabase() {
             fetchAllRows('issued'),
             supabaseClient.from('bom_desc').select('mat_code,full_description').then(r => r.data || []),
             supabaseClient.from('bom_detail').select('full_description').eq('category', 'Speciality').not('full_description', 'is', null).then(r => r.data || []),
-            supabaseClient.from('bom_detail').select('tag,mat_code,full_description').not('tag', 'is', null).then(r => r.data || [])
+            supabaseClient.from('bom_detail').select('tag,mat_code,full_description,line_no').not('tag', 'is', null).then(r => r.data || [])
         ]);
 
         if (matMasterRaw.length > 0) {
@@ -328,7 +389,8 @@ async function syncFromSupabase() {
             if (!db.bomTagMap[key]) {
                 db.bomTagMap[key] = {
                     matCode: b.mat_code ? b.mat_code.trim().toUpperCase() : '',
-                    fullDescription: b.full_description || ''
+                    fullDescription: b.full_description || '',
+                    lineNo: b.line_no || ''
                 };
             }
         });
@@ -891,7 +953,12 @@ function initStockFilters() {
     function stockGetSizesForCatItem(cat, item) {
         let src = cat === 'All' ? db.receiving : db.receiving.filter(r => (r.category || '') === cat);
         if (item !== 'All') src = src.filter(r => window.extractItemFromMatCode(r.matCode) === item);
-        return [...new Set(src.map(r => window.extractSizeFromMatCode(r.matCode)).filter(v => v && v !== '-'))].sort();
+        return [...new Set(src.map(r => {
+            const tagInfo = db.bomTagMap[(r.tag || '').toUpperCase()];
+            const fromTag = window.getSizeFromTagInfo(tagInfo);
+            if (fromTag && fromTag !== '-') return fromTag;
+            return window.getEffectiveSize(r.matCode, r.desc, null);
+        }).filter(v => v && v !== '-'))].sort();
     }
     function refreshStockItemOptions(cat) {
         if (!stockItemEl) return;
@@ -959,21 +1026,26 @@ function initStockFilters() {
                 const tagInfo = db.bomTagMap[(r.tag || '').toUpperCase()];
                 const effMat = r.matCode || (tagInfo ? tagInfo.matCode : '');
                 if (!effMat) return;
-                issMap[effMat] = (issMap[effMat] || 0) + r.qty;
+                const size = window.getSizeFromTagInfo(tagInfo);
+                const key = (size && size !== '-') ? `${effMat}__${size}` : effMat;
+                issMap[key] = (issMap[key] || 0) + r.qty;
             });
             const codes = [...new Set([...Object.keys(recMap), ...Object.keys(issMap)])].sort();
-            const rows = codes.map(matCode => {
+            const rows = codes.map(key => {
+                const { matCode, sizeOverride } = window.parseStockKey(key);
                 const m   = masterMap[matCode] || {};
-                const rec = recMap[matCode] || 0;
-                const iss = issMap[matCode] || 0;
+                const rec = recMap[key] || 0;
+                const iss = issMap[key] || 0;
+                const fullDesc = db.bomDesc[matCode] || recDescMap[matCode] || '-';
+                const size = sizeOverride || window.getEffectiveSize(matCode, fullDesc, m.size1);
                 return {
-                    'PKG':             docMap[matCode] ? [...docMap[matCode]].sort().join(', ') : '-',
-                    'PKG NO':          pkgMap[matCode] ? [...pkgMap[matCode]].sort().join(', ') : '-',
+                    'PKG':             docMap[key] ? [...docMap[key]].sort().join(', ') : '-',
+                    'PKG NO':          pkgMap[key] ? [...pkgMap[key]].sort().join(', ') : '-',
                     'MatCode':         matCode,
                     'Category':        m.category || '-',
-                    'Full Description': db.bomDesc[matCode] || recDescMap[matCode] || '-',
+                    'Full Description': fullDesc,
                     'Item':            m.itemDesc || '-',
-                    'Size':            window.extractSizeFromMatCode(matCode) || '-',
+                    'Size':            size,
                     'Unit':            'EA',
                     'Total Received':  rec,
                     'Total Issued':    iss,
@@ -998,11 +1070,14 @@ function buildRecvMaps(filterFn) {
         const tagInfo = db.bomTagMap[(r.tag || '').toUpperCase()];
         const effMat = r.matCode || (tagInfo ? tagInfo.matCode : '');
         if (!effMat) return;
-        recMap[effMat] = (recMap[effMat] || 0) + r.qty;
-        if (!docMap[effMat]) docMap[effMat] = new Set();
-        if (!pkgMap[effMat]) pkgMap[effMat] = new Set();
-        docMap[effMat].add(r.docNo);
-        pkgMap[effMat].add(r.plNo);
+        // TAG → BOM에서 size 추출 (lineNo → desc → 기본값 순)
+        const size = window.getSizeFromTagInfo(tagInfo);
+        const key = (size && size !== '-') ? `${effMat}__${size}` : effMat;
+        recMap[key] = (recMap[key] || 0) + r.qty;
+        if (!docMap[key]) docMap[key] = new Set();
+        if (!pkgMap[key]) pkgMap[key] = new Set();
+        docMap[key].add(r.docNo);
+        pkgMap[key].add(r.plNo);
     });
     return { recMap, docMap, pkgMap };
 }
@@ -1040,7 +1115,9 @@ function renderStockTable() {
         const tagInfo = db.bomTagMap[(r.tag || '').toUpperCase()];
         const effMat = r.matCode || (tagInfo ? tagInfo.matCode : '');
         if (!effMat) return;
-        issMap[effMat] = (issMap[effMat] || 0) + r.qty;
+        const size = window.getSizeFromTagInfo(tagInfo);
+        const key = (size && size !== '-') ? `${effMat}__${size}` : effMat;
+        issMap[key] = (issMap[key] || 0) + r.qty;
     });
 
     // If DOC/PKG filter active, only show matCodes that appear in recMap
@@ -1051,13 +1128,19 @@ function renderStockTable() {
         activeCodes = [...new Set([...Object.keys(recMap), ...Object.keys(issMap)])].sort();
     }
 
+    // pre-build receiving desc fallback map (O(n) 1회)
+    const recDescMap = {};
+    db.receiving.forEach(r => { if (r.matCode && !recDescMap[r.matCode]) recDescMap[r.matCode] = r.desc; });
+
     // Apply remaining filters
-    const filtered = activeCodes.filter(matCode => {
-        if(matCode.includes('None') && recMap[matCode] === undefined) return false;
+    const filtered = activeCodes.filter(key => {
+        const { matCode, sizeOverride } = window.parseStockKey(key);
+        if(matCode.includes('None') && recMap[key] === undefined) return false;
         const mData = masterMap[matCode] || {};
         let cat  = mData.category && mData.category !== '-' ? mData.category : window.getCategory(mData.itemDesc, matCode);
         const item = window.extractItemFromMatCode(matCode);
-        const size = window.extractSizeFromMatCode(matCode);
+        const fullDesc = db.bomDesc[matCode] || recDescMap[matCode] || '-';
+        const size = sizeOverride || window.getEffectiveSize(matCode, fullDesc, mData.size1);
         if (fCat  !== 'All' && cat  !== fCat)  return false;
         if (fItem !== 'All' && item !== fItem)  return false;
         if (fSize !== 'All' && size !== fSize)  return false;
@@ -1069,18 +1152,15 @@ function renderStockTable() {
     const label = document.getElementById('stockCountLabel');
     if (label) label.textContent = `(${filtered.length.toLocaleString()} items)`;
 
-    // pre-build receiving desc fallback map (O(n) 1회)
-    const recDescMap = {};
-    db.receiving.forEach(r => { if (r.matCode && !recDescMap[r.matCode]) recDescMap[r.matCode] = r.desc; });
-
     const stTotalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
     if (_stockPage > stTotalPages) _stockPage = 1;
     const stStart = (_stockPage - 1) * PAGE_SIZE;
     const display = filtered.slice(stStart, stStart + PAGE_SIZE);
 
-    const stockRows = display.map(matCode => {
-        let rec   = recMap[matCode] || 0;
-        let iss   = issMap[matCode] || 0;
+    const stockRows = display.map(key => {
+        const { matCode, sizeOverride } = window.parseStockKey(key);
+        let rec   = recMap[key] || 0;
+        let iss   = issMap[key] || 0;
         let stock = Math.max(0, rec - iss);
 
         const mData = masterMap[matCode] || { category: '-', itemDesc: '-', size1: '-' };
@@ -1091,13 +1171,12 @@ function renderStockTable() {
             if (tagItem) cat = tagItem.category;
         }
         const item    = mData.itemDesc || '-';
-        const _sz     = window.extractSizeFromMatCode(matCode);
-        const size    = (_sz && _sz !== '-') ? _sz : (mData.size1 || '-');
+        const fullDesc = db.bomDesc[matCode] || recDescMap[matCode] || '-';
+        const size    = sizeOverride || window.getEffectiveSize(matCode, fullDesc, mData.size1);
         const unitStr = bomLookup[matCode]?.unit || 'EA';
         const badge   = stock > 0 ? '<span class="status-badge ok">In Stock</span>' : '<span class="status-badge err">Out of Stock</span>';
-        const docs    = docMap[matCode] ? [...docMap[matCode]].sort().join('<br>') : '-';
-        const pkgs    = pkgMap[matCode] ? [...pkgMap[matCode]].sort().join('<br>') : '-';
-        const fullDesc = db.bomDesc[matCode] || recDescMap[matCode] || '-';
+        const docs    = docMap[key] ? [...docMap[key]].sort().join('<br>') : '-';
+        const pkgs    = pkgMap[key] ? [...pkgMap[key]].sort().join('<br>') : '-';
 
         return `<tr>
             <td>${docs}</td>
@@ -1617,11 +1696,17 @@ async function renderBomTable() {
         const badgeClass = isAuto ? 'warn' : 'ok';
         const desc = (b.full_description || '-').replace(/_/g, '-');
         let size = window.extractSizeFromMatCode(b.mat_code);
+        if (size === '-' && b.line_no) {
+            size = window.extractSizeFromLineNo(b.line_no);
+        }
         if (size === '-' && b.full_description) {
             const dnM = b.full_description.match(/\bDN\s*(\d+)\b/i);
             if (dnM) size = 'DN ' + dnM[1];
+            else size = window.extractSizeFromDesc(b.full_description);
         }
         const item = window.extractItemFromDesc(desc);
+        // Steam Trap: description에 사이즈 정보 없을 때 기본값 1" (확인된 사실)
+        if (size === '-' && /STEAM TRAP/i.test(item)) size = '1"';
         return `<tr>
             <td style="text-align:center;white-space:nowrap;"><span class="status-badge ${badgeClass}">${b.mat_code || '-'}</span></td>
             <td style="text-align:center;white-space:nowrap;"><strong>${displayCat}</strong></td>
@@ -1709,38 +1794,32 @@ function _renderRecvCore(cfg) {
     if (!tbody) return;
     tbody.innerHTML = '';
 
-    const search = (document.getElementById(cfg.searchId)?.value || '').trim().toUpperCase();
-    const doc    = document.getElementById(cfg.docId)?.value  || 'All';
-    const pkg    = document.getElementById(cfg.pkgId)?.value  || 'All';
-    const sys    = document.getElementById(cfg.sysId)?.value  || 'All';
-    const cat    = document.getElementById(cfg.catId)?.value  || 'All';
-    const itemF  = document.getElementById(cfg.itemId)?.value || 'All';
-    const sizeF  = document.getElementById(cfg.sizeId)?.value || 'All';
+    const search  = (document.getElementById(cfg.searchId)?.value || '').trim().toUpperCase();
+    const doc     = document.getElementById(cfg.docId)?.value    || 'All';
+    const pkg     = document.getElementById(cfg.pkgId)?.value    || 'All';
+    const cat     = document.getElementById(cfg.catId)?.value    || 'All';
+    const itemF   = document.getElementById(cfg.itemId)?.value   || 'All';
+    const sizeF   = document.getElementById(cfg.sizeId)?.value   || 'All';
+    const statusF = document.getElementById(cfg.statusId)?.value || 'All';
 
-    const matCodeSysMap = {};
-    if (sys !== 'All') {
-        db.bom.forEach(b => {
-            if (!matCodeSysMap[b.matCode]) matCodeSysMap[b.matCode] = new Set();
-            matCodeSysMap[b.matCode].add(b.system);
-        });
-    }
+    const masterMap = _buildMasterMap();
 
     const data = db.receiving.filter(r => {
-        if (!isReceivingActive(r.plNo)) return false;
-        const matchSearch = !search || r.matCode.toUpperCase().includes(search) || r.plNo.toUpperCase().includes(search) || (r.category||'').toUpperCase().includes(search) || r.desc.toUpperCase().includes(search);
-        const matchDoc  = doc  === 'All' || r.docNo === doc;
-        const matchPkg  = pkg  === 'All' || r.plNo  === pkg;
-        const matchSys  = sys  === 'All' || (matCodeSysMap[r.matCode] && matCodeSysMap[r.matCode].has(sys));
-        const matchCat  = cat  === 'All' || r.category === cat;
-        const _tagInfo  = db.bomTagMap[(r.tag || '').toUpperCase()];
-        const effMat    = r.matCode || (_tagInfo ? _tagInfo.matCode : '');
-        const _bomDesc  = _tagInfo ? _tagInfo.fullDescription : '';
-        const _mcItem   = window.extractItemFromMatCode(effMat);
-        const _rawItem  = (_mcItem && _mcItem !== '-') ? _mcItem : window.extractItemFromDesc(_bomDesc || r.desc);
-        const itemFromMat = (r.plNo || '').toUpperCase().includes('BYPS') ? 'BYPASS VALVE' : _rawItem;
-        const matchItemF = itemF === 'All' || itemFromMat === itemF || (itemFromMat === '-' && window.extractItemFromDesc(r.desc) === itemF);
-        const matchSizeF = sizeF === 'All' || window.extractSizeFromMatCode(effMat) === sizeF;
-        return matchSearch && matchDoc && matchPkg && matchSys && matchCat && matchItemF && matchSizeF;
+        const matchSearch  = !search || (r.matCode||'').toUpperCase().includes(search) || r.plNo.toUpperCase().includes(search) || (r.category||'').toUpperCase().includes(search) || r.desc.toUpperCase().includes(search);
+        const matchDoc     = doc  === 'All' || r.docNo === doc;
+        const matchPkg     = pkg  === 'All' || r.plNo  === pkg;
+        const matchCat     = cat  === 'All' || r.category === cat;
+        const _tagInfo     = db.bomTagMap[(r.tag || '').toUpperCase()];
+        const effMat       = r.matCode || (_tagInfo ? _tagInfo.matCode : '');
+        const _bomDesc     = _tagInfo ? _tagInfo.fullDescription : '';
+        const _mcItem      = window.extractItemFromMatCode(effMat);
+        const _rawItem     = (_mcItem && _mcItem !== '-') ? _mcItem : window.extractItemFromDesc(_bomDesc || r.desc);
+        const itemFromMat  = (r.plNo || '').toUpperCase().includes('BYPS') ? 'BYPASS VALVE' : _rawItem;
+        const matchItemF   = itemF === 'All' || itemFromMat === itemF || (itemFromMat === '-' && window.extractItemFromDesc(r.desc) === itemF);
+        const matchSizeF   = sizeF === 'All' || window.extractSizeFromMatCode(effMat) === sizeF;
+        const pkgSt        = (_plUpdatesCache[r.plNo] || {}).status || '';
+        const matchStatusF = statusF === 'All' || pkgSt === statusF;
+        return matchSearch && matchDoc && matchPkg && matchCat && matchItemF && matchSizeF && matchStatusF;
     }).sort((a, b) => a.docNo.localeCompare(b.docNo) || a.plNo.localeCompare(b.plNo));
 
     const page = cfg.getPage();
@@ -1762,13 +1841,23 @@ function _renderRecvCore(cfg) {
         const item      = (r.plNo || '').toUpperCase().includes('BYPS') ? 'BYPASS VALVE' : _rawItemR;
         const etPart    = (effMat || '').split('-').pop().toUpperCase();
         const flangeType = (item === 'FLANGE' && (etPart === 'FF' || etPart === 'RF')) ? 'WN' + etPart : '-';
+
+        const mData  = masterMap[effMat] || {};
+        const mcParts = (effMat || '').split('-');
+        const matl   = mData.matlDesc || mcParts[1] || '-';
+        const rating = mData.classDesc || mcParts[3] || '-';
+
+        const pkgStatus  = (_plUpdatesCache[r.plNo] || {}).status || '';
+        const isOnSite   = pkgStatus === 'On-Site';
+        const statusColor = pkgStatus === 'On-Site' ? '#2e7d32' : pkgStatus === 'Shipping' ? '#1565c0' : pkgStatus === 'Preparing' ? '#888' : '#bbb';
+
         const purposeOpts = PURPOSE_OPTS.map(v =>
             `<option value="${v}"${r.purpose === v ? ' selected' : ''}>${v || '—'}</option>`
         ).join('');
         const purposeSel = `<select class="pl-purpose-sel" data-recv-id="${r.id}"
             style="width:100%;border:1px solid #dde3ee;border-radius:4px;padding:3px 6px;font-size:13px;background:#fff;color:#0A2540;text-align:center;">
             ${purposeOpts}</select>`;
-        return `<tr>
+        return `<tr${isOnSite ? '' : ' style="color:#999;"'}>
             <td style="white-space:nowrap;">${r.docNo}</td>
             <td style="white-space:nowrap;">${r.plNo}</td>
             <td style="white-space:nowrap;"><span class="status-badge ${r.matCode ? 'ok' : (tagInfo ? 'warn' : '')}">${effMat || (tagInfo ? '(BOM)' : '-')}</span></td>
@@ -1776,10 +1865,12 @@ function _renderRecvCore(cfg) {
             <td style="text-align:center;">${r.tag || '-'}</td>
             <td style="font-weight:600;">${item}</td>
             <td style="text-align:center;font-weight:600;white-space:nowrap;color:${flangeType!=='-'?'#1565c0':'#aaa'};">${flangeType}</td>
+            <td style="text-align:center;font-size:11px;">${matl}</td>
             <td style="font-weight:600;white-space:nowrap;">${size}</td>
-            <td title="${descDisplay}">${descDisplay.length > 55 ? descDisplay.substring(0, 52) + '...' : descDisplay}</td>
+            <td style="text-align:center;font-size:11px;">${rating}</td>
             <td style="white-space:nowrap;text-align:center;">${r.unit || 'EA'}</td>
-            <td style="white-space:nowrap;text-align:center;">${r.qty.toFixed(2)}</td>
+            <td style="white-space:nowrap;text-align:center;">${Math.round(r.qty).toLocaleString()}</td>
+            <td style="text-align:center;white-space:nowrap;font-size:11px;font-weight:600;color:${statusColor};">${pkgStatus || '—'}</td>
             <td style="padding:3px;">${purposeSel}</td>
         </tr>`;
     });
@@ -1790,7 +1881,7 @@ function _renderRecvCore(cfg) {
 function renderReceivingTable() {
     _renderRecvCore({
         tableId: 'plTable', searchId: 'plItemSearch',
-        docId: 'plDocFilter', pkgId: 'plPkgFilter', sysId: 'plSystemFilter',
+        docId: 'plDocFilter', pkgId: 'plPkgFilter', statusId: 'plStatusFilter',
         catId: 'plCategoryFilter', itemId: 'plItemFilter', sizeId: 'plSizeFilter',
         getPage: () => currentPlPage,
         paginationId: 'plPagination', goPageFn: '_plGoPage'
@@ -1802,14 +1893,14 @@ function renderSupportReceivingTable() {
     const tbody = document.querySelector('#srecTable tbody');
     if (!tbody) return;
     if (db.supportReceiving.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:#999;padding:40px;">No data</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="14" style="text-align:center;color:#999;padding:40px;">No data</td></tr>';
         const pg = document.getElementById('srecPagination');
         if (pg) pg.innerHTML = '';
         return;
     }
     _renderRecvCore({
         tableId: 'srecTable', searchId: 'srecItemSearch',
-        docId: 'srecDocFilter', pkgId: 'srecPkgFilter', sysId: 'srecSystemFilter',
+        docId: 'srecDocFilter', pkgId: 'srecPkgFilter', statusId: 'srecStatusFilter',
         catId: 'srecCategoryFilter', itemId: 'srecItemFilter', sizeId: 'srecSizeFilter',
         getPage: () => currentSrecPage,
         paginationId: 'srecPagination', goPageFn: '_srecGoPage'
@@ -3628,7 +3719,7 @@ async function initShipping() {
     }
 
     document.getElementById('shippingTbody').innerHTML =
-        '<tr><td colspan="12" style="text-align:center;color:#888;padding:30px;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        '<tr><td colspan="11" style="text-align:center;color:#888;padding:30px;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
     try {
         // pl_updates는 아직 로드 안 됐을 때만 조회
         if (Object.keys(_plUpdatesCache).length === 0) {
@@ -3664,7 +3755,6 @@ async function initShipping() {
                     on_site:      '',
                     custom_clear: '',
                     issue_date:   '',
-                    request_date: '',
                     remark:       '',
                 });
             });
@@ -3689,7 +3779,6 @@ async function initShipping() {
                 on_site:      '',
                 custom_clear: '',
                 issue_date:   '',
-                request_date: '',
                 remark:       '',
             }));
 
@@ -3707,7 +3796,7 @@ async function initShipping() {
         renderShippingTable(getShippingFiltered());
     } catch(e) {
         document.getElementById('shippingTbody').innerHTML =
-            '<tr><td colspan="12" style="text-align:center;color:#e53935;padding:30px;">Failed to load data.</td></tr>';
+            '<tr><td colspan="11" style="text-align:center;color:#e53935;padding:30px;">Failed to load data.</td></tr>';
     }
 }
 
@@ -3753,11 +3842,12 @@ function getShippingFiltered() {
             if (statusF && (statusF === '__none__' ? st !== '' : st !== statusF)) return false;
             if (customF && (customF === '__none__' ? cc !== '' : cc !== customF)) return false;
             if (_shippingKpiFilter && _shippingKpiFilter !== 'all') {
-                if (_shippingKpiFilter === 'shipping' && st !== 'Preparing' && st !== 'Shipping') return false;
-                if (_shippingKpiFilter === 'onsite'   && st !== 'On-Site')   return false;
-                if (_shippingKpiFilter === 'cleared'  && cc !== 'Cleared')   return false;
-                if (_shippingKpiFilter === 'pending'  && cc !== 'Pending')   return false;
-                if (_shippingKpiFilter === 'issued'   && !m.issue_date)      return false;
+                if (_shippingKpiFilter === 'shipping'  && st !== 'Preparing' && st !== 'Shipping') return false;
+                if (_shippingKpiFilter === 'onsite'    && st !== 'On-Site')   return false;
+                if (_shippingKpiFilter === 'cleared'   && cc !== 'Cleared')   return false;
+                if (_shippingKpiFilter === 'pending'   && cc !== 'Pending')   return false;
+                if (_shippingKpiFilter === 'issued'    && !m.issue_date)      return false;
+                if (_shippingKpiFilter === 'remaining' && m.issue_date)       return false;
             }
             return true;
         })
@@ -3788,7 +3878,6 @@ function mergeRow(r) {
         status:        chg.status        ?? upd.status        ?? r.status        ?? '',
         on_site:       chg.on_site       ?? upd.on_site       ?? r.on_site       ?? '',
         custom_clear:  chg.custom_clear  ?? upd.custom_clear  ?? r.custom_clear  ?? '',
-        request_date:  chg.request_date  ?? upd.request_date  ?? r.request_date  ?? '',
         issue_date:    chg.issue_date    ?? upd.issue_date    ?? r.issue_date    ?? '',
         remark:        chg.remark        !== undefined ? chg.remark
                      : upd.remark        !== undefined ? upd.remark
@@ -3849,7 +3938,7 @@ function renderShippingTable(rows) {
 
     const tbody = document.getElementById('shippingTbody');
     if (!merged.length) {
-        tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:#888;padding:30px;">No data found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#888;padding:30px;">No data found.</td></tr>';
         const spEl = document.getElementById('shippingPagination'); if (spEl) spEl.innerHTML = '';
         return;
     }
@@ -3901,9 +3990,6 @@ function renderShippingTable(rows) {
             ${onSiteCell}
             ${customClearCell}
             <td style="text-align:center;padding:3px;">
-                <input type="text" class="pl-datepicker" style="${PL_INPUT_CSS}cursor:pointer;text-align:right;" data-pkg="${pkg}" data-field="request_date" value="${r.request_date}" placeholder="📅">
-            </td>
-            <td style="text-align:center;padding:3px;">
                 <input type="text" class="pl-datepicker" style="${PL_INPUT_CSS}cursor:pointer;text-align:right;" data-pkg="${pkg}" data-field="issue_date" value="${r.issue_date}" placeholder="📅">
             </td>
             ${purposeCell}
@@ -3922,6 +4008,9 @@ function renderShippingTable(rows) {
             allowInput: false,
             disableMobile: true,
             locale: { firstDayOfWeek: 1 },
+            onReady: (_dates, _str, fp) => {
+                if (fp.altInput) fp.altInput.style.textAlign = 'right';
+            },
             onChange: (_dates, dateStr, instance) => {
                 instance.element.dispatchEvent(new Event('change', { bubbles: true }));
             }
@@ -3947,7 +4036,6 @@ function exportShippingExcel() {
         'Status':       r.status || '',
         'On-Site Date': r.on_site || '',
         'Custom Clear': r.custom_clear || '',
-        'Request Date': r.request_date || '',
         'Issue Date':   r.issue_date || '',
         'Remark':       r.remark || ''
     }));
@@ -3968,7 +4056,7 @@ async function savePlUpdates() {
     statusEl.textContent = '';
 
     try {
-        const DATE_FIELDS = ['on_site', 'request_date', 'issue_date'];
+        const DATE_FIELDS = ['on_site', 'issue_date'];
         const upserts = dirty.map(([pkg_no, fields]) => {
             const base = { pkg_no, ...(_plUpdatesCache[pkg_no] || {}), ...fields };
             DATE_FIELDS.forEach(f => { if (base[f] === '') base[f] = null; });
@@ -3987,6 +4075,10 @@ async function savePlUpdates() {
             Object.keys(_plChanges).forEach(k => delete _plChanges[k]);
             renderShippingKpi();   // Save 완료 후에만 KPI 갱신
             renderShippingTable(getShippingFiltered());
+            // issue_date 변경이 Stock Ledger에 즉시 반영되도록 재렌더링
+            if (document.getElementById('stock_ledger')?.classList.contains('active')) {
+                renderStockTable();
+            }
             // Status 변경이 Receiving 집계에 반영되도록 Dashboard 재계산
             updateDashboard();
             statusEl.style.color = '#2e7d32';
