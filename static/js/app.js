@@ -20,7 +20,6 @@ let db = {
     bomTagMap: {},     // bom_detail: tag → {matCode, fullDescription, lineNo} (NULL matCode 입고 레코드 매칭용)
     specialityItems: [], // Speciality category distinct items (mat_code NULL → desc 기반)
     receiving: [],
-    supportReceiving: [],
     mrTable: [],
     issued: []
 };
@@ -443,8 +442,7 @@ async function syncFromSupabase() {
             // Use setTimeout to ensure UI is ready for rendering large tables
             setTimeout(() => {
                 if(id === 'piping_bom') renderBomTable();
-                if(id === 'receiving') renderReceivingTable();
-                if(id === 'support_receiving') renderSupportReceivingTable();
+                if(id === 'receiving') { initReceivingTabs(); renderActiveReceivingTab(); }
                 if(id === 'matcode_master') renderMatCodeMaster();
             }, 200);
         }
@@ -490,13 +488,11 @@ function initNavigation() {
         if(targetId === 'dashboard') updateDashboard();
         if(targetId === 'issue') renderIssueOptions();
         if(targetId === 'piping_bom') renderBomTable();
-        if(targetId === 'receiving') renderReceivingTable();
-        if(targetId === 'support_receiving') renderSupportReceivingTable();
+        if(targetId === 'receiving') { initReceivingTabs(); renderActiveReceivingTab(); }
         if(targetId === 'matcode_master') renderMatCodeMaster();
-        if(targetId === 'stock_ledger') { initStockFilters(); renderStockTable(); }
+        if(targetId === 'stock_ledger') { initStockFilters(); initStockTabs(); }
         if(targetId === 'mr_history') renderMrHistory();
         if(targetId === 'shipping') initShipping();
-        if(targetId === 'spool_receiving') initSpoolReceiving();
 
         // Material Shortage 탭: 진입 시 즉시 싱크 + 폴링 시작, 이탈 시 정리
         if (targetId === 'material_shortage') {
@@ -899,22 +895,6 @@ function updateCategoryCharts() {
             });
         }
 
-        // 2. BOM Composition Pie Chart
-        if (window.bomPieChart) window.bomPieChart.destroy();
-        const ctxPie = document.getElementById('bomPieChart');
-        if (ctxPie && typeof Chart !== 'undefined') {
-            window.bomPieChart = new Chart(ctxPie, {
-                type: 'pie',
-                data: {
-                    labels: catLabels,
-                    datasets: [{
-                        data: bomDataArr,
-                        backgroundColor: ['#0288d1', '#2e7d32', '#f57f17', '#c62828', '#673ab7', '#607d8b']
-                    }]
-                },
-                options: { responsive: true, maintainAspectRatio: false }
-            });
-        }
     });
 }
 
@@ -996,7 +976,7 @@ function initStockFilters() {
 
     const btn   = document.getElementById('btnStockSearch');
     const clear = document.getElementById('btnStockClear');
-    if (btn)   btn.addEventListener('click',   () => { _stockPage = 1; renderStockTable(); });
+    if (btn)   btn.addEventListener('click',   () => { _stockPage = 1; renderActiveStockTab(); });
     if (clear) clear.addEventListener('click', () => {
         _stockPage = 1;
         ['stockSearch','stockDocFilter','stockPkgFilter'].forEach(id => {
@@ -1005,7 +985,7 @@ function initStockFilters() {
         if (stockCatEl) { stockCatEl.value = 'All'; stockCatEl.dispatchEvent(new Event('change')); }
         if (stockItemEl) stockItemEl.value = 'All';
         if (stockSizeEl) stockSizeEl.value = 'All';
-        renderStockTable();
+        renderActiveStockTab();
     });
 
     const btnExportStock = document.getElementById('btnExportStock');
@@ -1078,7 +1058,7 @@ function buildRecvMaps(filterFn) {
     return { recMap, docMap, pkgMap };
 }
 
-function renderStockTable() {
+function renderStockTable(forcedCats, hideMatCode) {
     let tbody = document.querySelector('#stockTable tbody');
     if(!tbody) return;
     tbody.innerHTML = '';
@@ -1101,13 +1081,14 @@ function renderStockTable() {
     const { recMap, docMap, pkgMap } = buildRecvMaps(r =>
         isReceivingActive(r.plNo) && isKpiReceiving(r) &&
         (fDoc === 'All' || r.docNo === fDoc) &&
-        (fPkg === 'All' || r.plNo  === fPkg)
+        (fPkg === 'All' || r.plNo  === fPkg) &&
+        (!Array.isArray(forcedCats) || forcedCats.includes(r.category))
     );
 
     // Aggregate Issued per MatCode — issue_date가 설정된 Package의 입고 수량 기준
     const issuedPkgNos = new Set(Object.entries(_plUpdatesCache).filter(([,v]) => v.issue_date).map(([k]) => k));
     const issMap = {};
-    db.receiving.filter(r => issuedPkgNos.has(r.plNo)).forEach(r => {
+    db.receiving.filter(r => issuedPkgNos.has(r.plNo) && (!Array.isArray(forcedCats) || forcedCats.includes(r.category))).forEach(r => {
         const tagInfo = db.bomTagMap[(r.tag || '').toUpperCase()];
         const effMat = r.matCode || (tagInfo ? tagInfo.matCode : '');
         if (!effMat) return;
@@ -1137,7 +1118,7 @@ function renderStockTable() {
         const item = window.extractItemFromMatCode(matCode);
         const fullDesc = db.bomDesc[matCode] || recDescMap[matCode] || '-';
         const size = sizeOverride || window.getEffectiveSize(matCode, fullDesc, mData.size1);
-        if (fCat  !== 'All' && cat  !== fCat)  return false;
+        if (!Array.isArray(forcedCats) && fCat !== 'All' && cat !== fCat) return false;
         if (fItem !== 'All' && item !== fItem)  return false;
         if (fSize !== 'All' && size !== fSize)  return false;
         if (search && !matCode.toLowerCase().includes(search) &&
@@ -1177,7 +1158,7 @@ function renderStockTable() {
         return `<tr>
             <td>${docs}</td>
             <td>${pkgs}</td>
-            <td style="font-weight:600; color:var(--color-primary);">${matCode}</td>
+            <td style="${hideMatCode ? 'padding:0;width:0;overflow:hidden;' : 'font-weight:600;color:var(--color-primary);'}">${hideMatCode ? '' : matCode}</td>
             <td><strong>${cat}</strong></td>
             <td>${fullDesc}</td>
             <td>${item}</td>
@@ -1193,7 +1174,144 @@ function renderStockTable() {
     renderPagination('stockPagination', _stockPage, stTotalPages, '_stockGoPage');
 }
 let _stockPage = 1;
-window._stockGoPage = function(p) { _stockPage = p; renderStockTable(); };
+window._stockGoPage = function(p) { _stockPage = p; renderActiveStockTab(); };
+
+let _stActiveSec = 'bulk', _stActiveBulkTab = 'piping', _stActiveTagTab = 'spool', _stTabsInited = false;
+
+function _setStockMatCodeCol(visible) {
+    const cols = document.querySelectorAll('#stockTable colgroup col');
+    const ths  = document.querySelectorAll('#stockTable thead th');
+    if (!cols.length) return;
+    // null = auto(width 미지정), 0 = 0px(완전 숨김), 숫자 = 해당 px
+    const W = visible
+        ? [90,  150, 140,  70, null,  95, 55, 50, 75, 70, 75, 75]
+        : [ 90, 165,   0,  75, null,  85, 65, 55, 80, 75, 80, 85];
+    cols.forEach((c, i) => { c.style.width = W[i] === null ? '' : W[i] + 'px'; });
+    // display:none 대신 width:0+padding:0으로 처리 (헤더/데이터 정렬 유지)
+    if (ths[2]) {
+        ths[2].style.padding  = visible ? '' : '0';
+        ths[2].style.overflow = 'hidden';
+        ths[2].textContent    = visible ? 'MatCode' : '';
+    }
+}
+
+function renderActiveStockTab() {
+    const spoolPanel = document.getElementById('stSpoolPanel');
+    const mainPanel  = document.getElementById('stTablePanel');
+    const title      = document.getElementById('stPanelTitle');
+    if (_stActiveSec === 'bulk') {
+        if (spoolPanel) spoolPanel.style.display = 'none';
+        if (mainPanel)  mainPanel.style.display  = '';
+        _setStockMatCodeCol(true);
+        if (_stActiveBulkTab === 'piping') {
+            if (title) title.innerHTML = '<i class="fas fa-warehouse"></i> Stock — Pipe & Fitting';
+            renderStockTable(['Pipe', 'Fitting'], false);
+        } else {
+            if (title) title.innerHTML = '<i class="fas fa-warehouse"></i> Stock — Others';
+            renderStockTable(['Others'], false);
+        }
+    } else {
+        if (_stActiveTagTab === 'spool') {
+            if (mainPanel)  mainPanel.style.display  = 'none';
+            if (spoolPanel) spoolPanel.style.display = '';
+            renderStockSpoolTable();
+        } else {
+            if (spoolPanel) spoolPanel.style.display = 'none';
+            if (mainPanel)  mainPanel.style.display  = '';
+            _setStockMatCodeCol(false);
+            const cats   = { valve: ['Valve'], speciality: ['Speciality'] };
+            const labels = { valve: 'Valve', speciality: 'Speciality' };
+            if (title) title.innerHTML = `<i class="fas fa-warehouse"></i> Stock — ${labels[_stActiveTagTab] || ''}`;
+            renderStockTable(cats[_stActiveTagTab], true);
+        }
+    }
+}
+
+async function renderStockSpoolTable() {
+    const tbody = document.getElementById('stSpoolTbody');
+    if (!tbody) return;
+    if (!_srData) {
+        tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
+        if (!supabaseClient) return;
+        const { data, error } = await supabaseClient
+            .from('spool_receiving').select('*')
+            .order('pkg_seq', { ascending: true }).order('id', { ascending: true }).limit(10000);
+        if (error) {
+            tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:#c00;padding:20px;">Error: ${error.message}</td></tr>`;
+            return;
+        }
+        _srData = data || [];
+    }
+    const rows = _srData;
+    const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+    if (_stSpoolPage > totalPages) _stSpoolPage = 1;
+    const page = rows.slice((_stSpoolPage - 1) * PAGE_SIZE, _stSpoolPage * PAGE_SIZE);
+    const inStock = '<span class="status-badge ok">In Stock</span>';
+    tbody.innerHTML = page.length === 0
+        ? '<tr><td colspan="12" style="text-align:center;color:#999;padding:20px;">No spool data</td></tr>'
+        : page.map(r => {
+            const pkgShort = (r.pkg_no || '').match(/^(PGU-DE-\d+)/)?.[1] || r.pkg_no || '';
+            return `<tr>
+                <td>${pkgShort}</td>
+                <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.pkg_no||''}">${r.pkg_no||''}</td>
+                <td>${r.system||''}</td>
+                <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.description||''}">${r.description||''}</td>
+                <td style="font-weight:600;">${r.tag_no||''}</td>
+                <td>${r.item||'Spool'}</td>
+                <td>${r.size||''}</td>
+                <td>${r.unit||'EA'}</td>
+                <td style="text-align:center;font-weight:700;">${r.qty??1}</td>
+                <td style="text-align:center;">-</td>
+                <td style="text-align:center;font-weight:700;">${r.qty??1}</td>
+                <td>${inStock}</td>
+            </tr>`;
+        }).join('');
+    const info = document.getElementById('stSpoolCountLabel');
+    if (info) info.textContent = `(${rows.length.toLocaleString()} items)`;
+    renderPagination('stSpoolPagination', _stSpoolPage, totalPages, '_stSpoolGoPage');
+}
+let _stSpoolPage = 1;
+window._stSpoolGoPage = function(p) { _stSpoolPage = p; renderStockSpoolTable(); };
+
+function initStockTabs() {
+    if (_stTabsInited) { renderActiveStockTab(); return; }
+    _stTabsInited = true;
+    document.querySelectorAll('.st-sec-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            _stActiveSec = btn.dataset.sec;
+            document.querySelectorAll('.st-sec-btn').forEach(b => {
+                const on = b === btn;
+                b.style.background   = on ? '#0A2540' : '#f8fafc';
+                b.style.color        = on ? '#fff' : '#666';
+                b.style.borderBottom = on ? '3px solid #0A2540' : '3px solid transparent';
+            });
+            document.getElementById('stSecBulk').style.display = _stActiveSec === 'bulk' ? '' : 'none';
+            document.getElementById('stSecTag').style.display  = _stActiveSec === 'tag'  ? '' : 'none';
+            _stockPage = 1; renderActiveStockTab();
+        });
+    });
+    document.querySelectorAll('.st-bulk-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            _stActiveBulkTab = btn.dataset.tab;
+            document.querySelectorAll('.st-bulk-tab').forEach(b => {
+                b.style.color        = b === btn ? '#0A2540' : '#888';
+                b.style.borderBottom = b === btn ? '3px solid #0A2540' : '3px solid transparent';
+            });
+            _stockPage = 1; renderActiveStockTab();
+        });
+    });
+    document.querySelectorAll('.st-tag-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            _stActiveTagTab = btn.dataset.tab;
+            document.querySelectorAll('.st-tag-tab').forEach(b => {
+                b.style.color        = b === btn ? '#0A2540' : '#888';
+                b.style.borderBottom = b === btn ? '3px solid #0A2540' : '3px solid transparent';
+            });
+            _stockPage = 1; renderActiveStockTab();
+        });
+    });
+    renderActiveStockTab();
+}
 
 // --- Material Shortage / Surplus 공용 ---
 const CAT_ORDER = { 'Pipe': 0, 'Fitting': 1, 'Valve': 2, 'Spool': 3, 'Support': 4, 'Others': 5, 'Speciality': 6 };
@@ -1288,6 +1406,7 @@ function renderShortageTable() {
         const row = _enrichRow(matCode, bomMap, recMap, masterMap);
         const diffQty = row.bomQty - row.recQty;
         if (diffQty <= 0.01) return;
+        if (!['Pipe', 'Fitting', 'Others'].includes(row.cat)) return;
         if (catFilter  !== 'ALL' && row.cat  !== catFilter)  return;
         if (itemFilter !== 'ALL' && row.item !== itemFilter) return;
         if (sizeFilter !== 'ALL' && row.size !== sizeFilter) return;
@@ -1343,6 +1462,7 @@ function renderSurplusTable() {
         const row = _enrichRow(matCode, bomMap, recMap, masterMap);
         const diffQty = row.recQty - row.bomQty;
         if (diffQty <= 0.01) return;
+        if (!['Pipe', 'Fitting', 'Others'].includes(row.cat)) return;
         if (catFilter  !== 'ALL' && row.cat  !== catFilter)  return;
         if (itemFilter !== 'ALL' && row.item !== itemFilter) return;
         if (sizeFilter !== 'ALL' && row.size !== sizeFilter) return;
@@ -1572,28 +1692,50 @@ function initFilterOptions() {
         setupCatItemSize(mCat, mItem, mSize, getMasterItemsForCat, getMasterSizesForCatItem, 'All');
     }
 
-    // PL Filters — Category/Item/Size는 BOM과 동일하게 db.bom 기반으로 생성
+    // PL Filters (Bulk Piping) — DOC/PKG 목록 초기화
     const plDoc  = document.getElementById('plDocFilter');
     const plPkg  = document.getElementById('plPkgFilter');
-    const plSys  = document.getElementById('plSystemFilter');
-    const plCat  = document.getElementById('plCategoryFilter');
     const plItemF = document.getElementById('plItemFilter');
     const plSizeF = document.getElementById('plSizeFilter');
     if(plDoc && plPkg) {
-        const activeRecv = db.receiving.filter(r => isReceivingActive(r.plNo));
-        const docs = [...new Set(activeRecv.map(r => r.docNo))].sort();
-        const pkgs = [...new Set(activeRecv.map(r => r.plNo))].sort();
+        const pipingRecv = db.receiving.filter(r => isReceivingActive(r.plNo) && ['Pipe','Fitting'].includes(r.category));
+        const docs = [...new Set(pipingRecv.map(r => r.docNo))].sort();
+        const pkgs = [...new Set(pipingRecv.map(r => r.plNo))].sort();
         plDoc.innerHTML = '<option value="All">All DOCs</option>' + docs.map(d => `<option value="${d}">${d}</option>`).join('');
         plPkg.innerHTML = '<option value="All">All PKGs</option>' + pkgs.map(p => `<option value="${p}">${p}</option>`).join('');
+        setupCatItemSize(null, plItemF, plSizeF, getBomItemsForCat, getBomSizesForCatItem, 'All');
+    }
 
-        // System — BOM과 동일한 목록
-        if (plSys) {
-            const systems = [...new Set(db.bom.map(b => b.system).filter(Boolean))].sort();
-            plSys.innerHTML = '<option value="All">All Systems</option>' + systems.map(s => `<option value="${s}">${s}</option>`).join('');
-        }
+    // Others Filters
+    const othDoc  = document.getElementById('othDocFilter');
+    const othPkg  = document.getElementById('othPkgFilter');
+    const othItemF = document.getElementById('othItemFilter');
+    const othSizeF = document.getElementById('othSizeFilter');
+    if(othDoc && othPkg) {
+        const othersRecv = db.receiving.filter(r => isReceivingActive(r.plNo) && r.category === 'Others');
+        const othDocs = [...new Set(othersRecv.map(r => r.docNo))].sort();
+        const othPkgs = [...new Set(othersRecv.map(r => r.plNo))].sort();
+        othDoc.innerHTML = '<option value="All">All DOCs</option>' + othDocs.map(d => `<option value="${d}">${d}</option>`).join('');
+        othPkg.innerHTML = '<option value="All">All PKGs</option>' + othPkgs.map(p => `<option value="${p}">${p}</option>`).join('');
+        setupCatItemSize(null, othItemF, othSizeF, getBomItemsForCat, getBomSizesForCatItem, 'All');
+    }
 
-        // Category/Item/Size — db.bom 기반 (BOM Management와 동일한 옵션 생성)
-        setupCatItemSize(plCat, plItemF, plSizeF, getBomItemsForCat, getBomSizesForCatItem, 'All');
+    // Valve Filters
+    const valDoc = document.getElementById('valDocFilter');
+    const valPkg = document.getElementById('valPkgFilter');
+    if(valDoc && valPkg) {
+        const valRecv = db.receiving.filter(r => isReceivingActive(r.plNo) && r.category === 'Valve');
+        valDoc.innerHTML = '<option value="All">All DOCs</option>' + [...new Set(valRecv.map(r => r.docNo))].sort().map(d => `<option value="${d}">${d}</option>`).join('');
+        valPkg.innerHTML = '<option value="All">All PKGs</option>' + [...new Set(valRecv.map(r => r.plNo))].sort().map(p => `<option value="${p}">${p}</option>`).join('');
+    }
+
+    // Speciality Filters
+    const splDoc = document.getElementById('splDocFilter');
+    const splPkg = document.getElementById('splPkgFilter');
+    if(splDoc && splPkg) {
+        const splRecv = db.receiving.filter(r => isReceivingActive(r.plNo) && r.category === 'Speciality');
+        splDoc.innerHTML = '<option value="All">All DOCs</option>' + [...new Set(splRecv.map(r => r.docNo))].sort().map(d => `<option value="${d}">${d}</option>`).join('');
+        splPkg.innerHTML = '<option value="All">All PKGs</option>' + [...new Set(splRecv.map(r => r.plNo))].sort().map(p => `<option value="${p}">${p}</option>`).join('');
     }
 
 }
@@ -1602,7 +1744,7 @@ function initFilterOptions() {
 async function renderBomTable() {
     let tbody = document.querySelector('#bomTable tbody');
     if(!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
 
     const search  = (document.getElementById('bomIsoSearch')?.value || '').trim();
     const sys     = document.getElementById('bomSystemFilter')?.value || 'All';
@@ -1716,7 +1858,6 @@ async function renderBomTable() {
             <td style="text-align:center;white-space:nowrap;">${b.system || '-'}</td>
             <td style="text-align:center;white-space:nowrap;">${b.iso_dwg_no || '-'}</td>
             <td style="text-align:center;white-space:nowrap;">${b.line_no || '-'}</td>
-            <td style="text-align:center;white-space:nowrap;">${b.tag || '-'}</td>
             <td style="text-align:center;font-weight:600;white-space:nowrap;">${item}</td>
             <td style="text-align:center;font-weight:600;white-space:nowrap;">${size}</td>
             <td title="${desc}">${desc.length > 55 ? desc.substring(0, 52) + '...' : desc}</td>
@@ -1735,10 +1876,13 @@ function _renderRecvCore(cfg) {
     if (!tbody) return;
     tbody.innerHTML = '';
 
+    const hideTag     = !!cfg.hideTag;
+    const hideMatCode = !!cfg.hideMatCode;
+
     const search  = (document.getElementById(cfg.searchId)?.value || '').trim().toUpperCase();
     const doc     = document.getElementById(cfg.docId)?.value    || 'All';
     const pkg     = document.getElementById(cfg.pkgId)?.value    || 'All';
-    const cat     = document.getElementById(cfg.catId)?.value    || 'All';
+    const cat     = document.getElementById(cfg.catId)?.value || 'All';
     const itemF   = document.getElementById(cfg.itemId)?.value   || 'All';
     const sizeF   = document.getElementById(cfg.sizeId)?.value   || 'All';
     const statusF = document.getElementById(cfg.statusId)?.value || 'All';
@@ -1749,7 +1893,8 @@ function _renderRecvCore(cfg) {
         const matchSearch  = !search || (r.matCode||'').toUpperCase().includes(search) || r.plNo.toUpperCase().includes(search) || (r.category||'').toUpperCase().includes(search) || r.desc.toUpperCase().includes(search);
         const matchDoc     = doc  === 'All' || r.docNo === doc;
         const matchPkg     = pkg  === 'All' || r.plNo  === pkg;
-        const matchCat     = cat  === 'All' || r.category === cat;
+        const matchForcedCat = !Array.isArray(cfg.forcedCats) || cfg.forcedCats.includes(r.category);
+        const matchCat     = matchForcedCat && (cat === 'All' || r.category === cat);
         const _tagInfo     = db.bomTagMap[(r.tag || '').toUpperCase()];
         const effMat       = r.matCode || (_tagInfo ? _tagInfo.matCode : '');
         const _bomDesc     = _tagInfo ? _tagInfo.fullDescription : '';
@@ -1761,7 +1906,13 @@ function _renderRecvCore(cfg) {
         const pkgSt        = (_plUpdatesCache[r.plNo] || {}).status || '';
         const matchStatusF = statusF === 'All' || pkgSt === statusF;
         return matchSearch && matchDoc && matchPkg && matchCat && matchItemF && matchSizeF && matchStatusF;
-    }).sort((a, b) => a.docNo.localeCompare(b.docNo) || a.plNo.localeCompare(b.plNo));
+    }).sort((a, b) => {
+        if (cfg.catOrder) {
+            const oa = cfg.catOrder[a.category] ?? 99, ob = cfg.catOrder[b.category] ?? 99;
+            if (oa !== ob) return oa - ob;
+        }
+        return a.docNo.localeCompare(b.docNo) || a.plNo.localeCompare(b.plNo);
+    });
 
     const page = cfg.getPage();
     const rows = data.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map(r => {
@@ -1801,9 +1952,10 @@ function _renderRecvCore(cfg) {
         return `<tr${isOnSite ? '' : ' style="color:#999;"'}>
             <td style="white-space:nowrap;">${r.docNo}</td>
             <td style="white-space:nowrap;">${r.plNo}</td>
-            <td style="white-space:nowrap;"><span class="status-badge ${r.matCode ? 'ok' : (tagInfo ? 'warn' : '')}">${effMat || (tagInfo ? '(BOM)' : '-')}</span></td>
-            <td style="white-space:nowrap;"><span class="status-badge ${catBadge}">${displayCat}</span></td>
-            <td style="text-align:center;">${r.tag || '-'}</td>
+            ${cfg.catFirst ? `<td style="white-space:nowrap;"><span class="status-badge ${catBadge}">${displayCat}</span></td>` : ''}
+            ${hideMatCode ? '' : `<td style="white-space:nowrap;"><span class="status-badge ${r.matCode ? 'ok' : (tagInfo ? 'warn' : '')}">${effMat || (tagInfo ? '(BOM)' : '-')}</span></td>`}
+            ${cfg.catFirst ? '' : `<td style="white-space:nowrap;"><span class="status-badge ${catBadge}">${displayCat}</span></td>`}
+            ${hideTag ? '' : `<td style="text-align:center;">${r.tag || '-'}</td>`}
             <td style="font-weight:600;">${item}</td>
             <td style="text-align:center;font-weight:600;white-space:nowrap;color:${flangeType!=='-'?'#1565c0':'#aaa'};">${flangeType}</td>
             <td style="text-align:center;font-size:11px;">${matl}</td>
@@ -1819,20 +1971,142 @@ function _renderRecvCore(cfg) {
     renderPagination(cfg.paginationId, page, Math.max(1, Math.ceil(data.length / PAGE_SIZE)), cfg.goPageFn);
 }
 
-function renderReceivingTable() {
+// 현재 활성 receiving 섹션/탭 상태
+let _recActiveSec = 'bulk'; // 'bulk' | 'tag'
+let _recActiveBulkTab = 'piping'; // 'piping' | 'others'
+let _recActiveTagTab  = 'spool';  // 'spool' | 'valve' | 'speciality' | 'support'
+let currentOthPage = 1;
+let currentValPage = 1;
+let currentSplPage = 1;
+
+function renderReceivingTable() { renderBulkPipingTable(); }
+
+function renderBulkPipingTable() {
     _renderRecvCore({
         tableId: 'plTable', searchId: 'plItemSearch',
         docId: 'plDocFilter', pkgId: 'plPkgFilter', statusId: 'plStatusFilter',
-        catId: 'plCategoryFilter', itemId: 'plItemFilter', sizeId: 'plSizeFilter',
+        itemId: 'plItemFilter', sizeId: 'plSizeFilter',
+        forcedCats: ['Pipe', 'Fitting'],
+        catOrder: { 'Pipe': 0, 'Fitting': 1 },
+        catFirst: true,
+        hideTag: true,
         getPage: () => currentPlPage,
         paginationId: 'plPagination', goPageFn: '_plGoPage'
     });
 }
-window._plGoPage = function(p) { currentPlPage = p; renderReceivingTable(); };
+
+function renderBulkOthersTable() {
+    _renderRecvCore({
+        tableId: 'othTable', searchId: 'othItemSearch',
+        docId: 'othDocFilter', pkgId: 'othPkgFilter', statusId: 'othStatusFilter',
+        itemId: 'othItemFilter', sizeId: 'othSizeFilter',
+        forcedCats: ['Others'],
+        catFirst: true,
+        hideTag: true,
+        getPage: () => currentOthPage,
+        paginationId: 'othPagination', goPageFn: '_othGoPage'
+    });
+}
+
+function renderTagValveTable() {
+    _renderRecvCore({
+        tableId: 'valTable', searchId: 'valItemSearch',
+        docId: 'valDocFilter', pkgId: 'valPkgFilter', statusId: 'valStatusFilter',
+        forcedCats: ['Valve'],
+        hideMatCode: true,
+        getPage: () => currentValPage,
+        paginationId: 'valPagination', goPageFn: '_valGoPage'
+    });
+}
+
+function renderTagSpecialityTable() {
+    _renderRecvCore({
+        tableId: 'splTable', searchId: 'splItemSearch',
+        docId: 'splDocFilter', pkgId: 'splPkgFilter', statusId: 'splStatusFilter',
+        forcedCats: ['Speciality'],
+        hideMatCode: true,
+        getPage: () => currentSplPage,
+        paginationId: 'splPagination', goPageFn: '_splGoPage'
+    });
+}
+
+function renderActiveReceivingTab() {
+    if (_recActiveSec === 'bulk') {
+        if (_recActiveBulkTab === 'piping') renderBulkPipingTable();
+        else renderBulkOthersTable();
+    } else {
+        if (_recActiveTagTab === 'spool') initSpoolReceiving();
+        else if (_recActiveTagTab === 'valve') renderTagValveTable();
+        else if (_recActiveTagTab === 'speciality') renderTagSpecialityTable();
+        else if (_recActiveTagTab === 'support') renderSupportReceivingTable();
+    }
+}
+
+let _recTabsInited = false;
+function initReceivingTabs() {
+    if (_recTabsInited) return;
+    _recTabsInited = true;
+
+    // Section toggle (Bulk / Tag)
+    document.querySelectorAll('.rec-sec-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            _recActiveSec = btn.dataset.sec;
+            document.querySelectorAll('.rec-sec-btn').forEach(b => {
+                b.style.background = b === btn ? '#0A2540' : '#e0e4ef';
+                b.style.color = b === btn ? '#fff' : '#0A2540';
+            });
+            document.getElementById('recSecBulk').style.display = _recActiveSec === 'bulk' ? '' : 'none';
+            document.getElementById('recSecTag').style.display  = _recActiveSec === 'tag'  ? '' : 'none';
+            renderActiveReceivingTab();
+        });
+    });
+
+    // Bulk sub-tabs
+    document.querySelectorAll('.bulk-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            _recActiveBulkTab = btn.dataset.tab;
+            document.querySelectorAll('.bulk-tab-btn').forEach(b => {
+                b.style.borderBottomColor = b === btn ? '#0A2540' : 'transparent';
+                b.style.color = b === btn ? '#0A2540' : '#888';
+            });
+            document.getElementById('recTabPiping').style.display = _recActiveBulkTab === 'piping' ? '' : 'none';
+            document.getElementById('recTabOthers').style.display = _recActiveBulkTab === 'others' ? '' : 'none';
+            renderActiveReceivingTab();
+        });
+    });
+
+    // Tag sub-tabs
+    document.querySelectorAll('.tag-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            _recActiveTagTab = btn.dataset.tab;
+            document.querySelectorAll('.tag-tab-btn').forEach(b => {
+                b.style.borderBottomColor = b === btn ? '#0A2540' : 'transparent';
+                b.style.color = b === btn ? '#0A2540' : '#888';
+            });
+            document.getElementById('recTagSpool').style.display      = _recActiveTagTab === 'spool'      ? '' : 'none';
+            document.getElementById('recTagValve').style.display      = _recActiveTagTab === 'valve'      ? '' : 'none';
+            document.getElementById('recTagSpeciality').style.display = _recActiveTagTab === 'speciality' ? '' : 'none';
+            document.getElementById('recTagSupport').style.display    = _recActiveTagTab === 'support'    ? '' : 'none';
+            renderActiveReceivingTab();
+        });
+    });
+
+    // Filter buttons
+    document.getElementById('btnFilterPl')?.addEventListener('click', () => { currentPlPage = 1; renderBulkPipingTable(); });
+    document.getElementById('btnFilterOth')?.addEventListener('click', () => { currentOthPage = 1; renderBulkOthersTable(); });
+    document.getElementById('btnFilterVal')?.addEventListener('click', () => { currentValPage = 1; renderTagValveTable(); });
+    document.getElementById('btnFilterSpl')?.addEventListener('click', () => { currentSplPage = 1; renderTagSpecialityTable(); });
+}
+
+window._plGoPage  = function(p) { currentPlPage  = p; renderBulkPipingTable(); };
+window._othGoPage = function(p) { currentOthPage = p; renderBulkOthersTable(); };
+window._valGoPage = function(p) { currentValPage = p; renderTagValveTable(); };
+window._splGoPage = function(p) { currentSplPage = p; renderTagSpecialityTable(); };
 
 async function renderSupportReceivingTable() {
     const tbody = document.querySelector('#srecTable tbody');
     if (!tbody) return;
+    if (!supabaseClient) return;
     tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
 
     const search    = (document.getElementById('srecSearch')?.value || '').trim();
@@ -2527,15 +2801,6 @@ function attachEventListeners() {
         });
     }
 
-    // PL Filter Button
-    const btnFilterPl = document.getElementById('btnFilterPl');
-    if(btnFilterPl) {
-        btnFilterPl.addEventListener('click', () => {
-            currentPlPage = 1;
-            renderReceivingTable();
-        });
-    }
-
     // Support Receiving Filter Button
     const btnFilterSrec = document.getElementById('btnFilterSrec');
     if (btnFilterSrec) {
@@ -2626,22 +2891,12 @@ function attachEventListeners() {
             const item  = (document.getElementById('plItemSearch')?.value || '').trim().toUpperCase();
             const doc   = document.getElementById('plDocFilter')?.value || 'All';
             const pkg   = document.getElementById('plPkgFilter')?.value || 'All';
-            const sys   = document.getElementById('plSystemFilter')?.value || 'All';
-            const cat   = document.getElementById('plCategoryFilter')?.value || 'All';
             const itemF = document.getElementById('plItemFilter')?.value || 'All';
             const sizeF = document.getElementById('plSizeFilter')?.value || 'All';
-
-            const matCodeSysMap = {};
-            if (sys !== 'All') db.bom.forEach(b => {
-                if (!matCodeSysMap[b.matCode]) matCodeSysMap[b.matCode] = new Set();
-                matCodeSysMap[b.matCode].add(b.system);
-            });
 
             let data = db.receiving.filter(r => isReceivingActive(r.plNo));
             if (doc   !== 'All') data = data.filter(r => r.docNo === doc);
             if (pkg   !== 'All') data = data.filter(r => r.plNo  === pkg);
-            if (sys   !== 'All') data = data.filter(r => matCodeSysMap[r.matCode]?.has(sys));
-            if (cat   !== 'All') data = data.filter(r => r.category === cat);
             if (itemF !== 'All') data = data.filter(r => window.extractItemFromMatCode(r.matCode) === itemF);
             if (sizeF !== 'All') data = data.filter(r => window.extractSizeFromMatCode(r.matCode) === sizeF);
             if (item)            data = data.filter(r => r.desc.toUpperCase().includes(item));
@@ -2696,54 +2951,6 @@ function attachEventListeners() {
         });
     }
 
-    // Toggle: hide items with no stock
-    const toggleHideNoStock = document.getElementById('toggleHideNoStock');
-    if (toggleHideNoStock) {
-        toggleHideNoStock.addEventListener('change', function() {
-            const rows = document.querySelectorAll('#issueTable tbody tr');
-            rows.forEach(row => {
-                const input = row.querySelector('input[type="number"]');
-                if (!input) return;
-                const maxVal = parseFloat(input.getAttribute('max')) || 0;
-                row.style.display = (this.checked && maxVal <= 0) ? 'none' : '';
-            });
-        });
-    }
-
-    // Fill all rows with BOM Qty
-    const btnFillBomQty = document.getElementById('btnFillBomQty');
-    if (btnFillBomQty) {
-        btnFillBomQty.addEventListener('click', function() {
-            document.querySelectorAll('#issueTable tbody tr').forEach(row => {
-                const input = row.querySelector('input[type="number"]');
-                if (!input) return;
-                const bomCell = row.cells[5]; // BOM (Req) column (index 5)
-                if (bomCell) input.value = parseFloat(bomCell.textContent) || 0;
-            });
-        });
-    }
-
-    // Fill all rows with Stock Qty
-    const btnFillStockQty = document.getElementById('btnFillStockQty');
-    if (btnFillStockQty) {
-        btnFillStockQty.addEventListener('click', function() {
-            document.querySelectorAll('#issueTable tbody tr').forEach(row => {
-                const input = row.querySelector('input[type="number"]');
-                if (!input) return;
-                const maxVal = parseFloat(input.getAttribute('max')) || 0;
-                input.value = maxVal;
-            });
-        });
-    }
-
-    // Clear all request quantities
-    const btnClearQty = document.getElementById('btnClearQty');
-    if (btnClearQty) {
-        btnClearQty.addEventListener('click', function() {
-            document.querySelectorAll('#issueTable input[type="number"]').forEach(inp => { inp.value = 0; });
-        });
-    }
-    
     const btnFilterIssue = document.getElementById('btnFilterIssue');
     if (btnFilterIssue) {
         // Item/Size 드롭박스 동적 갱신
@@ -2863,7 +3070,7 @@ function attachEventListeners() {
             tbody.innerHTML = htmlString || `<tr><td colspan="9" style="text-align:center;color:#888;">No BOM materials found for the selected ISO Drawing.</td></tr>`;
 
             if (!iso || iso === 'All') {
-                tbody.innerHTML += `<tr><td colspan="9" style="text-align:center;color:var(--color-warning);font-size:12px;padding:8px;">
+                tbody.innerHTML += `<tr><td colspan="9" style="text-align:center;color:var(--color-warning);font-size:11px;padding:8px;">
                     <i class="fas fa-info-circle"></i> Specify an ISO Drawing to view all materials for that drawing.</td></tr>`;
             }
 
@@ -3918,7 +4125,7 @@ function renderShippingTable(rows) {
         const statusCell = newPkg
             ? `<td style="text-align:center;padding:3px;"><select style="${PL_INPUT_CSS}" data-pkg="${pkg}" data-field="status" data-packing="${r.packing}">${statusOpts}</select></td>`
             : `<td style="${roStyle}">${r.status || '—'}</td>`;
-        const onSiteCell = `<td style="text-align:center;padding:3px;"><input type="text" class="pl-datepicker" style="${PL_INPUT_CSS}cursor:pointer;text-align:right;" data-pkg="${pkg}" data-field="on_site" data-packing="${r.packing}" value="${r.on_site}" placeholder="📅"></td>`;
+        const onSiteCell = `<td style="text-align:center;padding:3px;"><input type="text" class="pl-datepicker" style="${PL_INPUT_CSS}cursor:pointer;text-align:right;" data-pkg="${pkg}" data-field="on_site" data-packing="${r.packing}" value="${r.on_site}" placeholder=""></td>`;
         const clearOpts = ['', 'Pending', 'Cleared'].map(v =>
             `<option value="${v}"${r.custom_clear === v ? ' selected' : ''}>${v || '—'}</option>`
         ).join('');
@@ -3934,7 +4141,7 @@ function renderShippingTable(rows) {
 
         return `<tr${newGroup ? ' style="background:#f8fafc;"' : ''}>
             ${packingCell}
-            <td style="text-align:center;font-weight:700;font-size:13px;color:#1565c0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.pkg_no}">${r.pkg_no}</td>
+            <td style="text-align:center;font-weight:700;font-size:11px;color:#1565c0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.pkg_no}">${r.pkg_no}</td>
             <td style="text-align:center;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.description}">${r.description}</td>
             <td style="text-align:center;font-weight:600;">${qtyDisplay}</td>
             <td style="text-align:center;color:#555;">${r.unit || '—'}</td>
@@ -3942,7 +4149,7 @@ function renderShippingTable(rows) {
             ${onSiteCell}
             ${customClearCell}
             <td style="text-align:center;padding:3px;">
-                <input type="text" class="pl-datepicker" style="${PL_INPUT_CSS}cursor:pointer;text-align:right;" data-pkg="${pkg}" data-field="issue_date" value="${r.issue_date}" placeholder="📅">
+                <input type="text" class="pl-datepicker" style="${PL_INPUT_CSS}cursor:pointer;text-align:right;" data-pkg="${pkg}" data-field="issue_date" value="${r.issue_date}" placeholder="">
             </td>
             ${purposeCell}
             <td style="padding:3px;">
@@ -3961,7 +4168,10 @@ function renderShippingTable(rows) {
             disableMobile: true,
             locale: { firstDayOfWeek: 1 },
             onReady: (_dates, _str, fp) => {
-                if (fp.altInput) fp.altInput.style.textAlign = 'right';
+                if (fp.altInput) {
+                    fp.altInput.style.textAlign = 'center';
+                    fp.altInput.placeholder = '';
+                }
             },
             onChange: (_dates, dateStr, instance) => {
                 instance.element.dispatchEvent(new Event('change', { bubbles: true }));
@@ -4029,7 +4239,7 @@ async function savePlUpdates() {
             renderShippingTable(getShippingFiltered());
             // issue_date 변경이 Stock Ledger에 즉시 반영되도록 재렌더링
             if (document.getElementById('stock_ledger')?.classList.contains('active')) {
-                renderStockTable();
+                renderActiveStockTab();
             }
             // Status 변경이 Receiving 집계에 반영되도록 Dashboard 재계산
             updateDashboard();
@@ -4172,7 +4382,7 @@ let _srData = null;
 let _srPage = 1;
 
 async function initSpoolReceiving() {
-    if (_srData) { renderSpoolReceiving(); return; }
+    if (_srData) { _initSrFilters(); renderSpoolReceiving(); return; }
     if (!supabaseClient) return;
     const { data, error } = await supabaseClient
         .from('spool_receiving')

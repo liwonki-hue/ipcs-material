@@ -1,11 +1,11 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EPC Piping Material Management System</title>
     <!-- CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260601e">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260627a">
     <!-- FontAwesome for Icons (local) -->
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/css/fa-all.min.css') }}">
     <!-- Google Fonts: Inter (local) -->
@@ -44,8 +44,6 @@
 
                  <div class="section-title">Operations</div>
                  <div class="nav-item" data-target="receiving"><i class="fas fa-truck"></i> Material Receiving</div>
-                 <div class="nav-item" data-target="support_receiving"><i class="fas fa-tools"></i> Support Receiving</div>
-                 <div class="nav-item" data-target="spool_receiving"><i class="fas fa-boxes"></i> Spool Receiving</div>
                  <div class="nav-item" data-target="issue"><i class="fas fa-file-signature"></i> Material Finding</div>
                  <div class="nav-item" data-target="mr_history"><i class="fas fa-history"></i> MR History</div>
 
@@ -263,18 +261,18 @@
                     <div class="panel-header" style="background:#e3f2fd; border-bottom:1px solid #bbdefb; display:flex; justify-content:space-between; align-items:center;">
                         <h2 style="color:#0d47a1; margin:0;"><i class="fas fa-rocket"></i> High Priority ISOs (Ready to Work)</h2>
                         <div style="display:flex; gap:10px; align-items:center;">
-                            <input type="text" id="dashIsoSearch" class="form-control" placeholder="Search ISO Drawing..." style="width:210px; height:32px; font-size:12px;">
-                            <select id="dashSystemFilter" class="form-control" style="width:130px; height:32px; font-size:12px;">
+                            <input type="text" id="dashIsoSearch" class="form-control" placeholder="Search ISO Drawing..." style="width:210px; height:32px; font-size:11px;">
+                            <select id="dashSystemFilter" class="form-control" style="width:130px; height:32px; font-size:11px;">
                                 <option value="All">All Systems</option>
                             </select>
-                            <select id="dashStageFilter" class="form-control" style="width:155px; height:32px; font-size:12px;">
+                            <select id="dashStageFilter" class="form-control" style="width:155px; height:32px; font-size:11px;">
                                 <option value="All">All Stages</option>
                                 <option value="ERECTION READY">Erection Ready</option>
                                 <option value="SPOOL READY">Spool Ready</option>
                                 <option value="SPOOL IN PROG">Spool In Prog</option>
                                 <option value="CRITICAL">Critical</option>
                             </select>
-                            <select id="dashIsoSelect" class="form-control" style="width:230px; height:32px; font-size:12px;">
+                            <select id="dashIsoSelect" class="form-control" style="width:230px; height:32px; font-size:11px;">
                                 <option value="All">All ISOs</option>
                             </select>
                             <button class="btn btn-primary btn-small" id="btnDashFilter" style="height:32px;"><i class="fas fa-search"></i> Search</button>
@@ -346,7 +344,7 @@
                              </div>
                          </div>
                          <div style="padding-bottom:1px; margin-left:12px;">
-                             <span id="masterInfo" style="font-size:0.85rem; color:#666; white-space:nowrap;"></span>
+                             <span id="masterInfo" style="font-size:11px; color:#666; white-space:nowrap;"></span>
                          </div>
                      </div>
                  </div>
@@ -454,9 +452,7 @@
                                       <option value="All">All Categories</option>
                                       <option value="Pipe">Pipe</option>
                                       <option value="Fitting">Fitting</option>
-                                      <option value="Valve">Valve</option>
                                       <option value="Others">Others</option>
-                                      <option value="Speciality">Speciality</option>
                                   </select>
                               </div>
                               <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
@@ -489,7 +485,6 @@
                                      <th style="text-align:center;">System</th>
                                      <th style="text-align:center;">ISO Drawing</th>
                                      <th style="text-align:center;">Line No.</th>
-                                     <th style="text-align:center;">Tag No.</th>
                                      <th style="text-align:center;">Item</th>
                                      <th style="text-align:center;">Size</th>
                                      <th style="text-align:center;min-width:160px;">Description</th>
@@ -505,221 +500,481 @@
             </section>
 
 
-            <!-- 4. Receiving & Packing List Tab -->
+            <!-- 4. Material Receiving (Bulk + Tag) -->
             <section id="receiving" class="view-section">
                 <div class="page-header">
-                     <div>
-                         <h1>Material Receiving</h1>
-                         <p class="subtitle">Material Receiving</p>
-                     </div>
-                     <div class="actions">
-                         <input type="file" id="plFileInput" accept=".xlsx,.xls" style="display:none;">
-                     </div>
-                 </div>
-                 
-                 <div class="panel filter-panel" style="margin-bottom: 20px;">
-                      <div style="display: flex; align-items: flex-end; justify-content: space-between; width: 100%; gap: 10px; flex-wrap: nowrap;">
-                          <!-- Left: filters + search -->
-                          <div style="display: flex; align-items: flex-end; gap: 10px; flex: 1; min-width: 0;">
-                              <div class="form-group" style="flex: 2; min-width: 0; margin-bottom: 0;">
-                                  <label>Search Item</label>
-                                  <input type="text" id="plItemSearch" class="form-control" style="width: 100%;" placeholder="Search by Item name...">
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
-                                  <label>PKG</label>
-                                  <select id="plDocFilter" class="form-control" style="width: 100%;"><option value="All">All DOCs</option></select>
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
-                                  <label>PKG NO</label>
-                                  <select id="plPkgFilter" class="form-control" style="width: 100%;"><option value="All">All PKGs</option></select>
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0;">
-                                  <label>Category</label>
-                                  <select id="plCategoryFilter" class="form-control" style="width: 100%;">
-                                      <option value="All">All Categories</option>
-                                      <option value="Pipe">Pipe</option>
-                                      <option value="Fitting">Fitting</option>
-                                      <option value="Valve">Valve</option>
-                                      <option value="Others">Others</option>
-                                      <option value="Speciality">Speciality</option>
-                                  </select>
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0;">
-                                  <label>Item</label>
-                                  <select id="plItemFilter" class="form-control" style="width: 100%;"><option value="All">All Items</option></select>
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0;">
-                                  <label>Size</label>
-                                  <select id="plSizeFilter" class="form-control" style="width: 100%;"><option value="All">All Sizes</option></select>
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0;">
-                                  <label>Status</label>
-                                  <select id="plStatusFilter" class="form-control" style="width: 100%;">
-                                      <option value="All">All Status</option>
-                                      <option value="Preparing">Preparing</option>
-                                      <option value="Shipping">Shipping</option>
-                                      <option value="On-Site">On-Site</option>
-                                  </select>
-                              </div>
-                              <div style="padding-bottom: 1px; flex-shrink: 0;">
-                                  <button class="btn btn-primary" id="btnFilterPl" style="white-space: nowrap; display: flex; align-items: center; gap: 8px;"><i class="fas fa-search"></i> Search PL</button>
-                              </div>
-                          </div>
-                          <!-- Right: export + upload -->
-                          <div style="display: flex; gap: 8px; align-items: flex-end; padding-bottom: 1px;">
-                              <button class="btn btn-outline" id="btnExportPl" style="white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export Excel</button>
-                              <button class="btn btn-outline" id="btnUploadPL" style="white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-upload" style="color:#1565c0;"></i> Upload Packing List</button>
-                          </div>
-                      </div>
-                  </div>
+                    <div>
+                        <h1>Material Receiving</h1>
+                        <p class="subtitle">Material Receiving — Bulk &amp; Tag Items</p>
+                    </div>
+                    <div class="actions">
+                        <input type="file" id="plFileInput" accept=".xlsx,.xls" style="display:none;">
+                    </div>
+                </div>
 
-                 <div class="matching-container">
-                     <!-- Packing List Panel -->
-                     <div class="panel data-panel pl-panel" style="flex: 1;">
-                         <div class="panel-header">
-                             <h3>Incoming Packing List</h3>
-                         </div>
-                         <div class="table-responsive">
-                             <table class="data-table" id="plTable">
-                                 <thead>
-                                     <tr>
-                                         <th>PKG</th>
-                                         <th>PKG NO</th>
-                                         <th style="width:130px;">MatCode</th>
-                                         <th style="width:60px;">Category</th>
-                                         <th style="width:80px;">TAG NO</th>
-                                         <th style="width:70px;">Item</th>
-                                         <th style="width:40px;">Type</th>
-                                         <th style="width:120px;">Mat</th>
-                                         <th style="width:50px;">Size</th>
-                                         <th style="width:70px;">Rating</th>
-                                         <th>Unit</th>
-                                         <th style="width:50px;">Qty</th>
-                                         <th style="width:80px;">Status</th>
-                                         <th style="min-width:110px;">Purpose</th>
-                                     </tr>
-                                 </thead>
-                                 <tbody>
-                                     <!-- Pl items loaded here -->
-                                 </tbody>
-                             </table>
-                         </div>
-                         <div id="plPagination"></div>
-                     </div>
-                 </div>
-                 <!-- PL Import Review Panel -->
-                 <div id="plReviewPanel" style="display:none; margin-top:20px;">
-                     <div class="panel data-panel">
-                         <div class="panel-header" style="background:var(--color-primary); color:white; padding:12px 16px; margin-bottom:0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-                             <h3 style="margin:0; font-size:14px; font-weight:600; color:white;"><i class="fas fa-file-import"></i> Packing List Import Review</h3>
-                             <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                                 <span id="plReviewSummary" style="font-size:12px; color:rgba(255,255,255,0.9);"></span>
-                                 <button id="btnSavePLReview" disabled style="background:white; color:var(--color-primary); border:none; border-radius:4px; padding:6px 14px; font-weight:600; cursor:pointer; font-size:12px;"><i class="fas fa-save"></i> Save to Receiving</button>
-                                 <button id="btnCancelPLReview" style="background:transparent; color:white; border:1px solid rgba(255,255,255,0.5); border-radius:4px; padding:6px 14px; cursor:pointer; font-size:12px;">Cancel</button>
-                             </div>
-                         </div>
-                         <div class="table-responsive" style="max-height:480px; overflow-y:auto;">
-                             <table class="data-table" id="plReviewTable">
-                                 <thead>
-                                     <tr>
-                                         <th>PKG</th>
-                                         <th>PKG NO</th>
-                                         <th style="min-width:260px;">Full Description</th>
-                                         <th>Unit</th>
-                                         <th>QTY</th>
-                                         <th>Status</th>
-                                         <th style="min-width:180px;">MatCode</th>
-                                         <th>Category</th>
-                                     </tr>
-                                 </thead>
-                                 <tbody id="plReviewTbody"></tbody>
-                             </table>
-                         </div>
-                     </div>
-                 </div>
+                <!-- Section toggle: Bulk / Tag -->
+                <div style="display:flex;gap:0;margin-bottom:0;border-bottom:2px solid #0A2540;">
+                    <button class="rec-sec-btn active" data-sec="bulk" style="padding:8px 28px;border:none;font-weight:700;font-size:14px;cursor:pointer;background:#0A2540;color:#fff;border-radius:6px 6px 0 0;">Bulk</button>
+                    <button class="rec-sec-btn" data-sec="tag" style="padding:8px 28px;border:none;font-weight:700;font-size:14px;cursor:pointer;background:#e0e4ef;color:#0A2540;border-radius:6px 6px 0 0;">Tag</button>
+                </div>
+
+                <!-- ===== BULK SECTION ===== -->
+                <div id="recSecBulk" style="margin-top:16px;">
+                    <div style="display:flex;gap:0;border-bottom:1px solid #c8cfe0;margin-bottom:16px;">
+                        <button class="bulk-tab-btn active" data-tab="piping" style="padding:6px 20px;border:none;border-bottom:3px solid #0A2540;font-size:13px;font-weight:600;cursor:pointer;background:#fff;color:#0A2540;margin-bottom:-1px;">Piping</button>
+                        <button class="bulk-tab-btn" data-tab="others" style="padding:6px 20px;border:none;border-bottom:3px solid transparent;font-size:13px;font-weight:600;cursor:pointer;background:#fff;color:#888;margin-bottom:-1px;">Others</button>
+                    </div>
+
+                    <!-- Piping tab (Pipe + Fitting) -->
+                    <div id="recTabPiping">
+                        <div class="panel filter-panel" style="margin-bottom:20px;">
+                            <div style="display:flex;align-items:flex-end;justify-content:space-between;width:100%;gap:10px;flex-wrap:nowrap;">
+                                <div style="display:flex;align-items:flex-end;gap:10px;flex:1;min-width:0;">
+                                    <div class="form-group" style="flex:2;min-width:0;margin-bottom:0;">
+                                        <label>Search Item</label>
+                                        <input type="text" id="plItemSearch" class="form-control" style="width:100%;" placeholder="Search by Item name...">
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                        <label>PKG</label>
+                                        <select id="plDocFilter" class="form-control" style="width:100%;"><option value="All">All DOCs</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                        <label>PKG NO</label>
+                                        <select id="plPkgFilter" class="form-control" style="width:100%;"><option value="All">All PKGs</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;">
+                                        <label>Item</label>
+                                        <select id="plItemFilter" class="form-control" style="width:100%;"><option value="All">All Items</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;">
+                                        <label>Size</label>
+                                        <select id="plSizeFilter" class="form-control" style="width:100%;"><option value="All">All Sizes</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;">
+                                        <label>Status</label>
+                                        <select id="plStatusFilter" class="form-control" style="width:100%;">
+                                            <option value="All">All Status</option>
+                                            <option value="Preparing">Preparing</option>
+                                            <option value="Shipping">Shipping</option>
+                                            <option value="On-Site">On-Site</option>
+                                        </select>
+                                    </div>
+                                    <div style="padding-bottom:1px;flex-shrink:0;">
+                                        <button class="btn btn-primary" id="btnFilterPl" style="white-space:nowrap;display:flex;align-items:center;gap:8px;"><i class="fas fa-search"></i> Search</button>
+                                    </div>
+                                </div>
+                                <div style="display:flex;gap:8px;align-items:flex-end;padding-bottom:1px;">
+                                    <button class="btn btn-outline" id="btnExportPl" style="white-space:nowrap;display:flex;align-items:center;gap:6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export Excel</button>
+                                    <button class="btn btn-outline" id="btnUploadPL" style="white-space:nowrap;display:flex;align-items:center;gap:6px;"><i class="fas fa-file-upload" style="color:#1565c0;"></i> Upload Packing List</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="panel data-panel">
+                            <div class="panel-header"><h3>Piping — Pipe &amp; Fitting</h3></div>
+                            <div class="table-responsive">
+                                <table class="data-table" id="plTable" style="table-layout:fixed;width:100%;">
+                                    <colgroup>
+                                        <col style="width:90px;"><col style="width:170px;">
+                                        <col style="width:100px;"><col style="width:110px;">
+                                        <col style="width:145px;"><col style="width:65px;">
+                                        <col style="width:105px;"><col style="width:55px;">
+                                        <col style="width:70px;"><col style="width:42px;">
+                                        <col style="width:42px;"><col style="width:72px;">
+                                        <col style="width:120px;">
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <th>PKG</th>
+                                            <th>PKG NO</th>
+                                            <th>Category</th>
+                                            <th>MatCode</th>
+                                            <th>Item</th>
+                                            <th>Type</th>
+                                            <th>Mat</th>
+                                            <th>Size</th>
+                                            <th>Rating</th>
+                                            <th>Unit</th>
+                                            <th>Qty</th>
+                                            <th>Status</th>
+                                            <th>Purpose</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                            <div id="plPagination"></div>
+                        </div>
+                        <!-- PL Import Review Panel -->
+                        <div id="plReviewPanel" style="display:none;margin-top:20px;">
+                            <div class="panel data-panel">
+                                <div class="panel-header" style="background:var(--color-primary);color:white;padding:12px 16px;margin-bottom:0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                                    <h3 style="margin:0;font-size:14px;font-weight:600;color:white;"><i class="fas fa-file-import"></i> Packing List Import Review</h3>
+                                    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                                        <span id="plReviewSummary" style="font-size:12px;color:rgba(255,255,255,0.9);"></span>
+                                        <button id="btnSavePLReview" disabled style="background:white;color:var(--color-primary);border:none;border-radius:4px;padding:6px 14px;font-weight:600;cursor:pointer;font-size:12px;"><i class="fas fa-save"></i> Save to Receiving</button>
+                                        <button id="btnCancelPLReview" style="background:transparent;color:white;border:1px solid rgba(255,255,255,0.5);border-radius:4px;padding:6px 14px;cursor:pointer;font-size:12px;">Cancel</button>
+                                    </div>
+                                </div>
+                                <div class="table-responsive" style="max-height:480px;overflow-y:auto;">
+                                    <table class="data-table" id="plReviewTable">
+                                        <thead>
+                                            <tr>
+                                                <th>PKG</th><th>PKG NO</th>
+                                                <th style="min-width:260px;">Full Description</th>
+                                                <th>Unit</th><th>QTY</th><th>Status</th>
+                                                <th style="min-width:180px;">MatCode</th><th>Category</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="plReviewTbody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div><!-- end recTabPiping -->
+
+                    <!-- Others tab (Gasket / Bolt / Nut) -->
+                    <div id="recTabOthers" style="display:none;">
+                        <div class="panel filter-panel" style="margin-bottom:20px;">
+                            <div style="display:flex;align-items:flex-end;justify-content:space-between;width:100%;gap:10px;flex-wrap:nowrap;">
+                                <div style="display:flex;align-items:flex-end;gap:10px;flex:1;min-width:0;">
+                                    <div class="form-group" style="flex:2;min-width:0;margin-bottom:0;">
+                                        <label>Search Item</label>
+                                        <input type="text" id="othItemSearch" class="form-control" style="width:100%;" placeholder="Search by Item name...">
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                        <label>PKG</label>
+                                        <select id="othDocFilter" class="form-control" style="width:100%;"><option value="All">All DOCs</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                        <label>PKG NO</label>
+                                        <select id="othPkgFilter" class="form-control" style="width:100%;"><option value="All">All PKGs</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;">
+                                        <label>Item</label>
+                                        <select id="othItemFilter" class="form-control" style="width:100%;"><option value="All">All Items</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;">
+                                        <label>Size</label>
+                                        <select id="othSizeFilter" class="form-control" style="width:100%;"><option value="All">All Sizes</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;">
+                                        <label>Status</label>
+                                        <select id="othStatusFilter" class="form-control" style="width:100%;">
+                                            <option value="All">All Status</option>
+                                            <option value="Preparing">Preparing</option>
+                                            <option value="Shipping">Shipping</option>
+                                            <option value="On-Site">On-Site</option>
+                                        </select>
+                                    </div>
+                                    <div style="padding-bottom:1px;flex-shrink:0;">
+                                        <button class="btn btn-primary" id="btnFilterOth" style="white-space:nowrap;"><i class="fas fa-search"></i> Search</button>
+                                    </div>
+                                </div>
+                                <div style="display:flex;gap:8px;align-items:flex-end;padding-bottom:1px;">
+                                    <button class="btn btn-outline" id="btnExportOth" style="white-space:nowrap;display:flex;align-items:center;gap:6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export Excel</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="panel data-panel">
+                            <div class="panel-header"><h3>Others — Gasket / Bolt / Nut</h3></div>
+                            <div class="table-responsive">
+                                <table class="data-table" id="othTable">
+                                    <thead>
+                                        <tr>
+                                            <th style="max-width:20px;">PKG</th>
+                                            <th style="max-width:15px;">PKG NO</th>
+                                            <th style="width:100px;">Category</th>
+                                            <th style="width:155px;">MatCode</th>
+                                            <th style="width:225px;">Item</th>
+                                            <th style="width:40px;">Type</th>
+                                            <th style="width:125px;">Mat</th>
+                                            <th style="width:75px;">Size</th>
+                                            <th style="width:95px;">Rating</th>
+                                            <th style="width:60px;">Unit</th>
+                                            <th style="width:70px;">Qty</th>
+                                            <th style="width:80px;">Status</th>
+                                            <th style="width:135px;">Purpose</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                            <div id="othPagination"></div>
+                        </div>
+                    </div><!-- end recTabOthers -->
+                </div><!-- end recSecBulk -->
+
+                <!-- ===== TAG SECTION ===== -->
+                <div id="recSecTag" style="display:none;margin-top:16px;">
+                    <div style="display:flex;gap:0;border-bottom:1px solid #c8cfe0;margin-bottom:16px;">
+                        <button class="tag-tab-btn active" data-tab="spool" style="padding:6px 20px;border:none;border-bottom:3px solid #0A2540;font-size:13px;font-weight:600;cursor:pointer;background:#fff;color:#0A2540;margin-bottom:-1px;">Spool</button>
+                        <button class="tag-tab-btn" data-tab="valve" style="padding:6px 20px;border:none;border-bottom:3px solid transparent;font-size:13px;font-weight:600;cursor:pointer;background:#fff;color:#888;margin-bottom:-1px;">Valve</button>
+                        <button class="tag-tab-btn" data-tab="speciality" style="padding:6px 20px;border:none;border-bottom:3px solid transparent;font-size:13px;font-weight:600;cursor:pointer;background:#fff;color:#888;margin-bottom:-1px;">Speciality</button>
+                        <button class="tag-tab-btn" data-tab="support" style="padding:6px 20px;border:none;border-bottom:3px solid transparent;font-size:13px;font-weight:600;cursor:pointer;background:#fff;color:#888;margin-bottom:-1px;">Support</button>
+                    </div>
+
+                    <!-- Spool tab -->
+                    <div id="recTagSpool">
+                        <div class="kpi-grid" style="margin-bottom:20px;" id="spoolRecKpiGrid">
+                            <div class="kpi-card">
+                                <div class="kpi-info">
+                                    <div class="kpi-title">Total Spool Received</div>
+                                    <div class="kpi-value spool-kpi-received">— <span class="unit">EA</span></div>
+                                    <div class="kpi-desc spool-kpi-rec-sub">—</div>
+                                </div>
+                                <div class="kpi-icon received"><i class="fas fa-truck-loading"></i></div>
+                            </div>
+                        </div>
+                        <div class="panel" style="padding:16px;margin-bottom:16px;">
+                            <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+                                <div class="form-group" style="flex:3;min-width:200px;margin-bottom:0;">
+                                    <label style="display:block;margin-bottom:4px;font-size:12px;">Search (PKG NO / Tag No / Description)</label>
+                                    <input type="text" id="srSearch" class="form-control" placeholder="package no, tag no, description...">
+                                </div>
+                                <div class="form-group" style="flex:0 0 160px;margin-bottom:0;">
+                                    <label style="display:block;margin-bottom:4px;font-size:12px;">Package No</label>
+                                    <select id="srPkgFilter" class="form-control"><option value="">All</option></select>
+                                </div>
+                                <div class="form-group" style="flex:0 0 110px;margin-bottom:0;">
+                                    <label style="display:block;margin-bottom:4px;font-size:12px;">System</label>
+                                    <select id="srSystemFilter" class="form-control">
+                                        <option value="">All</option>
+                                        <option value="HP">HP</option>
+                                        <option value="LP">LP</option>
+                                    </select>
+                                </div>
+                                <button class="btn btn-primary" id="btnSrSearch" style="height:38px;"><i class="fas fa-search"></i> Search</button>
+                                <button class="btn btn-outline" id="btnSrReset" style="height:38px;">Reset</button>
+                            </div>
+                        </div>
+                        <div class="panel" style="padding:0;overflow:hidden;">
+                            <div style="overflow-x:auto;">
+                                <table class="data-table" id="spoolReceivingTable" style="table-layout:fixed;width:100%;">
+                                    <colgroup>
+                                        <col style="width:140px;"><col style="width:240px;">
+                                        <col style="width:85px;"><col style="width:190px;">
+                                        <col style="width:210px;"><col style="width:90px;">
+                                        <col style="width:75px;"><col style="width:75px;">
+                                        <col style="width:70px;"><col style="width:160px;">
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <th>PKG</th><th>PKG NO</th><th>System</th>
+                                            <th>Description</th><th>Tag No</th><th>Item</th>
+                                            <th>Size</th><th>Unit</th><th>Qty</th><th>Purpose</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="srTbody">
+                                        <tr><td colspan="10" style="text-align:center;color:#999;padding:40px;">Loading...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
+                                <span id="srCountInfo" style="font-size:13px;color:#666;"></span>
+                                <div id="srPagination"></div>
+                            </div>
+                        </div>
+                    </div><!-- end recTagSpool -->
+
+                    <!-- Valve tab -->
+                    <div id="recTagValve" style="display:none;">
+                        <div class="panel filter-panel" style="margin-bottom:20px;">
+                            <div style="display:flex;align-items:flex-end;justify-content:space-between;width:100%;gap:10px;flex-wrap:nowrap;">
+                                <div style="display:flex;align-items:flex-end;gap:10px;flex:1;min-width:0;">
+                                    <div class="form-group" style="flex:2;min-width:0;margin-bottom:0;">
+                                        <label>Search</label>
+                                        <input type="text" id="valItemSearch" class="form-control" style="width:100%;" placeholder="Search by Tag, Item, Description...">
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                        <label>PKG</label>
+                                        <select id="valDocFilter" class="form-control" style="width:100%;"><option value="All">All DOCs</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                        <label>PKG NO</label>
+                                        <select id="valPkgFilter" class="form-control" style="width:100%;"><option value="All">All PKGs</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;">
+                                        <label>Status</label>
+                                        <select id="valStatusFilter" class="form-control" style="width:100%;">
+                                            <option value="All">All Status</option>
+                                            <option value="Preparing">Preparing</option>
+                                            <option value="Shipping">Shipping</option>
+                                            <option value="On-Site">On-Site</option>
+                                        </select>
+                                    </div>
+                                    <div style="padding-bottom:1px;flex-shrink:0;">
+                                        <button class="btn btn-primary" id="btnFilterVal" style="white-space:nowrap;"><i class="fas fa-search"></i> Search</button>
+                                    </div>
+                                </div>
+                                <div style="display:flex;gap:8px;align-items:flex-end;padding-bottom:1px;">
+                                    <button class="btn btn-outline" id="btnExportVal" style="white-space:nowrap;display:flex;align-items:center;gap:6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export Excel</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="panel data-panel">
+                            <div class="panel-header"><h3>Valve Receiving</h3></div>
+                            <div class="table-responsive">
+                                <table class="data-table" id="valTable">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:120px;">PKG</th><th style="width:220px;">PKG NO</th>
+                                            <th style="width:60px;">Category</th>
+                                            <th style="width:210px;">TAG NO</th>
+                                            <th style="width:130px;">Item</th>
+                                            <th style="width:40px;">Type</th>
+                                            <th style="width:120px;">Mat</th>
+                                            <th style="width:75px;">Size</th>
+                                            <th style="width:70px;">Rating</th>
+                                            <th style="width:75px;">Unit</th>
+                                            <th style="width:70px;">Qty</th>
+                                            <th style="width:80px;">Status</th>
+                                            <th style="width:160px;">Purpose</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                            <div id="valPagination"></div>
+                        </div>
+                    </div><!-- end recTagValve -->
+
+                    <!-- Speciality tab -->
+                    <div id="recTagSpeciality" style="display:none;">
+                        <div class="panel filter-panel" style="margin-bottom:20px;">
+                            <div style="display:flex;align-items:flex-end;justify-content:space-between;width:100%;gap:10px;flex-wrap:nowrap;">
+                                <div style="display:flex;align-items:flex-end;gap:10px;flex:1;min-width:0;">
+                                    <div class="form-group" style="flex:2;min-width:0;margin-bottom:0;">
+                                        <label>Search</label>
+                                        <input type="text" id="splItemSearch" class="form-control" style="width:100%;" placeholder="Search by Tag, Item, Description...">
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                        <label>PKG</label>
+                                        <select id="splDocFilter" class="form-control" style="width:100%;"><option value="All">All DOCs</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                        <label>PKG NO</label>
+                                        <select id="splPkgFilter" class="form-control" style="width:100%;"><option value="All">All PKGs</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;">
+                                        <label>Status</label>
+                                        <select id="splStatusFilter" class="form-control" style="width:100%;">
+                                            <option value="All">All Status</option>
+                                            <option value="Preparing">Preparing</option>
+                                            <option value="Shipping">Shipping</option>
+                                            <option value="On-Site">On-Site</option>
+                                        </select>
+                                    </div>
+                                    <div style="padding-bottom:1px;flex-shrink:0;">
+                                        <button class="btn btn-primary" id="btnFilterSpl" style="white-space:nowrap;"><i class="fas fa-search"></i> Search</button>
+                                    </div>
+                                </div>
+                                <div style="display:flex;gap:8px;align-items:flex-end;padding-bottom:1px;">
+                                    <button class="btn btn-outline" id="btnExportSpl" style="white-space:nowrap;display:flex;align-items:center;gap:6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export Excel</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="panel data-panel">
+                            <div class="panel-header"><h3>Speciality Receiving</h3></div>
+                            <div class="table-responsive">
+                                <table class="data-table" id="splTable">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:120px;">PKG</th><th style="width:220px;">PKG NO</th>
+                                            <th style="width:60px;">Category</th>
+                                            <th style="width:210px;">TAG NO</th>
+                                            <th style="width:130px;">Item</th>
+                                            <th style="width:40px;">Type</th>
+                                            <th style="width:120px;">Mat</th>
+                                            <th style="width:75px;">Size</th>
+                                            <th style="width:70px;">Rating</th>
+                                            <th style="width:75px;">Unit</th>
+                                            <th style="width:70px;">Qty</th>
+                                            <th style="width:80px;">Status</th>
+                                            <th style="width:160px;">Purpose</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                            <div id="splPagination"></div>
+                        </div>
+                    </div><!-- end recTagSpeciality -->
+
+                    <!-- Support tab -->
+                    <div id="recTagSupport" style="display:none;">
+                        <div class="panel filter-panel" style="margin-bottom:20px;">
+                            <div style="display:flex;align-items:flex-end;justify-content:space-between;width:100%;gap:10px;flex-wrap:nowrap;">
+                                <div style="display:flex;align-items:flex-end;gap:10px;flex:1;min-width:0;">
+                                    <div class="form-group" style="flex:2;min-width:0;margin-bottom:0;">
+                                        <label>Search (ISO / Support Tag / Item / MATL)</label>
+                                        <input type="text" id="srecSearch" class="form-control" style="width:100%;" placeholder="ISO DWG, Support Tag, Item, MATL...">
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                        <label>PKG</label>
+                                        <select id="srecPkgFilter" class="form-control" style="width:100%;"><option value="All">All PKGs</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                        <label>PACKAGE NO</label>
+                                        <select id="srecPackageNoFilter" class="form-control" style="width:100%;"><option value="All">All Package No</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                        <label>System</label>
+                                        <select id="srecSystemFilter" class="form-control" style="width:100%;"><option value="All">All Systems</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                        <label>Support No</label>
+                                        <select id="srecTagFilter" class="form-control" style="width:100%;"><option value="All">All Support No</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                        <label>Type</label>
+                                        <select id="srecTypeFilter" class="form-control" style="width:100%;">
+                                            <option value="All">All Types</option>
+                                            <option value="SPECIAL">SPECIAL</option>
+                                            <option value="G">G-Type</option>
+                                            <option value="U">U-Type</option>
+                                            <option value="W">W-Type</option>
+                                        </select>
+                                    </div>
+                                    <div style="padding-bottom:1px;display:flex;gap:8px;flex-shrink:0;">
+                                        <button class="btn btn-primary" id="btnFilterSrec" style="white-space:nowrap;"><i class="fas fa-search"></i> Search</button>
+                                        <button class="btn btn-outline" id="btnClearSrec" style="white-space:nowrap;">Clear</button>
+                                    </div>
+                                </div>
+                                <div style="padding-bottom:1px;display:flex;gap:8px;flex-shrink:0;">
+                                    <button class="btn btn-outline" id="btnExportSrec" style="white-space:nowrap;display:flex;align-items:center;gap:6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="panel data-panel">
+                            <div class="table-responsive">
+                                <table class="data-table" id="srecTable" style="font-size:0.82em;">
+                                    <thead>
+                                        <tr>
+                                            <th style="text-align:center;">PKG</th>
+                                            <th style="text-align:center;min-width:110px;">PACKAGE NO</th>
+                                            <th style="text-align:center;">SYSTEM</th>
+                                            <th style="text-align:center;min-width:180px;">ISO DWG NO.</th>
+                                            <th style="text-align:center;min-width:180px;">SUPPORT TAG NO.</th>
+                                            <th style="text-align:center;">TYPE</th>
+                                            <th style="text-align:center;">PART NO</th>
+                                            <th style="text-align:center;">ID NO</th>
+                                            <th style="text-align:center;min-width:150px;">ITEM</th>
+                                            <th style="text-align:center;">MATL</th>
+                                            <th style="text-align:center;min-width:120px;">SIZE OR TYPE</th>
+                                            <th style="text-align:center;">LENGTH (mm)</th>
+                                            <th style="text-align:center;">Q'TY</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                            <div id="srecPagination"></div>
+                        </div>
+                    </div><!-- end recTagSupport -->
+                </div><!-- end recSecTag -->
             </section>
 
-            <!-- 4-2. Support Receiving Tab -->
-            <section id="support_receiving" class="view-section">
-                <div class="page-header">
-                     <div>
-                         <h1>Support Receiving</h1>
-                         <p class="subtitle">CRITICAL BOP SUPPLY LIST — Support material BOM by support tag.</p>
-                     </div>
-                 </div>
-
-                 <div class="panel filter-panel" style="margin-bottom: 20px;">
-                      <div style="display: flex; align-items: flex-end; justify-content: space-between; width: 100%; gap: 10px; flex-wrap: nowrap;">
-                          <div style="display: flex; align-items: flex-end; gap: 10px; flex: 1; min-width: 0;">
-                              <div class="form-group" style="flex: 2; min-width: 0; margin-bottom: 0;">
-                                  <label>Search (ISO / Support Tag / Item / MATL)</label>
-                                  <input type="text" id="srecSearch" class="form-control" style="width: 100%;" placeholder="ISO DWG, Support Tag, Item, MATL...">
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
-                                  <label>PKG</label>
-                                  <select id="srecPkgFilter" class="form-control" style="width: 100%;"><option value="All">All PKGs</option></select>
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
-                                  <label>PACKAGE NO</label>
-                                  <select id="srecPackageNoFilter" class="form-control" style="width: 100%;"><option value="All">All Package No</option></select>
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
-                                  <label>System</label>
-                                  <select id="srecSystemFilter" class="form-control" style="width: 100%;"><option value="All">All Systems</option></select>
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
-                                  <label>Support No</label>
-                                  <select id="srecTagFilter" class="form-control" style="width: 100%;"><option value="All">All Support No</option></select>
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
-                                  <label>Type</label>
-                                  <select id="srecTypeFilter" class="form-control" style="width: 100%;">
-                                      <option value="All">All Types</option>
-                                      <option value="SPECIAL">SPECIAL</option>
-                                      <option value="G">G-Type</option>
-                                      <option value="U">U-Type</option>
-                                      <option value="W">W-Type</option>
-                                  </select>
-                              </div>
-                              <div style="padding-bottom: 1px; display: flex; gap: 8px; flex-shrink: 0;">
-                                  <button class="btn btn-primary" id="btnFilterSrec" style="white-space: nowrap;"><i class="fas fa-search"></i> Search</button>
-                                  <button class="btn btn-outline" id="btnClearSrec" style="white-space: nowrap;">Clear</button>
-                              </div>
-                          </div>
-                          <div style="padding-bottom: 1px; display: flex; gap: 8px; flex-shrink: 0;">
-                              <button class="btn btn-outline" id="btnExportSrec" style="white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export</button>
-                          </div>
-                      </div>
-                  </div>
-
-                 <div class="panel data-panel">
-                     <div class="table-responsive">
-                         <table class="data-table" id="srecTable" style="font-size:0.82em;">
-                             <thead>
-                                 <tr>
-                                     <th style="text-align:center;">PKG</th>
-                                     <th style="text-align:center;min-width:110px;">PACKAGE NO</th>
-                                     <th style="text-align:center;">SYSTEM</th>
-                                     <th style="text-align:center;min-width:180px;">ISO DWG NO.</th>
-                                     <th style="text-align:center;min-width:180px;">SUPPORT TAG NO.</th>
-                                     <th style="text-align:center;">TYPE</th>
-                                     <th style="text-align:center;">PART NO</th>
-                                     <th style="text-align:center;">ID NO</th>
-                                     <th style="text-align:center;min-width:150px;">ITEM</th>
-                                     <th style="text-align:center;">MATL</th>
-                                     <th style="text-align:center;min-width:120px;">SIZE OR TYPE</th>
-                                     <th style="text-align:center;">LENGTH (mm)</th>
-                                     <th style="text-align:center;">Q'TY</th>
-                                 </tr>
-                             </thead>
-                             <tbody></tbody>
-                         </table>
-                     </div>
-                     <div id="srecPagination"></div>
-                 </div>
-            </section>
-
-            <section id="issue" class="view-section">
+                        <section id="issue" class="view-section">
                 <div class="page-header">
                      <div>
                          <h1>Material Finding</h1>
@@ -908,7 +1163,7 @@
                                  <label>PKG NO</label>
                                  <select id="stockPkgFilter" class="form-control"><option value="All">All PKGs</option></select>
                              </div>
-                             <div class="form-group" style="flex: 1; min-width: 110px;">
+                             <div class="form-group" style="flex: 1; min-width: 110px; display:none;">
                                  <label>Category</label>
                                  <select id="stockCatFilter" class="form-control"><option value="All">All Categories</option></select>
                              </div>
@@ -935,26 +1190,83 @@
                      </div>
                  </div>
 
-                 <div class="panel data-panel">
+                 <!-- Section Toggle: Bulk | Tag -->
+                 <div style="display:flex;gap:0;border-bottom:2px solid #0A2540;margin-bottom:16px;">
+                     <button class="st-sec-btn active" data-sec="bulk" style="padding:8px 24px;border:none;border-bottom:3px solid #0A2540;font-size:11px;font-weight:700;cursor:pointer;background:#0A2540;color:#fff;margin-bottom:-2px;">Bulk</button>
+                     <button class="st-sec-btn" data-sec="tag" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:11px;font-weight:600;cursor:pointer;background:#f8fafc;color:#666;margin-bottom:-2px;">Tag</button>
+                 </div>
+
+                 <!-- Bulk Sub-tabs -->
+                 <div id="stSecBulk" style="display:block;">
+                     <div style="display:flex;gap:0;border-bottom:1px solid #c8cfe0;margin-bottom:16px;">
+                         <button class="st-bulk-tab active" data-tab="piping" style="padding:6px 20px;border:none;border-bottom:3px solid #0A2540;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#0A2540;margin-bottom:-1px;">Piping</button>
+                         <button class="st-bulk-tab" data-tab="others" style="padding:6px 20px;border:none;border-bottom:3px solid transparent;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#888;margin-bottom:-1px;">Others</button>
+                     </div>
+                 </div>
+
+                 <!-- Tag Sub-tabs -->
+                 <div id="stSecTag" style="display:none;">
+                     <div style="display:flex;gap:0;border-bottom:1px solid #c8cfe0;margin-bottom:16px;">
+                         <button class="st-tag-tab active" data-tab="spool" style="padding:6px 20px;border:none;border-bottom:3px solid #0A2540;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#0A2540;margin-bottom:-1px;">Spool</button>
+                         <button class="st-tag-tab" data-tab="valve" style="padding:6px 20px;border:none;border-bottom:3px solid transparent;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#888;margin-bottom:-1px;">Valve</button>
+                         <button class="st-tag-tab" data-tab="speciality" style="padding:6px 20px;border:none;border-bottom:3px solid transparent;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#888;margin-bottom:-1px;">Speciality</button>
+                     </div>
+                 </div>
+
+                 <!-- Spool Stock Panel -->
+                 <div id="stSpoolPanel" class="panel data-panel" style="display:none;">
                      <div class="panel-header">
-                         <h3><i class="fas fa-warehouse"></i> Current Inventory Logs</h3>
-                         <span id="stockCountLabel" style="font-size:13px; color:#666;"></span>
+                         <h3><i class="fas fa-warehouse"></i> Stock — Spool</h3>
+                         <span id="stSpoolCountLabel" style="font-size:11px;color:#666;"></span>
+                     </div>
+                     <div class="table-responsive">
+                         <table class="data-table" id="stSpoolTable" style="table-layout:fixed;width:100%;">
+                             <colgroup>
+                                 <col style="width:120px;"><col style="width:200px;">
+                                 <col style="width:100px;"><col style="width:150px;">
+                                 <col style="width:150px;"><col style="width:100px;">
+                                 <col style="width:50px;"><col style="width:50px;">
+                                 <col style="width:50px;"><col style="width:50px;">
+                                 <col style="width:50px;"><col style="width:85px;">
+                             </colgroup>
+                             <thead>
+                                 <tr>
+                                     <th>PKG</th><th>PKG NO</th><th>System</th>
+                                     <th>Description</th><th>Tag No</th><th>Item</th>
+                                     <th>Size</th><th>Unit</th>
+                                     <th style="white-space:normal;text-align:center;">Total<br>Received</th>
+                                     <th style="white-space:normal;text-align:center;">Total<br>Issued</th>
+                                     <th style="white-space:normal;text-align:center;">Stock<br>(Balance)</th>
+                                     <th>Status</th>
+                                 </tr>
+                             </thead>
+                             <tbody id="stSpoolTbody"></tbody>
+                         </table>
+                     </div>
+                     <div id="stSpoolPagination"></div>
+                 </div>
+
+                 <!-- Stock Table Panel -->
+                 <div id="stTablePanel" class="panel data-panel">
+                     <div class="panel-header">
+                         <h3 id="stPanelTitle"><i class="fas fa-warehouse"></i> Stock — Pipe &amp; Fitting</h3>
+                         <span id="stockCountLabel" style="font-size:11px; color:#666;"></span>
                      </div>
                      <div class="table-responsive">
                          <table class="data-table" id="stockTable" style="table-layout:fixed;width:100%;">
                              <colgroup>
-                                 <col style="width:110px;">
-                                 <col style="width:175px;">
-                                 <col style="width:165px;">
-                                 <col style="width:85px;">
-                                 <col>
-                                 <col style="width:120px;">
-                                 <col style="width:70px;">
-                                 <col style="width:55px;">
-                                 <col style="width:80px;">
-                                 <col style="width:75px;">
-                                 <col style="width:80px;">
                                  <col style="width:90px;">
+                                 <col style="width:150px;">
+                                 <col style="width:140px;">
+                                 <col style="width:70px;">
+                                 <col>
+                                 <col style="width:95px;">
+                                 <col style="width:55px;">
+                                 <col style="width:50px;">
+                                 <col style="width:75px;">
+                                 <col style="width:70px;">
+                                 <col style="width:75px;">
+                                 <col style="width:75px;">
                              </colgroup>
                              <thead>
                                  <tr>
@@ -972,8 +1284,7 @@
                                      <th>Status</th>
                                  </tr>
                              </thead>
-                             <tbody>
-                             </tbody>
+                             <tbody></tbody>
                          </table>
                      </div>
                      <div id="stockPagination"></div>
@@ -1002,8 +1313,6 @@
                                 <option value="Pipe">Pipe</option>
                                 <option value="Fitting">Fitting</option>
                                 <option value="Others">Others</option>
-                                <option value="Valve">Valve</option>
-                                <option value="Speciality">Speciality</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -1090,8 +1399,6 @@
                                 <option value="Pipe">Pipe</option>
                                 <option value="Fitting">Fitting</option>
                                 <option value="Others">Others</option>
-                                <option value="Valve">Valve</option>
-                                <option value="Speciality">Speciality</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -1418,17 +1725,17 @@
                     <div class="table-responsive">
                         <table class="data-table" id="shippingTable" style="table-layout:fixed;width:100%;">
                             <colgroup>
-                                <col style="width:155px;">
-                                <col style="width:255px;">
-                                <col style="width:330px;">
-                                <col style="width:80px;">
-                                <col style="width:65px;">
                                 <col style="width:115px;">
-                                <col style="width:100px;">
+                                <col style="width:215px;">
+                                <col style="width:290px;">
+                                <col style="width:60px;">
+                                <col style="width:55px;">
+                                <col style="width:115px;">
+                                <col style="width:120px;">
                                 <col style="width:125px;">
-                                <col style="width:100px;">
+                                <col style="width:120px;">
                                 <col style="width:130px;">
-                                <col style="width:180px;">
+                                <col style="width:140px;">
                             </colgroup>
                             <thead>
                                 <tr>
@@ -1438,11 +1745,11 @@
                                     <th style="text-align:center;">Q'ty</th>
                                     <th style="text-align:center;">Unit</th>
                                     <th style="text-align:center;">Status</th>
-                                    <th style="text-align:center;width:120px;">On-Site Date</th>
-                                    <th style="text-align:center;width:120px;">Custom Clear</th>
-                                    <th style="text-align:center;width:140px;">Issue Date</th>
-                                    <th style="text-align:center;width:130px;">Purpose</th>
-                                    <th style="text-align:center;min-width:110px;">Remark</th>
+                                    <th style="text-align:center;">On-Site Date</th>
+                                    <th style="text-align:center;">Custom Clear</th>
+                                    <th style="text-align:center;">Issue Date</th>
+                                    <th style="text-align:center;">Purpose</th>
+                                    <th style="text-align:center;">Remark</th>
                                 </tr>
                             </thead>
                             <tbody id="shippingTbody">
@@ -1459,93 +1766,6 @@
             <!-- ── Spool Receiving ──────────────────────────────────────────── -->
 
             <!-- ── Spool Receiving ──────────────────────────────────────── -->
-            <section id="spool_receiving" class="view-section">
-                <div class="page-header">
-                    <div>
-                        <h1><i class="fas fa-boxes" style="color:#0A2540;margin-right:10px;"></i>Spool Receiving</h1>
-                        <p class="subtitle">PGU-DE-0465 / 0466 / 0477 / 0478 — Spool Receiving Records</p>
-                    </div>
-                </div>
-
-                <!-- Spool KPI -->
-                <div class="kpi-grid" style="margin-bottom:20px;" id="spoolRecKpiGrid">
-                    <div class="kpi-card">
-                        <div class="kpi-info">
-                            <div class="kpi-title">Total Spool Received</div>
-                            <div class="kpi-value spool-kpi-received">— <span class="unit">EA</span></div>
-                            <div class="kpi-desc spool-kpi-rec-sub">—</div>
-                        </div>
-                        <div class="kpi-icon received"><i class="fas fa-truck-loading"></i></div>
-                    </div>
-                </div>
-
-                <!-- Filter Bar -->
-                <div class="panel" style="padding:16px;margin-bottom:16px;">
-                    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
-                        <div class="form-group" style="flex:3;min-width:200px;margin-bottom:0;">
-                            <label style="display:block;margin-bottom:4px;font-size:12px;">Search (PKG NO / Tag No / Description)</label>
-                            <input type="text" id="srSearch" class="form-control" placeholder="package no, tag no, description...">
-                        </div>
-                        <div class="form-group" style="flex:0 0 160px;margin-bottom:0;">
-                            <label style="display:block;margin-bottom:4px;font-size:12px;">Package No</label>
-                            <select id="srPkgFilter" class="form-control">
-                                <option value="">All</option>
-                            </select>
-                        </div>
-                        <div class="form-group" style="flex:0 0 110px;margin-bottom:0;">
-                            <label style="display:block;margin-bottom:4px;font-size:12px;">System</label>
-                            <select id="srSystemFilter" class="form-control">
-                                <option value="">All</option>
-                                <option value="HP">HP</option>
-                                <option value="LP">LP</option>
-                            </select>
-                        </div>
-                        <button class="btn btn-primary" id="btnSrSearch" style="height:38px;"><i class="fas fa-search"></i> Search</button>
-                        <button class="btn btn-outline" id="btnSrReset" style="height:38px;">Reset</button>
-                    </div>
-                </div>
-
-                <!-- Spool Receiving Table -->
-                <div class="panel" style="padding:0;overflow:hidden;">
-                    <div style="overflow-x:auto;">
-                        <table class="data-table" id="spoolReceivingTable" style="table-layout:fixed;width:100%;">
-                            <colgroup>
-                                <col style="width:140px;">
-                                <col style="width:240px;">
-                                <col style="width:85px;">
-                                <col style="width:190px;">
-                                <col style="width:210px;">
-                                <col style="width:90px;">
-                                <col style="width:75px;">
-                                <col style="width:75px;">
-                                <col style="width:70px;">
-                                <col style="width:160px;">
-                            </colgroup>
-                            <thead>
-                                <tr>
-                                    <th>PKG</th>
-                                    <th>PKG NO</th>
-                                    <th>System</th>
-                                    <th>Description</th>
-                                    <th>Tag No</th>
-                                    <th>Item</th>
-                                    <th>Size</th>
-                                    <th>Unit</th>
-                                    <th>Qty</th>
-                                    <th>Purpose</th>
-                                </tr>
-                            </thead>
-                            <tbody id="srTbody">
-                                <tr><td colspan="10" style="text-align:center;color:#999;padding:40px;">Loading...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
-                        <span id="srCountInfo" style="font-size:13px;color:#666;"></span>
-                        <div id="srPagination"></div>
-                    </div>
-                </div>
-            </section>
 
         </main>
     </div>
@@ -1725,6 +1945,6 @@
     <script src="{{ url_for('static', filename='vendor/js/jquery.min.js') }}"></script>
     <script src="{{ url_for('static', filename='vendor/js/jquery.dataTables.min.js') }}"></script>
     <!-- Preloaded backend data (Removed large data.js) -->
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260615a"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260627a"></script>
 </body>
 </html>
