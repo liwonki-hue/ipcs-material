@@ -346,13 +346,13 @@ async function syncFromSupabase() {
     try {
         const [matMasterRaw, bomRaw, bomIsoRaw, recvRaw, issuedRaw, bomDescRaw, specialityRaw, bomTagRaw] = await Promise.all([
             fetchAllRows('matcode_master'),
-            supabaseClient.from('bom_agg').select('*').then(r => r.data || []),
-            supabaseClient.from('bom_iso_list').select('*').then(r => r.data || []),
+            supabaseClient.from('bom_agg').select('*').limit(10000).then(r => r.data || []),
+            supabaseClient.from('bom_iso_list').select('*').limit(10000).then(r => r.data || []),
             fetchAllRows('receiving'),
             fetchAllRows('issued'),
-            supabaseClient.from('bom_desc').select('mat_code,full_description').then(r => r.data || []),
-            supabaseClient.from('bom_detail').select('full_description').eq('category', 'Speciality').not('full_description', 'is', null).then(r => r.data || []),
-            supabaseClient.from('bom_detail').select('tag,mat_code,full_description,line_no').not('tag', 'is', null).then(r => r.data || [])
+            supabaseClient.from('bom_desc').select('mat_code,full_description').limit(10000).then(r => r.data || []),
+            supabaseClient.from('bom_detail').select('full_description').eq('category', 'Speciality').not('full_description', 'is', null).limit(1000).then(r => r.data || []),
+            supabaseClient.from('bom_detail').select('tag,mat_code,full_description,line_no').not('tag', 'is', null).limit(10000).then(r => r.data || [])
         ]);
 
         if (matMasterRaw.length > 0) {
@@ -630,7 +630,7 @@ function updateDashboard() {
     Promise.all([
         supabaseClient.from('v_project_summary').select('*').limit(1),
         (() => {
-            let q = supabaseClient.from('v_iso_stage_status').select('*');
+            let q = supabaseClient.from('v_iso_stage_status').select('*').limit(10000);
             if (dashSys !== 'All') q = q.eq('system', dashSys);
             if (dashIso !== 'All') q = q.eq('iso_dwg_no', dashIso);
             if (dashIsoSearchVal) q = q.ilike('iso_dwg_no', `%${dashIsoSearchVal}%`);
@@ -2491,7 +2491,8 @@ function attachEventListeners() {
 
                 let query = supabaseClient.from('bom_detail')
                     .select('system, iso_dwg_no, category, mat_code, full_description, uom, qty')
-                    .order('iso_dwg_no');
+                    .order('iso_dwg_no')
+                    .limit(100000);
                 if (sys !== 'All') query = query.eq('system', sys);
                 if (search) query = query.or(`iso_dwg_no.ilike.%${search}%,mat_code.ilike.%${search}%,category.ilike.%${search}%,full_description.ilike.%${search}%`);
                 if (cat !== 'All') query = query.ilike('category', `%${cat}%`);
@@ -2581,7 +2582,7 @@ function attachEventListeners() {
                 if (sys !== 'All')       query = query.eq('system', sys);
                 if (tag !== 'All')       query = query.ilike('support_tag', `${tag}%`);
                 if (type === 'SPECIAL') query = query.eq('type', 'SPECIAL');
-                else if (type !== 'All') query = query.like('type', `(${type}-%`);
+                else if (type !== 'All') query = query.ilike('type', `(${type}-%`);
                 if (search) query = query.or(`iso_dwg_no.ilike.%${search}%,support_tag.ilike.%${search}%,item.ilike.%${search}%,matl.ilike.%${search}%,id_no.ilike.%${search}%`);
                 const { data, error } = await query;
                 if (error) throw error;
