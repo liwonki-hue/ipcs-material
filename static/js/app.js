@@ -20,7 +20,7 @@ let db = {
     bomTagMap: {},     // bom_detail: tag → {matCode, fullDescription, lineNo} (NULL matCode 입고 레코드 매칭용)
     specialityItems: [], // Speciality category distinct items (mat_code NULL → desc 기반)
     receiving: [],
-    supportReceiving: [], // support_receiving 테이블 (구조 지지물 입고, 개발 중)
+    supportReceiving: [],
     mrTable: [],
     issued: []
 };
@@ -443,7 +443,6 @@ async function syncFromSupabase() {
             // Use setTimeout to ensure UI is ready for rendering large tables
             setTimeout(() => {
                 if(id === 'piping_bom') renderBomTable();
-                if(id === 'support_bom') renderSupportBomTable();
                 if(id === 'receiving') renderReceivingTable();
                 if(id === 'support_receiving') renderSupportReceivingTable();
                 if(id === 'matcode_master') renderMatCodeMaster();
@@ -491,14 +490,12 @@ function initNavigation() {
         if(targetId === 'dashboard') updateDashboard();
         if(targetId === 'issue') renderIssueOptions();
         if(targetId === 'piping_bom') renderBomTable();
-        if(targetId === 'support_bom') renderSupportBomTable();
         if(targetId === 'receiving') renderReceivingTable();
         if(targetId === 'support_receiving') renderSupportReceivingTable();
         if(targetId === 'matcode_master') renderMatCodeMaster();
         if(targetId === 'stock_ledger') { initStockFilters(); renderStockTable(); }
         if(targetId === 'mr_history') renderMrHistory();
         if(targetId === 'shipping') initShipping();
-        if(targetId === 'spool_bom') initSpoolBom();
         if(targetId === 'spool_receiving') initSpoolReceiving();
 
         // Material Shortage 탭: 진입 시 즉시 싱크 + 폴링 시작, 이탈 시 정리
@@ -794,16 +791,15 @@ function updateCategoryCharts() {
     Promise.all([
         supabaseClient.from('v_category_readiness').select('*'),
         supabaseClient.from('receiving').select('category, qty, tag, full_description').not('tag', 'is', null).in('category', ['Valve', 'Speciality']).limit(10000),
-        supabaseClient.from('spool_bom').select('id', { count: 'exact', head: true }),
         supabaseClient.from('spool_receiving').select('id', { count: 'exact', head: true })
-    ]).then(([catRes, tagRecRes, spoolBomRes, spoolRecRes]) => {
+    ]).then(([catRes, tagRecRes, spoolRecRes]) => {
         const data = catRes.data;
         if (catRes.error || !data) {
             console.error("❌ Chart Sync Error:", catRes.error);
             return;
         }
 
-        const spoolBomCount = spoolBomRes.count || 0;
+        const spoolBomCount = 0;
         const spoolRecCount = spoolRecRes.count || 0;
 
         const catLabels = ['Pipe', 'Fitting', 'Valve', 'Speciality', 'Support', 'Others'];
@@ -1436,7 +1432,6 @@ window._matCodeGoPage = function(p) { _matCodePage = p; renderMatCodeMaster(); }
 
 // --- 3. BOM & Receiving Paginations ---
 let currentBomPage = 1;
-let currentSupportBomPage = 1;
 let currentPlPage = 1;
 let currentSrecPage = 1;
 
@@ -1506,25 +1501,48 @@ function initFilterOptions() {
         setupCatItemSize(bomCatF, bomItemF, bomSizeF, getBomItemsForCat, getBomSizesForCatItem, 'All');
     }
 
-    // Support BOM Filters — support_bom 테이블 기준으로 동적 로드
+    // Support Receiving 필터 — pkg / package_no / system / support_tag 동적 로드
     (async () => {
-        const sbomSys = document.getElementById('sbomSystemFilter');
-        const sbomItemF = document.getElementById('sbomItemFilter');
-        if (!sbomSys) return;
+        const srecSys = document.getElementById('srecSystemFilter');
+        if (!srecSys) return;
+
+        const stripType = tag => tag ? tag.replace(/\([^)]+\)$/, '') : tag;
+        const el = id => document.getElementById(id);
+
+        // change 리스너는 fetch 성공 여부와 무관하게 항상 등록
+        srecSys.addEventListener('change', () => {
+            const selSys = srecSys.value;
+            const rows = selSys === 'All'
+                ? (window._srecAllRows || [])
+                : (window._srecAllRows || []).filter(r => r.system === selSys);
+            const filteredTags = [...new Set(rows.map(r => stripType(r.support_tag)).filter(Boolean))].sort();
+            if (el('srecTagFilter'))
+                el('srecTagFilter').innerHTML = '<option value="All">All Support No</option>' + filteredTags.map(v => `<option value="${v}">${v}</option>`).join('');
+        });
+
         try {
-            const [sysRes, itemRes] = await Promise.all([
-                supabaseClient.from('v_support_bom_systems').select('system'),
-                supabaseClient.from('v_support_bom_items').select('item'),
-            ]);
-            if (sysRes.data) {
-                const systems = sysRes.data.map(r => r.system).filter(Boolean);
-                sbomSys.innerHTML = '<option value="All">All Systems</option>' + systems.map(s => `<option value="${s}">${s}</option>`).join('');
-            }
-            if (itemRes.data && sbomItemF) {
-                const items = itemRes.data.map(r => r.item).filter(Boolean);
-                sbomItemF.innerHTML = '<option value="All">All Items</option>' + items.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
-            }
-        } catch(e) { /* 테이블 미존재 시 무시 */ }
+            const { data, error } = await supabaseClient.from('support_receiving')
+                .select('pkg,package_no,system,support_tag')
+                .not('system', 'is', null)
+                .limit(10000);
+            if (error) throw error;
+            if (!data) return;
+
+            window._srecAllRows = data;
+
+            const pkgs       = [...new Set(data.map(r => r.pkg).filter(Boolean))].sort();
+            const packageNos = [...new Set(data.map(r => r.package_no).filter(Boolean))].sort();
+            const systems    = [...new Set(data.map(r => r.system).filter(Boolean))].sort();
+            const tags       = [...new Set(data.map(r => stripType(r.support_tag)).filter(Boolean))].sort();
+
+            if (el('srecPkgFilter'))
+                el('srecPkgFilter').innerHTML = '<option value="All">All PKGs</option>' + pkgs.map(v => `<option value="${v}">${v}</option>`).join('');
+            if (el('srecPackageNoFilter'))
+                el('srecPackageNoFilter').innerHTML = '<option value="All">All Package No</option>' + packageNos.map(v => `<option value="${v}">${v}</option>`).join('');
+            if (el('srecTagFilter'))
+                el('srecTagFilter').innerHTML = '<option value="All">All Support No</option>' + tags.map(v => `<option value="${v}">${v}</option>`).join('');
+            srecSys.innerHTML = '<option value="All">All Systems</option>' + systems.map(s => `<option value="${s}">${s}</option>`).join('');
+        } catch(e) { console.error('Support Receiving filter init failed:', e); }
     })();
 
     // Shortage Filters — db.bom 기반으로 실제 존재하는 항목만 표시
@@ -1578,21 +1596,6 @@ function initFilterOptions() {
         setupCatItemSize(plCat, plItemF, plSizeF, getBomItemsForCat, getBomSizesForCatItem, 'All');
     }
 
-    // Support Receiving Filters — db.supportReceiving 기반 (개발 중, 현재 비어 있음)
-    const srecDoc  = document.getElementById('srecDocFilter');
-    const srecPkg  = document.getElementById('srecPkgFilter');
-    const srecSys  = document.getElementById('srecSystemFilter');
-    const srecCat  = document.getElementById('srecCategoryFilter');
-    const srecItemF = document.getElementById('srecItemFilter');
-    const srecSizeF = document.getElementById('srecSizeFilter');
-    if (srecDoc && srecPkg) {
-        const docs = [...new Set(db.supportReceiving.map(r => r.docNo))].sort();
-        const pkgs = [...new Set(db.supportReceiving.map(r => r.plNo))].sort();
-        srecDoc.innerHTML = '<option value="All">All DOCs</option>' + docs.map(d => `<option value="${d}">${d}</option>`).join('');
-        srecPkg.innerHTML = '<option value="All">All PKGs</option>' + pkgs.map(p => `<option value="${p}">${p}</option>`).join('');
-        if (srecSys) srecSys.innerHTML = '<option value="All">All Systems</option>';
-        setupCatItemSize(srecCat, srecItemF, srecSizeF, getBomItemsForCat, getBomSizesForCatItem, 'All');
-    }
 }
 
 
@@ -1727,68 +1730,6 @@ async function renderBomTable() {
 }
 window._bomGoPage = function(p) { currentBomPage = p; renderBomTable(); };
 
-async function renderSupportBomTable() {
-    const tbody = document.querySelector('#sbomTable tbody');
-    if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
-
-    const search = (document.getElementById('sbomSearch')?.value || '').trim();
-    const sys    = document.getElementById('sbomSystemFilter')?.value || 'All';
-    const item   = document.getElementById('sbomItemFilter')?.value || 'All';
-
-    const applyFilters = (q) => {
-        if (sys !== 'All') q = q.eq('system', sys);
-        if (item !== 'All') q = q.eq('item', item);
-        if (search) q = q.or(
-            `iso_dwg_no.ilike.%${search}%,support_tag.ilike.%${search}%,item.ilike.%${search}%,matl.ilike.%${search}%,id_no.ilike.%${search}%`
-        );
-        return q;
-    };
-
-    const from = (currentSupportBomPage - 1) * PAGE_SIZE;
-    const to   = currentSupportBomPage * PAGE_SIZE - 1;
-
-    const [dataRes, countRes] = await Promise.all([
-        applyFilters(supabaseClient.from('support_bom')
-            .select('category,system,iso_dwg_no,support_tag,part_no,id_no,item,matl,size_or_type,length_mm,qty')
-            .range(from, to)
-            .order('system', { ascending: true, nullsFirst: false })
-            .order('iso_dwg_no').order('support_tag').order('part_no')),
-        applyFilters(supabaseClient.from('support_bom')
-            .select('*', { count: 'exact', head: true })),
-    ]);
-
-    if (dataRes.error) {
-        tbody.innerHTML = `<tr><td colspan="11" style="color:red;text-align:center;">Error: ${dataRes.error.message}</td></tr>`;
-        return;
-    }
-
-    const data = dataRes.data || [];
-    const totalCount = countRes.count ?? data.length;
-
-    if (data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#888;padding:20px;">No data found.</td></tr>';
-    } else {
-        tbody.innerHTML = data.map(r => `<tr>
-            <td style="text-align:center;white-space:nowrap;">${r.category || '-'}</td>
-            <td style="text-align:center;white-space:nowrap;font-weight:600;">${r.system || '-'}</td>
-            <td style="text-align:center;white-space:nowrap;">${r.iso_dwg_no || '-'}</td>
-            <td style="text-align:center;white-space:nowrap;">${r.support_tag || '-'}</td>
-            <td style="text-align:center;white-space:nowrap;">${r.part_no ?? '-'}</td>
-            <td style="text-align:center;white-space:nowrap;">${r.id_no || '-'}</td>
-            <td style="text-align:center;white-space:nowrap;">${r.item || '-'}</td>
-            <td style="text-align:center;white-space:nowrap;">${r.matl || '-'}</td>
-            <td style="text-align:center;white-space:nowrap;">${r.size_or_type || '-'}</td>
-            <td style="text-align:center;white-space:nowrap;">${r.length_mm || '-'}</td>
-            <td style="text-align:center;white-space:nowrap;">${r.qty ?? '-'}</td>
-        </tr>`).join('');
-    }
-
-    const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-    renderPagination('sbomPagination', currentSupportBomPage, totalPages, '_sbomGoPage');
-}
-window._sbomGoPage = function(p) { currentSupportBomPage = p; renderSupportBomTable(); };
-
 function _renderRecvCore(cfg) {
     let tbody = document.querySelector(`#${cfg.tableId} tbody`);
     if (!tbody) return;
@@ -1889,22 +1830,78 @@ function renderReceivingTable() {
 }
 window._plGoPage = function(p) { currentPlPage = p; renderReceivingTable(); };
 
-function renderSupportReceivingTable() {
+async function renderSupportReceivingTable() {
     const tbody = document.querySelector('#srecTable tbody');
     if (!tbody) return;
-    if (db.supportReceiving.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="14" style="text-align:center;color:#999;padding:40px;">No data</td></tr>';
-        const pg = document.getElementById('srecPagination');
-        if (pg) pg.innerHTML = '';
+    tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
+
+    const search    = (document.getElementById('srecSearch')?.value || '').trim();
+    const pkg       = document.getElementById('srecPkgFilter')?.value || 'All';
+    const packageNo = document.getElementById('srecPackageNoFilter')?.value || 'All';
+    const sys       = document.getElementById('srecSystemFilter')?.value || 'All';
+    const tag       = document.getElementById('srecTagFilter')?.value || 'All';
+    const type      = document.getElementById('srecTypeFilter')?.value || 'All';
+
+    const applyFilters = (q) => {
+        if (pkg !== 'All')       q = q.eq('pkg', pkg);
+        if (packageNo !== 'All') q = q.eq('package_no', packageNo);
+        if (sys !== 'All')       q = q.eq('system', sys);
+        if (tag !== 'All')       q = q.ilike('support_tag', `${tag}%`);
+        if (type === 'SPECIAL')  q = q.eq('type', 'SPECIAL');
+        else if (type !== 'All') q = q.ilike('type', `(${type}-%`);
+        if (search) q = q.or(
+            `iso_dwg_no.ilike.%${search}%,support_tag.ilike.%${search}%,item.ilike.%${search}%,matl.ilike.%${search}%,id_no.ilike.%${search}%`
+        );
+        return q;
+    };
+
+    const from = (currentSrecPage - 1) * PAGE_SIZE;
+    const to   = currentSrecPage * PAGE_SIZE - 1;
+
+    const [dataRes, countRes] = await Promise.all([
+        applyFilters(supabaseClient.from('support_receiving')
+            .select('pkg,package_no,system,iso_dwg_no,support_tag,type,part_no,id_no,item,matl,size_or_type,length_mm,qty')
+            .range(from, to)
+            .order('system').order('support_tag').order('part_no')),
+        applyFilters(supabaseClient.from('support_receiving')
+            .select('*', { count: 'exact', head: true })),
+    ]);
+
+    if (dataRes.error) {
+        tbody.innerHTML = `<tr><td colspan="13" style="color:red;text-align:center;">Error: ${dataRes.error.message}</td></tr>`;
         return;
     }
-    _renderRecvCore({
-        tableId: 'srecTable', searchId: 'srecItemSearch',
-        docId: 'srecDocFilter', pkgId: 'srecPkgFilter', statusId: 'srecStatusFilter',
-        catId: 'srecCategoryFilter', itemId: 'srecItemFilter', sizeId: 'srecSizeFilter',
-        getPage: () => currentSrecPage,
-        paginationId: 'srecPagination', goPageFn: '_srecGoPage'
-    });
+
+    const data = dataRes.data || [];
+    const totalCount = countRes.count ?? data.length;
+
+    if (data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:#888;padding:20px;">No data found.</td></tr>';
+    } else {
+        tbody.innerHTML = data.map(r => {
+            const tag = r.support_tag
+                ? (r.type && r.support_tag.endsWith(r.type) ? r.support_tag.slice(0, -r.type.length) : r.support_tag)
+                : '-';
+            return `<tr>
+            <td style="text-align:center;white-space:nowrap;">${r.pkg || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${r.package_no || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;font-weight:600;">${r.system || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${r.iso_dwg_no || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${tag}</td>
+            <td style="text-align:center;white-space:nowrap;">${r.type || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${r.part_no ?? '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${r.id_no || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${r.item || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${r.matl || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${r.size_or_type || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${r.length_mm || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${r.qty ?? '-'}</td>
+        </tr>`;
+        }).join('');
+    }
+
+    const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+    renderPagination('srecPagination', currentSrecPage, totalPages, '_srecGoPage');
 }
 window._srecGoPage = function(p) { currentSrecPage = p; renderSupportReceivingTable(); };
 
@@ -2472,59 +2469,6 @@ function attachEventListeners() {
         });
     }
 
-    // Support BOM Filter Button
-    const btnFilterSbom = document.getElementById('btnFilterSbom');
-    if(btnFilterSbom) {
-        btnFilterSbom.addEventListener('click', () => {
-            currentSupportBomPage = 1;
-            renderSupportBomTable();
-        });
-    }
-
-    // Support BOM Clear Filters Button
-    const btnClearSbomFilters = document.getElementById('btnClearSbomFilters');
-    if (btnClearSbomFilters) {
-        btnClearSbomFilters.addEventListener('click', () => {
-            const el = document.getElementById('sbomSearch');
-            if (el) el.value = '';
-            const sys = document.getElementById('sbomSystemFilter');
-            if (sys) sys.value = 'All';
-            const item = document.getElementById('sbomItemFilter');
-            if (item) item.value = 'All';
-            currentSupportBomPage = 1;
-            renderSupportBomTable();
-        });
-    }
-
-    // Support BOM Export Button
-    const btnExportSbom = document.getElementById('btnExportSbom');
-    if (btnExportSbom) {
-        btnExportSbom.addEventListener('click', async () => {
-            btnExportSbom.disabled = true;
-            btnExportSbom.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exporting...';
-            try {
-                const search = (document.getElementById('sbomSearch')?.value || '').trim();
-                const sys  = document.getElementById('sbomSystemFilter')?.value || 'All';
-                const item = document.getElementById('sbomItemFilter')?.value || 'All';
-                let query = supabaseClient.from('support_bom')
-                    .select('category,system,iso_dwg_no,support_tag,part_no,id_no,item,matl,size_or_type,length_mm,qty')
-                    .order('system', { ascending: true, nullsFirst: false })
-                    .order('iso_dwg_no').order('support_tag');
-                if (sys !== 'All') query = query.eq('system', sys);
-                if (item !== 'All') query = query.eq('item', item);
-                if (search) query = query.or(`iso_dwg_no.ilike.%${search}%,support_tag.ilike.%${search}%,item.ilike.%${search}%,matl.ilike.%${search}%,id_no.ilike.%${search}%`);
-                const { data, error } = await query;
-                if (error) throw error;
-                exportToExcel(data, 'support_bom_export.xlsx');
-            } catch(err) {
-                alert('Export failed: ' + err.message);
-            } finally {
-                btnExportSbom.disabled = false;
-                btnExportSbom.innerHTML = '<i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export';
-            }
-        });
-    }
-
     // MatCode Master Filter Button
     const btnFilterMaster = document.getElementById('btnFilterMaster');
     if(btnFilterMaster) {
@@ -2600,47 +2544,54 @@ function attachEventListeners() {
         });
     }
 
-    // Support Receiving Export Button
-    const btnExportSrec = document.getElementById('btnExportSrec');
-    if (btnExportSrec) {
-        btnExportSrec.addEventListener('click', () => {
-            const search = (document.getElementById('srecItemSearch')?.value || '').trim().toUpperCase();
-            const doc   = document.getElementById('srecDocFilter')?.value || 'All';
-            const pkg   = document.getElementById('srecPkgFilter')?.value || 'All';
-            const cat   = document.getElementById('srecCategoryFilter')?.value || 'All';
-            let data = db.supportReceiving.filter(r => {
-                const ms = !search || (r.matCode||'').toUpperCase().includes(search) || (r.plNo||'').toUpperCase().includes(search) || (r.category||'').toUpperCase().includes(search) || (r.desc||'').toUpperCase().includes(search);
-                const md = doc === 'All' || r.docNo === doc;
-                const mp = pkg === 'All' || r.plNo === pkg;
-                const mc = cat === 'All' || r.category === cat;
-                return ms && md && mp && mc;
-            });
-            const rows = data.map(r => ({
-                'PKG': r.docNo, 'PKG NO': r.plNo, 'MatCode': r.matCode || '',
-                'Category': r.category || '', 'TAG NO': r.tag || '',
-                'Full Description': r.desc, 'Unit': r.unit || 'EA', 'Qty': r.qty,
-                'Purpose': r.purpose || '',
-            }));
-            exportToExcel(rows, 'support_receiving_export.xlsx');
+    // Support Receiving Clear Button
+    const btnClearSrec = document.getElementById('btnClearSrec');
+    if (btnClearSrec) {
+        btnClearSrec.addEventListener('click', () => {
+            const s = document.getElementById('srecSearch'); if (s) s.value = '';
+            const pkg = document.getElementById('srecPkgFilter'); if (pkg) pkg.value = 'All';
+            const pno = document.getElementById('srecPackageNoFilter'); if (pno) pno.value = 'All';
+            const sys = document.getElementById('srecSystemFilter');
+            if (sys) { sys.value = 'All'; sys.dispatchEvent(new Event('change')); }
+            const typ = document.getElementById('srecTypeFilter'); if (typ) typ.value = 'All';
+            currentSrecPage = 1;
+            renderSupportReceivingTable();
         });
     }
 
-    // Support Receiving Upload Button
-    const btnUploadSrec = document.getElementById('btnUploadSrec');
-    if (btnUploadSrec) {
-        btnUploadSrec.addEventListener('click', () => document.getElementById('srecFileInput').click());
-    }
-
-    // Support Receiving Purpose 자동저장 (이벤트 위임)
-    const srecTbody = document.querySelector('#srecTable tbody');
-    if (srecTbody) {
-        srecTbody.addEventListener('change', async e => {
-            if (!e.target.classList.contains('pl-purpose-sel')) return;
-            const id = e.target.dataset.recvId;
-            const val = e.target.value;
-            if (!id) return;
-            const { error } = await supabaseClient.from('receiving').update({ purpose: val }).eq('id', id);
-            if (error) console.error('Purpose update failed:', error.message);
+    // Support Receiving Export Button
+    const btnExportSrec = document.getElementById('btnExportSrec');
+    if (btnExportSrec) {
+        btnExportSrec.addEventListener('click', async () => {
+            btnExportSrec.disabled = true;
+            btnExportSrec.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exporting...';
+            try {
+                const search    = (document.getElementById('srecSearch')?.value || '').trim();
+                const pkg       = document.getElementById('srecPkgFilter')?.value || 'All';
+                const packageNo = document.getElementById('srecPackageNoFilter')?.value || 'All';
+                const sys       = document.getElementById('srecSystemFilter')?.value || 'All';
+                const tag       = document.getElementById('srecTagFilter')?.value || 'All';
+                const type      = document.getElementById('srecTypeFilter')?.value || 'All';
+                let query = supabaseClient.from('support_receiving')
+                    .select('pkg,package_no,system,iso_dwg_no,support_tag,type,part_no,id_no,item,matl,size_or_type,length_mm,qty')
+                    .order('system').order('support_tag').order('part_no')
+                    .limit(10000);
+                if (pkg !== 'All')       query = query.eq('pkg', pkg);
+                if (packageNo !== 'All') query = query.eq('package_no', packageNo);
+                if (sys !== 'All')       query = query.eq('system', sys);
+                if (tag !== 'All')       query = query.ilike('support_tag', `${tag}%`);
+                if (type === 'SPECIAL') query = query.eq('type', 'SPECIAL');
+                else if (type !== 'All') query = query.like('type', `(${type}-%`);
+                if (search) query = query.or(`iso_dwg_no.ilike.%${search}%,support_tag.ilike.%${search}%,item.ilike.%${search}%,matl.ilike.%${search}%,id_no.ilike.%${search}%`);
+                const { data, error } = await query;
+                if (error) throw error;
+                exportToExcel(data, 'support_receiving_export.xlsx');
+            } catch(err) {
+                alert('Export failed: ' + err.message);
+            } finally {
+                btnExportSrec.disabled = false;
+                btnExportSrec.innerHTML = '<i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export';
+            }
         });
     }
 
@@ -4205,113 +4156,15 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ============================================================
-// Spool BOM & Spool Receiving
+// Spool Receiving
 // ============================================================
 
-// --- 공유 KPI 업데이트 (두 탭 모두 동일한 class 선택자로 업데이트) ---
 function updateSpoolKpis() {
-    const bomCount = (_spoolData || []).length;
-    const recCount = (_srData   || []).length;
-    const issued   = 0;
-    const stock    = Math.max(0, recCount - issued);
-    const prog     = bomCount > 0 ? (recCount / bomCount * 100).toFixed(1) : 0;
-    const hp       = (_spoolData || []).filter(r => r.system === 'HP').length;
-    const lp       = (_spoolData || []).filter(r => r.system === 'LP').length;
+    const recCount = (_srData || []).length;
     const pkgCount = new Set((_srData || []).map(r => r.pkg_no)).size;
-
-    const set = (cls, html) => document.querySelectorAll(cls).forEach(el => el.innerHTML = html);
-    const txt = (cls, val)  => document.querySelectorAll(cls).forEach(el => el.textContent = val);
-
-    set('.spool-kpi-progress', `${prog} <span class="unit">%</span>`);
-    txt('.spool-kpi-prog-sub', `Received ${recCount} / BOM ${bomCount}`);
-    set('.spool-kpi-bom',      `${bomCount} <span class="unit">EA</span>`);
-    txt('.spool-kpi-bom-sub',  `HP ${hp} | LP ${lp}`);
-    set('.spool-kpi-received', `${recCount} <span class="unit">EA</span>`);
-    txt('.spool-kpi-rec-sub',  `${pkgCount} PKG`);
-    set('.spool-kpi-issued',   `${issued} <span class="unit">EA</span>`);
-    set('.spool-kpi-stock',    `${stock} <span class="unit">EA</span>`);
+    document.querySelectorAll('.spool-kpi-received').forEach(el => el.innerHTML = `${recCount} <span class="unit">EA</span>`);
+    document.querySelectorAll('.spool-kpi-rec-sub').forEach(el => el.textContent = `${pkgCount} PKG`);
 }
-
-// --- Spool BOM ---
-let _spoolData = null;
-let _spoolPage = 1;
-
-async function initSpoolBom() {
-    if (_spoolData) { renderSpoolTable(); return; }
-    if (!supabaseClient) return;
-    const { data, error } = await supabaseClient
-        .from('spool_bom')
-        .select('*')
-        .order('id', { ascending: true })
-        .limit(10000);
-    if (error) {
-        const tb = document.getElementById('spoolTbody');
-        if (tb) tb.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#c00;padding:40px;">Error: ${error.message}</td></tr>`;
-        return;
-    }
-    _spoolData = data || [];
-    _initSpoolFilters();
-    renderSpoolTable();
-}
-
-function _initSpoolFilters() {
-    const sel = document.getElementById('spoolSizeFilter');
-    if (!sel) return;
-    const sizes = [...new Set((_spoolData || []).map(r => r.size).filter(Boolean))]
-        .sort((a, b) => parseFloat(a) - parseFloat(b));
-    sel.innerHTML = '<option value="">All</option>' +
-        sizes.map(s => `<option value="${s}">${s}</option>`).join('');
-}
-
-function _getSpoolFiltered() {
-    const sys  = document.getElementById('spoolSystemFilter')?.value || '';
-    const size = document.getElementById('spoolSizeFilter')?.value   || '';
-    const q    = (document.getElementById('spoolSearch')?.value || '').trim().toLowerCase();
-    return (_spoolData || []).filter(r => {
-        if (sys  && r.system !== sys)  return false;
-        if (size && r.size   !== size) return false;
-        if (q && ![r.iso_dwg_no, r.tag_no, r.line_no, r.description].join(' ').toLowerCase().includes(q)) return false;
-        return true;
-    });
-}
-
-function renderSpoolTable() {
-    const filtered   = _getSpoolFiltered();
-    const total      = filtered.length;
-    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-    if (_spoolPage > totalPages) _spoolPage = 1;
-
-    updateSpoolKpis();
-
-    const start = (_spoolPage - 1) * PAGE_SIZE;
-    const page  = filtered.slice(start, start + PAGE_SIZE);
-    const tbody = document.getElementById('spoolTbody');
-    if (!tbody) return;
-
-    const c = 'text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-    tbody.innerHTML = page.length === 0
-        ? `<tr><td colspan="8" style="text-align:center;color:#999;padding:40px;">No data</td></tr>`
-        : page.map((r, i) => {
-            const badge = r.system === 'HP'
-                ? `<span style="background:#e3f2fd;color:#1565c0;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">HP</span>`
-                : `<span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">LP</span>`;
-            return `<tr>
-                <td style="${c}color:#999;">${start + i + 1}</td>
-                <td style="${c}">${badge}</td>
-                <td style="${c}" title="${r.iso_dwg_no || ''}">${r.iso_dwg_no || ''}</td>
-                <td style="${c}" title="${r.line_no || ''}">${r.line_no || ''}</td>
-                <td style="${c}font-weight:600;color:#0A2540;" title="${r.tag_no || ''}">${r.tag_no || ''}</td>
-                <td style="${c}">${r.size || ''}</td>
-                <td style="${c}color:#888;">${r.uom || 'EA'}</td>
-                <td style="${c}">${r.qty ?? 1}</td>
-            </tr>`;
-        }).join('');
-
-    const info = document.getElementById('spoolCountInfo');
-    if (info) info.textContent = `${total} spools`;
-    renderPagination('spoolPagination', _spoolPage, totalPages, '_spoolGoPage');
-}
-window._spoolGoPage = function(p) { _spoolPage = p; renderSpoolTable(); };
 
 // --- Spool Receiving ---
 let _srData = null;
@@ -4398,20 +4251,8 @@ function renderSpoolReceiving() {
 }
 window._srGoPage = function(p) { _srPage = p; renderSpoolReceiving(); };
 
-// Spool BOM + Spool Receiving 이벤트 등록 (DOMContentLoaded 1회)
+// Spool Receiving 이벤트 등록 (DOMContentLoaded 1회)
 document.addEventListener('DOMContentLoaded', () => {
-    // Spool BOM 필터
-    const btnSpoolSearch = document.getElementById('btnSpoolSearch');
-    const btnSpoolReset  = document.getElementById('btnSpoolReset');
-    const spoolSearchEl  = document.getElementById('spoolSearch');
-    if (btnSpoolSearch) btnSpoolSearch.addEventListener('click', () => { _spoolPage = 1; renderSpoolTable(); });
-    if (btnSpoolReset)  btnSpoolReset.addEventListener('click', () => {
-        ['spoolSystemFilter','spoolSizeFilter'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-        if (spoolSearchEl) spoolSearchEl.value = '';
-        _spoolPage = 1; renderSpoolTable();
-    });
-    if (spoolSearchEl) spoolSearchEl.addEventListener('keydown', e => { if (e.key === 'Enter') { _spoolPage = 1; renderSpoolTable(); }});
-
     // Spool Receiving 필터
     const btnSrSearch = document.getElementById('btnSrSearch');
     const btnSrReset  = document.getElementById('btnSrReset');

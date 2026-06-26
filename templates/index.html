@@ -41,8 +41,6 @@
                  <div class="section-title">Master Data</div>
                  <div class="nav-item" data-target="matcode_master"><i class="fas fa-barcode"></i> MatCode Master</div>
                  <div class="nav-item" data-target="piping_bom"><i class="fas fa-layer-group"></i> Piping BOM</div>
-                 <div class="nav-item" data-target="support_bom"><i class="fas fa-tools"></i> Support BOM</div>
-                 <div class="nav-item" data-target="spool_bom"><i class="fas fa-cubes"></i> Spool BOM</div>
 
                  <div class="section-title">Operations</div>
                  <div class="nav-item" data-target="receiving"><i class="fas fa-truck"></i> Material Receiving</div>
@@ -470,20 +468,20 @@
                                   <select id="bomSizeFilter" class="form-control" style="width: 100%;"><option value="All">All Sizes</option></select>
                               </div>
                               <div style="padding-bottom: 1px; display: flex; gap: 8px; flex-shrink: 0;">
-                                  <button class="btn btn-primary" id="btnFilterBom" style="height: 38px; white-space: nowrap;"><i class="fas fa-search"></i> Search</button>
-                                  <button class="btn btn-outline" id="btnClearBomFilters" style="height: 38px; white-space: nowrap;">Clear</button>
+                                  <button class="btn btn-primary" id="btnFilterBom" style="white-space: nowrap;"><i class="fas fa-search"></i> Search</button>
+                                  <button class="btn btn-outline" id="btnClearBomFilters" style="white-space: nowrap;">Clear</button>
                               </div>
                           </div>
                           <div style="padding-bottom: 1px; display: flex; gap: 8px; flex-shrink: 0;">
-                              <button class="btn btn-outline" id="btnExportBom" style="height: 38px; white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export</button>
-                              <button class="btn btn-outline" id="btnUploadBom" style="height: 38px; white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-upload" style="color:#1565c0;"></i> Upload</button>
+                              <button class="btn btn-outline" id="btnExportBom" style="white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export</button>
+                              <button class="btn btn-outline" id="btnUploadBom" style="white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-upload" style="color:#1565c0;"></i> Upload</button>
                           </div>
                       </div>
                   </div>
 
                  <div class="panel data-panel">
                      <div class="table-responsive">
-                         <table class="data-table" id="bomTable">
+                         <table class="data-table" id="bomTable" style="font-size:0.82em;">
                              <thead>
                                  <tr>
                                      <th style="text-align:center;">Mat Code</th>
@@ -494,7 +492,7 @@
                                      <th style="text-align:center;">Tag No.</th>
                                      <th style="text-align:center;">Item</th>
                                      <th style="text-align:center;">Size</th>
-                                     <th style="text-align:center;min-width:220px;">Description</th>
+                                     <th style="text-align:center;min-width:160px;">Description</th>
                                      <th style="text-align:center;">Unit</th>
                                      <th style="text-align:center;">Design Qty</th>
                                  </tr>
@@ -506,65 +504,6 @@
                  </div>
             </section>
 
-            <!-- 3-2. Support BOM Tab -->
-            <section id="support_bom" class="view-section">
-                <div class="page-header">
-                     <div>
-                         <h1>Support BOM</h1>
-                         <p class="subtitle">Pipe support BOM data by ISO drawing and support tag.</p>
-                     </div>
-                 </div>
-
-                 <div class="panel filter-panel" style="margin-bottom: 20px;">
-                      <div style="display: flex; align-items: flex-end; justify-content: space-between; width: 100%; gap: 10px; flex-wrap: nowrap;">
-                          <div style="display: flex; align-items: flex-end; gap: 10px; flex: 1; min-width: 0;">
-                              <div class="form-group" style="flex: 2; min-width: 0; margin-bottom: 0;">
-                                  <label>Search (ISO / Support Tag / Item / MATL)</label>
-                                  <input type="text" id="sbomSearch" class="form-control" style="width: 100%;" placeholder="ISO DWG, Support Tag, Item, MATL...">
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
-                                  <label>System</label>
-                                  <select id="sbomSystemFilter" class="form-control" style="width: 100%;"><option value="All">All Systems</option></select>
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
-                                  <label>Item</label>
-                                  <select id="sbomItemFilter" class="form-control" style="width: 100%;"><option value="All">All Items</option></select>
-                              </div>
-                              <div style="padding-bottom: 1px; display: flex; gap: 8px; flex-shrink: 0;">
-                                  <button class="btn btn-primary" id="btnFilterSbom" style="height: 38px; white-space: nowrap;"><i class="fas fa-search"></i> Search</button>
-                                  <button class="btn btn-outline" id="btnClearSbomFilters" style="height: 38px; white-space: nowrap;">Clear</button>
-                              </div>
-                          </div>
-                          <div style="padding-bottom: 1px; display: flex; gap: 8px; flex-shrink: 0;">
-                              <button class="btn btn-outline" id="btnExportSbom" style="height: 38px; white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export</button>
-                          </div>
-                      </div>
-                  </div>
-
-                 <div class="panel data-panel">
-                     <div class="table-responsive">
-                         <table class="data-table" id="sbomTable">
-                             <thead>
-                                 <tr>
-                                     <th style="text-align:center;">CATEGORY</th>
-                                     <th style="text-align:center;">SYSTEM</th>
-                                     <th style="text-align:center;min-width:200px;">ISO DWG NO.</th>
-                                     <th style="text-align:center;min-width:180px;">SUPPORT TAG</th>
-                                     <th style="text-align:center;">PART NO</th>
-                                     <th style="text-align:center;">ID NO</th>
-                                     <th style="text-align:center;min-width:160px;">ITEM</th>
-                                     <th style="text-align:center;">MATL</th>
-                                     <th style="text-align:center;min-width:130px;">SIZE OR TYPE</th>
-                                     <th style="text-align:center;">LENGTH (mm)</th>
-                                     <th style="text-align:center;">Q'TY</th>
-                                 </tr>
-                             </thead>
-                             <tbody></tbody>
-                         </table>
-                     </div>
-                     <div id="sbomPagination"></div>
-                 </div>
-            </section>
 
             <!-- 4. Receiving & Packing List Tab -->
             <section id="receiving" class="view-section">
@@ -623,13 +562,13 @@
                                   </select>
                               </div>
                               <div style="padding-bottom: 1px; flex-shrink: 0;">
-                                  <button class="btn btn-primary" id="btnFilterPl" style="height: 38px; white-space: nowrap; display: flex; align-items: center; gap: 8px;"><i class="fas fa-search"></i> Search PL</button>
+                                  <button class="btn btn-primary" id="btnFilterPl" style="white-space: nowrap; display: flex; align-items: center; gap: 8px;"><i class="fas fa-search"></i> Search PL</button>
                               </div>
                           </div>
                           <!-- Right: export + upload -->
                           <div style="display: flex; gap: 8px; align-items: flex-end; padding-bottom: 1px;">
-                              <button class="btn btn-outline" id="btnExportPl" style="height: 38px; white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export Excel</button>
-                              <button class="btn btn-outline" id="btnUploadPL" style="height: 38px; white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-upload" style="color:#1565c0;"></i> Upload Packing List</button>
+                              <button class="btn btn-outline" id="btnExportPl" style="white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export Excel</button>
+                              <button class="btn btn-outline" id="btnUploadPL" style="white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-upload" style="color:#1565c0;"></i> Upload Packing List</button>
                           </div>
                       </div>
                   </div>
@@ -705,10 +644,7 @@
                 <div class="page-header">
                      <div>
                          <h1>Support Receiving</h1>
-                         <p class="subtitle">Support Receiving</p>
-                     </div>
-                     <div class="actions">
-                         <input type="file" id="srecFileInput" accept=".xlsx,.xls" style="display:none;">
+                         <p class="subtitle">CRITICAL BOP SUPPLY LIST — Support material BOM by support tag.</p>
                      </div>
                  </div>
 
@@ -716,86 +652,70 @@
                       <div style="display: flex; align-items: flex-end; justify-content: space-between; width: 100%; gap: 10px; flex-wrap: nowrap;">
                           <div style="display: flex; align-items: flex-end; gap: 10px; flex: 1; min-width: 0;">
                               <div class="form-group" style="flex: 2; min-width: 0; margin-bottom: 0;">
-                                  <label>Search Item</label>
-                                  <input type="text" id="srecItemSearch" class="form-control" style="width: 100%;" placeholder="Search by Item name...">
+                                  <label>Search (ISO / Support Tag / Item / MATL)</label>
+                                  <input type="text" id="srecSearch" class="form-control" style="width: 100%;" placeholder="ISO DWG, Support Tag, Item, MATL...">
                               </div>
                               <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
                                   <label>PKG</label>
-                                  <select id="srecDocFilter" class="form-control" style="width: 100%;"><option value="All">All DOCs</option></select>
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
-                                  <label>PKG NO</label>
                                   <select id="srecPkgFilter" class="form-control" style="width: 100%;"><option value="All">All PKGs</option></select>
                               </div>
-                              <div class="form-group" style="flex: 1; min-width: 0;">
-                                  <label>Status</label>
-                                  <select id="srecStatusFilter" class="form-control" style="width: 100%;">
-                                      <option value="All">All Status</option>
-                                      <option value="Preparing">Preparing</option>
-                                      <option value="Shipping">Shipping</option>
-                                      <option value="On-Site">On-Site</option>
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                                  <label>PACKAGE NO</label>
+                                  <select id="srecPackageNoFilter" class="form-control" style="width: 100%;"><option value="All">All Package No</option></select>
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                                  <label>System</label>
+                                  <select id="srecSystemFilter" class="form-control" style="width: 100%;"><option value="All">All Systems</option></select>
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                                  <label>Support No</label>
+                                  <select id="srecTagFilter" class="form-control" style="width: 100%;"><option value="All">All Support No</option></select>
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                                  <label>Type</label>
+                                  <select id="srecTypeFilter" class="form-control" style="width: 100%;">
+                                      <option value="All">All Types</option>
+                                      <option value="SPECIAL">SPECIAL</option>
+                                      <option value="G">G-Type</option>
+                                      <option value="U">U-Type</option>
+                                      <option value="W">W-Type</option>
                                   </select>
                               </div>
-                              <div class="form-group" style="flex: 1; min-width: 0;">
-                                  <label>Category</label>
-                                  <select id="srecCategoryFilter" class="form-control" style="width: 100%;">
-                                      <option value="All">All Categories</option>
-                                      <option value="Pipe">Pipe</option>
-                                      <option value="Fitting">Fitting</option>
-                                      <option value="Valve">Valve</option>
-                                      <option value="Others">Others</option>
-                                      <option value="Speciality">Speciality</option>
-                                  </select>
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0;">
-                                  <label>Item</label>
-                                  <select id="srecItemFilter" class="form-control" style="width: 100%;"><option value="All">All Items</option></select>
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0;">
-                                  <label>Size</label>
-                                  <select id="srecSizeFilter" class="form-control" style="width: 100%;"><option value="All">All Sizes</option></select>
-                              </div>
-                              <div style="padding-bottom: 1px; flex-shrink: 0;">
-                                  <button class="btn btn-primary" id="btnFilterSrec" style="height: 38px; white-space: nowrap; display: flex; align-items: center; gap: 8px;"><i class="fas fa-search"></i> Search</button>
+                              <div style="padding-bottom: 1px; display: flex; gap: 8px; flex-shrink: 0;">
+                                  <button class="btn btn-primary" id="btnFilterSrec" style="white-space: nowrap;"><i class="fas fa-search"></i> Search</button>
+                                  <button class="btn btn-outline" id="btnClearSrec" style="white-space: nowrap;">Clear</button>
                               </div>
                           </div>
-                          <div style="display: flex; gap: 8px; align-items: flex-end; padding-bottom: 1px;">
-                              <button class="btn btn-outline" id="btnExportSrec" style="height: 38px; white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export Excel</button>
-                              <button class="btn btn-outline" id="btnUploadSrec" style="height: 38px; white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-upload" style="color:#1565c0;"></i> Upload Packing List</button>
+                          <div style="padding-bottom: 1px; display: flex; gap: 8px; flex-shrink: 0;">
+                              <button class="btn btn-outline" id="btnExportSrec" style="white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export</button>
                           </div>
                       </div>
                   </div>
 
-                 <div class="matching-container">
-                     <div class="panel data-panel pl-panel" style="flex: 1;">
-                         <div class="panel-header">
-                             <h3>Support Receiving List</h3>
-                         </div>
-                         <div class="table-responsive">
-                             <table class="data-table" id="srecTable">
-                                 <thead>
-                                     <tr>
-                                         <th>PKG</th>
-                                         <th>PKG NO</th>
-                                         <th style="width:130px;">MatCode</th>
-                                         <th style="width:60px;">Category</th>
-                                         <th style="width:80px;">TAG NO</th>
-                                         <th style="width:70px;">Item</th>
-                                         <th style="width:40px;">Type</th>
-                                         <th style="width:120px;">Mat</th>
-                                         <th style="width:50px;">Size</th>
-                                         <th style="width:70px;">Rating</th>
-                                         <th>Unit</th>
-                                         <th style="width:50px;">Qty</th>
-                                         <th style="width:80px;">Status</th>
-                                         <th style="min-width:110px;">Purpose</th>
-                                     </tr>
-                                 </thead>
-                                 <tbody></tbody>
-                             </table>
-                         </div>
-                         <div id="srecPagination"></div>
+                 <div class="panel data-panel">
+                     <div class="table-responsive">
+                         <table class="data-table" id="srecTable" style="font-size:0.82em;">
+                             <thead>
+                                 <tr>
+                                     <th style="text-align:center;">PKG</th>
+                                     <th style="text-align:center;min-width:110px;">PACKAGE NO</th>
+                                     <th style="text-align:center;">SYSTEM</th>
+                                     <th style="text-align:center;min-width:180px;">ISO DWG NO.</th>
+                                     <th style="text-align:center;min-width:180px;">SUPPORT TAG NO.</th>
+                                     <th style="text-align:center;">TYPE</th>
+                                     <th style="text-align:center;">PART NO</th>
+                                     <th style="text-align:center;">ID NO</th>
+                                     <th style="text-align:center;min-width:150px;">ITEM</th>
+                                     <th style="text-align:center;">MATL</th>
+                                     <th style="text-align:center;min-width:120px;">SIZE OR TYPE</th>
+                                     <th style="text-align:center;">LENGTH (mm)</th>
+                                     <th style="text-align:center;">Q'TY</th>
+                                 </tr>
+                             </thead>
+                             <tbody></tbody>
+                         </table>
                      </div>
+                     <div id="srecPagination"></div>
                  </div>
             </section>
 
@@ -1536,124 +1456,7 @@
                 </div>
             </section>
 
-            <!-- ── Spool BOM ──────────────────────────────────────────── -->
-            <section id="spool_bom" class="view-section">
-                <div class="page-header">
-                    <div>
-                        <h1><i class="fas fa-cubes" style="color:#0A2540;margin-right:10px;"></i>Spool BOM</h1>
-                        <p class="subtitle">HP/LP Steam Piping Spool 제작 목록</p>
-                    </div>
-                </div>
-
-                <!-- Spool KPI Cards (shared) -->
-                <div class="kpi-grid" style="margin-bottom:20px;" id="spoolBomKpiGrid">
-                    <div class="kpi-card highlight" style="background-color:#0A2540;color:white;">
-                        <div class="kpi-info" style="color:white;">
-                            <div class="kpi-title" style="color:rgba(255,255,255,0.8);">Overall Progress</div>
-                            <div class="kpi-value spool-kpi-progress">— <span class="unit">%</span></div>
-                            <div class="kpi-desc spool-kpi-prog-sub" style="color:rgba(255,255,255,0.7);">BOM vs Received</div>
-                        </div>
-                        <div class="kpi-icon" style="background:rgba(255,255,255,0.1);color:white;"><i class="fas fa-chart-line"></i></div>
-                    </div>
-                    <div class="kpi-card">
-                        <div class="kpi-info">
-                            <div class="kpi-title">Total Spool BOM</div>
-                            <div class="kpi-value spool-kpi-bom">— <span class="unit">EA</span></div>
-                            <div class="kpi-desc spool-kpi-bom-sub">—</div>
-                        </div>
-                        <div class="kpi-icon"><i class="fas fa-cubes"></i></div>
-                    </div>
-                    <div class="kpi-card">
-                        <div class="kpi-info">
-                            <div class="kpi-title">Total Spool Received</div>
-                            <div class="kpi-value spool-kpi-received">— <span class="unit">EA</span></div>
-                            <div class="kpi-desc spool-kpi-rec-sub">—</div>
-                        </div>
-                        <div class="kpi-icon received"><i class="fas fa-truck-loading"></i></div>
-                    </div>
-                    <div class="kpi-card">
-                        <div class="kpi-info">
-                            <div class="kpi-title">Total Issued</div>
-                            <div class="kpi-value spool-kpi-issued">0 <span class="unit">EA</span></div>
-                            <div class="kpi-desc">Field issued</div>
-                        </div>
-                        <div class="kpi-icon issued"><i class="fas fa-clipboard-check"></i></div>
-                    </div>
-                    <div class="kpi-card" style="border:1px solid #00509E;">
-                        <div class="kpi-info">
-                            <div class="kpi-title">Current Stock</div>
-                            <div class="kpi-value spool-kpi-stock">— <span class="unit">EA</span></div>
-                            <div class="kpi-desc">Received − Issued</div>
-                        </div>
-                        <div class="kpi-icon" style="background:rgba(0,80,158,0.1);color:#00509E;"><i class="fas fa-boxes"></i></div>
-                    </div>
-                </div>
-
-                <!-- Filter Bar -->
-                <div class="panel" style="padding:16px;margin-bottom:16px;">
-                    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
-                        <div class="form-group" style="flex:3;min-width:200px;margin-bottom:0;">
-                            <label style="display:block;margin-bottom:4px;font-size:12px;">Search (ISO / Tag / Line No)</label>
-                            <input type="text" id="spoolSearch" class="form-control" placeholder="ISO drawing, tag no, line no...">
-                        </div>
-                        <div class="form-group" style="flex:0 0 130px;margin-bottom:0;">
-                            <label style="display:block;margin-bottom:4px;font-size:12px;">System</label>
-                            <select id="spoolSystemFilter" class="form-control">
-                                <option value="">All</option>
-                                <option value="HP">HP</option>
-                                <option value="LP">LP</option>
-                            </select>
-                        </div>
-                        <div class="form-group" style="flex:0 0 130px;margin-bottom:0;">
-                            <label style="display:block;margin-bottom:4px;font-size:12px;">Size</label>
-                            <select id="spoolSizeFilter" class="form-control">
-                                <option value="">All</option>
-                            </select>
-                        </div>
-                        <button class="btn btn-primary" id="btnSpoolSearch" style="height:38px;">
-                            <i class="fas fa-search"></i> Search
-                        </button>
-                        <button class="btn btn-outline" id="btnSpoolReset" style="height:38px;">Reset</button>
-                    </div>
-                </div>
-
-                <!-- Spool Table -->
-                <div class="panel" style="padding:0;overflow:hidden;">
-                    <div style="overflow-x:auto;">
-                        <table class="data-table" id="spoolTable" style="table-layout:fixed;width:100%;">
-                            <colgroup>
-                                <col style="width:60px;">
-                                <col style="width:70px;">
-                                <col style="width:280px;">
-                                <col style="width:220px;">
-                                <col style="width:200px;">
-                                <col style="width:70px;">
-                                <col style="width:50px;">
-                                <col style="width:50px;">
-                            </colgroup>
-                            <thead>
-                                <tr style="text-align:center;">
-                                    <th>No</th>
-                                    <th>System</th>
-                                    <th>ISO Drawing</th>
-                                    <th>Line No</th>
-                                    <th>Tag No</th>
-                                    <th>Size</th>
-                                    <th>UOM</th>
-                                    <th>Qty</th>
-                                </tr>
-                            </thead>
-                            <tbody id="spoolTbody">
-                                <tr><td colspan="8" style="text-align:center;color:#999;padding:40px;">Loading...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
-                        <span id="spoolCountInfo" style="font-size:13px;color:#666;"></span>
-                        <div id="spoolPagination"></div>
-                    </div>
-                </div>
-            </section>
+            <!-- ── Spool Receiving ──────────────────────────────────────────── -->
 
             <!-- ── Spool Receiving ──────────────────────────────────────── -->
             <section id="spool_receiving" class="view-section">
@@ -1664,24 +1467,8 @@
                     </div>
                 </div>
 
-                <!-- Spool KPI Cards (shared — same class names as Spool BOM tab) -->
+                <!-- Spool KPI -->
                 <div class="kpi-grid" style="margin-bottom:20px;" id="spoolRecKpiGrid">
-                    <div class="kpi-card highlight" style="background-color:#0A2540;color:white;">
-                        <div class="kpi-info" style="color:white;">
-                            <div class="kpi-title" style="color:rgba(255,255,255,0.8);">Overall Progress</div>
-                            <div class="kpi-value spool-kpi-progress">— <span class="unit">%</span></div>
-                            <div class="kpi-desc spool-kpi-prog-sub" style="color:rgba(255,255,255,0.7);">BOM vs Received</div>
-                        </div>
-                        <div class="kpi-icon" style="background:rgba(255,255,255,0.1);color:white;"><i class="fas fa-chart-line"></i></div>
-                    </div>
-                    <div class="kpi-card">
-                        <div class="kpi-info">
-                            <div class="kpi-title">Total Spool BOM</div>
-                            <div class="kpi-value spool-kpi-bom">— <span class="unit">EA</span></div>
-                            <div class="kpi-desc spool-kpi-bom-sub">—</div>
-                        </div>
-                        <div class="kpi-icon"><i class="fas fa-cubes"></i></div>
-                    </div>
                     <div class="kpi-card">
                         <div class="kpi-info">
                             <div class="kpi-title">Total Spool Received</div>
@@ -1689,22 +1476,6 @@
                             <div class="kpi-desc spool-kpi-rec-sub">—</div>
                         </div>
                         <div class="kpi-icon received"><i class="fas fa-truck-loading"></i></div>
-                    </div>
-                    <div class="kpi-card">
-                        <div class="kpi-info">
-                            <div class="kpi-title">Total Issued</div>
-                            <div class="kpi-value spool-kpi-issued">0 <span class="unit">EA</span></div>
-                            <div class="kpi-desc">Field issued</div>
-                        </div>
-                        <div class="kpi-icon issued"><i class="fas fa-clipboard-check"></i></div>
-                    </div>
-                    <div class="kpi-card" style="border:1px solid #00509E;">
-                        <div class="kpi-info">
-                            <div class="kpi-title">Current Stock</div>
-                            <div class="kpi-value spool-kpi-stock">— <span class="unit">EA</span></div>
-                            <div class="kpi-desc">Received − Issued</div>
-                        </div>
-                        <div class="kpi-icon" style="background:rgba(0,80,158,0.1);color:#00509E;"><i class="fas fa-boxes"></i></div>
                     </div>
                 </div>
 
