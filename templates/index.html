@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EPC Piping Material Management System</title>
     <!-- CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260628b">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260629l">
     <!-- FontAwesome for Icons (local) -->
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/css/fa-all.min.css') }}">
     <!-- Google Fonts: Inter (local) -->
@@ -40,10 +40,11 @@
 
                  <div class="section-title">Master Data</div>
                  <div class="nav-item" data-target="matcode_master"><i class="fas fa-barcode"></i> MatCode Master</div>
-                 <div class="nav-item" data-target="piping_bom"><i class="fas fa-layer-group"></i> Piping BOM</div>
+                 <div class="nav-item" data-target="piping_bom"><i class="fas fa-layer-group"></i> BOM</div>
 
                  <div class="section-title">Bulk Item (Receiving)</div>
                  <div class="nav-item" data-target="rec_bulk_piping"><i class="fas fa-stream"></i> Piping</div>
+                 <div class="nav-item" data-target="rec_bulk_fitting"><i class="fas fa-puzzle-piece"></i> Fitting</div>
                  <div class="nav-item" data-target="rec_bulk_others"><i class="fas fa-bolt"></i> Others</div>
                  <div class="nav-item" data-target="rec_tag_support"><i class="fas fa-tools"></i> Support</div>
 
@@ -64,97 +65,7 @@
                  <div class="nav-item" data-target="shipping"><i class="fas fa-ship"></i> Shipping / Custom Clearance</div>
              </div>
 
-             <!-- How to Use Button -->
-             <div class="sidebar-guide">
-                 <button class="sidebar-guide-toggle" onclick="document.getElementById('guideModal').style.display='flex'">
-                     <i class="fas fa-question-circle"></i> How to Use
-                     <i class="fas fa-external-link-alt" style="margin-left:auto;font-size:10px;opacity:0.7;"></i>
-                 </button>
-             </div>
          </aside>
-
-         <!-- How to Use Full-Screen Modal -->
-         <div id="guideModal" class="modal-overlay" style="display:none; align-items:flex-start; padding:40px 20px; overflow-y:auto;">
-             <div style="background:#fff; border-radius:12px; width:100%; max-width:860px; margin:auto; box-shadow:0 8px 40px rgba(0,0,0,0.2); overflow:hidden;">
-                 <!-- Header -->
-                 <div style="background:#0A2540; padding:28px 36px; display:flex; align-items:center; justify-content:space-between;">
-                     <div>
-                         <div style="color:#fff; font-size:22px; font-weight:800; letter-spacing:0.5px;">
-                             <i class="fas fa-question-circle" style="color:#64b5f6; margin-right:10px;"></i>How to Use
-                         </div>
-                         <div style="color:#90caf9; font-size:13px; margin-top:4px;">CCGT Material Control System — User Guide</div>
-                     </div>
-                     <button onclick="document.getElementById('guideModal').style.display='none'"
-                         style="background:rgba(255,255,255,0.15); border:none; color:#fff; width:36px; height:36px; border-radius:50%; cursor:pointer; font-size:16px; display:flex; align-items:center; justify-content:center;">
-                         <i class="fas fa-times"></i>
-                     </button>
-                 </div>
-                 <!-- Steps Grid -->
-                 <div style="padding:32px 36px; display:grid; grid-template-columns:1fr 1fr; gap:20px;">
-
-                     <div class="guide-card">
-                         <div class="guide-card-num">1</div>
-                         <div class="guide-card-icon"><i class="fas fa-chart-pie"></i></div>
-                         <div class="guide-card-title">Dashboard</div>
-                         <div class="guide-card-body">Monitor project KPIs — BOM, Received, Issued, and Stock quantities. The ISO Readiness donut chart shows stage distribution. <strong>Click any segment</strong> to filter the ISO table below by that stage (Erection Ready / Spool Ready / Spool In Prog / Critical).</div>
-                     </div>
-
-                     <div class="guide-card">
-                         <div class="guide-card-num">2</div>
-                         <div class="guide-card-icon"><i class="fas fa-barcode"></i></div>
-                         <div class="guide-card-title">MatCode Master</div>
-                         <div class="guide-card-body">Browse and verify all registered material codes with their categories, descriptions, and units of measure. Use this as a reference before entering BOM or receiving data.</div>
-                     </div>
-
-                     <div class="guide-card">
-                         <div class="guide-card-num">3</div>
-                         <div class="guide-card-icon"><i class="fas fa-layer-group"></i></div>
-                         <div class="guide-card-title">Piping BOM</div>
-                         <div class="guide-card-body">View the full Bill of Materials organized by System and ISO Drawing. Filter by system, ISO, or category to quickly locate specific items and check required quantities.</div>
-                     </div>
-
-                     <div class="guide-card">
-                         <div class="guide-card-num">4</div>
-                         <div class="guide-card-icon"><i class="fas fa-truck"></i></div>
-                         <div class="guide-card-title">Material Receiving</div>
-                         <div class="guide-card-body">Log incoming materials by entering PKG NO, Mat Code, and received quantity. Each entry updates the stock ledger in real time and is reflected on the Dashboard KPIs.</div>
-                     </div>
-
-                     <div class="guide-card" style="grid-column:1/-1;">
-                         <div class="guide-card-num">5</div>
-                         <div class="guide-card-icon"><i class="fas fa-file-signature"></i></div>
-                         <div class="guide-card-title">Material Finding (MR)</div>
-                         <div class="guide-card-body">
-                             Issue materials to a specific ISO Drawing in three steps:
-                             <ol style="margin:10px 0 0 18px; padding:0; line-height:2.2;">
-                                 <li>Search for an ISO Drawing → select BOM items → click <strong>Add to MR</strong> to add them to the Pending MR Table.</li>
-                                 <li>Review the MR Table — PKG NO is auto-allocated from available stock in ascending order.</li>
-                                 <li>Click <strong>Confirm &amp; Generate Material Issue Slip</strong> → preview the A4 slip → <strong>Confirm Print &amp; Process Issue</strong> to print and record the transaction.</li>
-                             </ol>
-                         </div>
-                     </div>
-
-                     <div class="guide-card">
-                         <div class="guide-card-num">6</div>
-                         <div class="guide-card-icon"><i class="fas fa-warehouse"></i></div>
-                         <div class="guide-card-title">Material Stock</div>
-                         <div class="guide-card-body">View current stock levels per Mat Code. Stock is calculated as: <strong>Received − Issued</strong>. Items with low stock or shortfalls are highlighted for easy identification.</div>
-                     </div>
-
-                     <div class="guide-card">
-                         <div class="guide-card-num">7</div>
-                         <div class="guide-card-icon"><i class="fas fa-history"></i></div>
-                         <div class="guide-card-title">MR History</div>
-                         <div class="guide-card-body">Search and review all past material issue records. Filter by date range, ISO drawing number, or status to trace material movements and verify issued quantities.</div>
-                     </div>
-
-                 </div>
-                 <!-- Footer -->
-                 <div style="background:#f8fafc; padding:16px 36px; text-align:center; border-top:1px solid #e2e8f0; font-size:13px; color:#888;">
-                     CCGT Material Control System &nbsp;·&nbsp; Doosan Enerbility &nbsp;·&nbsp; LLP Integra Construction KZ
-                 </div>
-             </div>
-         </div>
 
          <!-- Main Content -->
          <main class="main-content">
@@ -391,12 +302,12 @@
                  </div>
             </section>
 
-            <!-- 3. Piping BOM Tab -->
+            <!-- 3. BOM Tab -->
             <section id="piping_bom" class="view-section">
                 <div class="page-header">
                      <div>
-                         <h1>Piping BOM</h1>
-                         <p class="subtitle">Manage piping BOM data. Design changes can be updated here.</p>
+                         <h1>BOM</h1>
+                         <p class="subtitle">Piping Bill of Materials — Pipe, Fitting, Others</p>
                      </div>
                      <div class="actions">
                          <input type="file" id="bomFileInput" accept=".xlsx,.xls" style="display:none;">
@@ -438,12 +349,19 @@
                  </div>
                  </div>
 
+                 <!-- BOM Tab bar -->
+                 <div style="display:flex;gap:0;border-bottom:2px solid #c8cfe0;margin-bottom:16px;">
+                     <button class="bom-tab-btn" data-tab="piping" style="padding:8px 24px;border:none;border-bottom:3px solid #0A2540;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#0A2540;margin-bottom:-2px;letter-spacing:0.5px;">PIPING</button>
+                     <button class="bom-tab-btn" data-tab="fitting" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">FITTING</button>
+                     <button class="bom-tab-btn" data-tab="others" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">OTHERS</button>
+                 </div>
+
                  <div class="panel filter-panel" style="margin-bottom: 20px;">
                       <div style="display: flex; align-items: flex-end; justify-content: space-between; width: 100%; gap: 10px; flex-wrap: nowrap;">
                           <div style="display: flex; align-items: flex-end; gap: 10px; flex: 1; min-width: 0;">
                               <div class="form-group" style="flex: 2; min-width: 0; margin-bottom: 0;">
-                                  <label>Search (ISO / MatCode / Category / Description)</label>
-                                  <input type="text" id="bomIsoSearch" class="form-control" style="width: 100%;" placeholder="ISO Drawing, MatCode, Category, Description..." list="bomIsoDatalist">
+                                  <label>Search (ISO / MatCode / Description)</label>
+                                  <input type="text" id="bomIsoSearch" class="form-control" style="width: 100%;" placeholder="ISO Drawing, MatCode, Description..." list="bomIsoDatalist">
                                   <datalist id="bomIsoDatalist"></datalist>
                               </div>
                               <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
@@ -451,17 +369,12 @@
                                   <select id="bomSystemFilter" class="form-control" style="width: 100%;"><option value="All">All Systems</option></select>
                               </div>
                               <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
-                                  <label>Category</label>
-                                  <select id="bomCategoryFilter" class="form-control" style="width: 100%;">
-                                      <option value="All">All Categories</option>
-                                      <option value="Pipe">Pipe</option>
-                                      <option value="Fitting">Fitting</option>
-                                      <option value="Others">Others</option>
-                                  </select>
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
                                   <label>Item</label>
                                   <select id="bomItemFilter" class="form-control" style="width: 100%;"><option value="All">All Items</option></select>
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                                  <label>Material</label>
+                                  <select id="bomMatFilter" class="form-control" style="width: 100%;"><option value="All">All Materials</option></select>
                               </div>
                               <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
                                   <label>Size</label>
@@ -485,11 +398,11 @@
                              <thead>
                                  <tr>
                                      <th style="text-align:center;">Mat Code</th>
-                                     <th style="text-align:center;">Category</th>
                                      <th style="text-align:center;">System</th>
                                      <th style="text-align:center;">ISO Drawing</th>
                                      <th style="text-align:center;">Line No.</th>
                                      <th style="text-align:center;">Item</th>
+                                     <th style="text-align:center;">Mat</th>
                                      <th style="text-align:center;">Size</th>
                                      <th style="text-align:center;min-width:160px;">Description</th>
                                      <th style="text-align:center;">Unit</th>
@@ -519,7 +432,7 @@
                 <!-- ===== BULK SECTION ===== -->
                 <div id="recSecBulk" style="margin-top:16px;">
 
-                    <!-- Piping tab (Pipe + Fitting) -->
+                    <!-- Piping tab (Pipe only) -->
                     <div id="recTabPiping">
                         <div class="panel filter-panel" style="margin-bottom:20px;">
                             <div style="display:flex;align-items:flex-end;justify-content:space-between;width:100%;gap:10px;flex-wrap:nowrap;">
@@ -564,7 +477,7 @@
                             </div>
                         </div>
                         <div class="panel data-panel">
-                            <div class="panel-header"><h3>Piping — Pipe &amp; Fitting</h3></div>
+                            <div class="panel-header"><h3>Piping — Pipe</h3></div>
                             <div class="table-responsive">
                                 <table class="data-table" id="plTable" style="table-layout:fixed;width:100%;">
                                     <colgroup>
@@ -625,6 +538,86 @@
                             </div>
                         </div>
                     </div><!-- end recTabPiping -->
+
+                    <!-- Fitting tab (Fitting only) -->
+                    <div id="recTabFitting" style="display:none;">
+                        <div class="panel filter-panel" style="margin-bottom:20px;">
+                            <div style="display:flex;align-items:flex-end;justify-content:space-between;width:100%;gap:10px;flex-wrap:nowrap;">
+                                <div style="display:flex;align-items:flex-end;gap:10px;flex:1;min-width:0;">
+                                    <div class="form-group" style="flex:2;min-width:0;margin-bottom:0;">
+                                        <label>Search Item</label>
+                                        <input type="text" id="fitItemSearch" class="form-control" style="width:100%;" placeholder="Search by Item name...">
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                        <label>PKG</label>
+                                        <select id="fitDocFilter" class="form-control" style="width:100%;"><option value="All">All DOCs</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                        <label>PKG NO</label>
+                                        <select id="fitPkgFilter" class="form-control" style="width:100%;"><option value="All">All PKGs</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;">
+                                        <label>Item</label>
+                                        <select id="fitItemFilter" class="form-control" style="width:100%;"><option value="All">All Items</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;">
+                                        <label>Size</label>
+                                        <select id="fitSizeFilter" class="form-control" style="width:100%;"><option value="All">All Sizes</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;">
+                                        <label>Status</label>
+                                        <select id="fitStatusFilter" class="form-control" style="width:100%;">
+                                            <option value="All">All Status</option>
+                                            <option value="Preparing">Preparing</option>
+                                            <option value="Shipping">Shipping</option>
+                                            <option value="On-Site">On-Site</option>
+                                        </select>
+                                    </div>
+                                    <div style="padding-bottom:1px;flex-shrink:0;">
+                                        <button class="btn btn-primary" id="btnFilterFit" style="white-space:nowrap;display:flex;align-items:center;gap:8px;"><i class="fas fa-search"></i> Search</button>
+                                    </div>
+                                </div>
+                                <div style="display:flex;gap:8px;align-items:flex-end;padding-bottom:1px;">
+                                    <button class="btn btn-outline" id="btnExportFit" style="white-space:nowrap;display:flex;align-items:center;gap:6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export Excel</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="panel data-panel">
+                            <div class="panel-header"><h3>Fitting</h3></div>
+                            <div class="table-responsive">
+                                <table class="data-table" id="fitTable" style="table-layout:fixed;width:100%;">
+                                    <colgroup>
+                                        <col style="width:90px;"><col style="width:170px;">
+                                        <col style="width:100px;"><col style="width:110px;">
+                                        <col style="width:145px;"><col style="width:65px;">
+                                        <col style="width:105px;"><col style="width:55px;">
+                                        <col style="width:70px;"><col style="width:42px;">
+                                        <col style="width:42px;"><col style="width:72px;">
+                                        <col style="width:120px;">
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <th>PKG</th>
+                                            <th>PKG NO</th>
+                                            <th>Category</th>
+                                            <th>MatCode</th>
+                                            <th>Item</th>
+                                            <th>Type</th>
+                                            <th>Mat</th>
+                                            <th>Size</th>
+                                            <th>Rating</th>
+                                            <th>Unit</th>
+                                            <th>Qty</th>
+                                            <th>Status</th>
+                                            <th>Purpose</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                            <div id="fitPagination"></div>
+                        </div>
+                    </div><!-- end recTabFitting -->
 
                     <!-- Others tab (Gasket / Bolt / Nut) -->
                     <div id="recTabOthers" style="display:none;">
@@ -1178,60 +1171,10 @@
                      </div>
                  </div>
 
-                 <!-- Section Toggle: Bulk | Tag -->
-                 <div style="display:flex;gap:0;border-bottom:2px solid #0A2540;margin-bottom:16px;">
-                     <button class="st-sec-btn active" data-sec="bulk" style="padding:8px 24px;border:none;border-bottom:3px solid #0A2540;font-size:11px;font-weight:700;cursor:pointer;background:#0A2540;color:#fff;margin-bottom:-2px;">Bulk</button>
-                     <button class="st-sec-btn" data-sec="tag" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:11px;font-weight:600;cursor:pointer;background:#f8fafc;color:#666;margin-bottom:-2px;">Tag</button>
-                 </div>
-
-                 <!-- Bulk Sub-tabs -->
-                 <div id="stSecBulk" style="display:block;">
-                     <div style="display:flex;gap:0;border-bottom:1px solid #c8cfe0;margin-bottom:16px;">
-                         <button class="st-bulk-tab active" data-tab="piping" style="padding:6px 20px;border:none;border-bottom:3px solid #0A2540;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#0A2540;margin-bottom:-1px;">Piping</button>
-                         <button class="st-bulk-tab" data-tab="others" style="padding:6px 20px;border:none;border-bottom:3px solid transparent;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#888;margin-bottom:-1px;">Others</button>
-                     </div>
-                 </div>
-
-                 <!-- Tag Sub-tabs -->
-                 <div id="stSecTag" style="display:none;">
-                     <div style="display:flex;gap:0;border-bottom:1px solid #c8cfe0;margin-bottom:16px;">
-                         <button class="st-tag-tab active" data-tab="spool" style="padding:6px 20px;border:none;border-bottom:3px solid #0A2540;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#0A2540;margin-bottom:-1px;">Spool</button>
-                         <button class="st-tag-tab" data-tab="valve" style="padding:6px 20px;border:none;border-bottom:3px solid transparent;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#888;margin-bottom:-1px;">Valve</button>
-                         <button class="st-tag-tab" data-tab="speciality" style="padding:6px 20px;border:none;border-bottom:3px solid transparent;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#888;margin-bottom:-1px;">Speciality</button>
-                     </div>
-                 </div>
-
-                 <!-- Spool Stock Panel -->
-                 <div id="stSpoolPanel" class="panel data-panel" style="display:none;">
-                     <div class="panel-header">
-                         <h3><i class="fas fa-warehouse"></i> Stock — Spool</h3>
-                         <span id="stSpoolCountLabel" style="font-size:11px;color:#666;"></span>
-                     </div>
-                     <div class="table-responsive">
-                         <table class="data-table" id="stSpoolTable" style="table-layout:fixed;width:100%;">
-                             <colgroup>
-                                 <col style="width:120px;"><col style="width:200px;">
-                                 <col style="width:100px;"><col style="width:150px;">
-                                 <col style="width:150px;"><col style="width:100px;">
-                                 <col style="width:50px;"><col style="width:50px;">
-                                 <col style="width:50px;"><col style="width:50px;">
-                                 <col style="width:50px;"><col style="width:85px;">
-                             </colgroup>
-                             <thead>
-                                 <tr>
-                                     <th>PKG</th><th>PKG NO</th><th>System</th>
-                                     <th>Description</th><th>Tag No</th><th>Item</th>
-                                     <th>Size</th><th>Unit</th>
-                                     <th style="white-space:normal;text-align:center;">Total<br>Received</th>
-                                     <th style="white-space:normal;text-align:center;">Total<br>Issued</th>
-                                     <th style="white-space:normal;text-align:center;">Stock<br>(Balance)</th>
-                                     <th>Status</th>
-                                 </tr>
-                             </thead>
-                             <tbody id="stSpoolTbody"></tbody>
-                         </table>
-                     </div>
-                     <div id="stSpoolPagination"></div>
+                 <!-- Bulk Sub-tabs: Piping | Others -->
+                 <div style="display:flex;gap:0;border-bottom:1px solid #c8cfe0;margin-bottom:16px;">
+                     <button class="st-bulk-tab active" data-tab="piping" style="padding:6px 20px;border:none;border-bottom:3px solid #0A2540;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#0A2540;margin-bottom:-1px;">Piping</button>
+                     <button class="st-bulk-tab" data-tab="others" style="padding:6px 20px;border:none;border-bottom:3px solid transparent;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#888;margin-bottom:-1px;">Others</button>
                  </div>
 
                  <!-- Stock Table Panel -->
@@ -1715,6 +1658,17 @@
         </div>
     </div>
 
+    <!-- Packing List Print Modal -->
+    <div id="plModal" class="modal-overlay" style="display:none;align-items:flex-start;padding:30px 20px;overflow-y:auto;">
+        <div style="background:#fff;border-radius:10px;width:100%;max-width:900px;margin:auto;box-shadow:0 8px 40px rgba(0,0,0,0.2);overflow:hidden;">
+            <div id="plPrintArea"><!-- 모달 내용은 JS로 동적 생성 --></div>
+            <div id="plModalFooter" style="display:flex;justify-content:flex-end;gap:10px;padding:14px 24px;border-top:1px solid #e2e8f0;background:#f8fafc;">
+                <button class="btn btn-outline" onclick="document.getElementById('plModal').style.display='none'"><i class="fas fa-times"></i> Close</button>
+                <button class="btn btn-primary" onclick="printPlModal()"><i class="fas fa-print"></i> Print</button>
+            </div>
+        </div>
+    </div>
+
     <!-- New MatCode Assignment Modal -->
     <div id="newMatCodeModal" class="modal-overlay">
         <div class="modal-content" style="width:640px;">
@@ -1840,7 +1794,7 @@
     <script src="{{ url_for('static', filename='vendor/js/jquery.min.js') }}"></script>
     <script src="{{ url_for('static', filename='vendor/js/jquery.dataTables.min.js') }}"></script>
     <!-- Preloaded backend data (Removed large data.js) -->
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260628b"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260629l"></script>
     <script>
         (function () {
             var BASE_W = 1920, BASE_H = 1080;

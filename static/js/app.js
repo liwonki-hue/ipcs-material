@@ -430,8 +430,9 @@ async function syncFromSupabase() {
         await loadPlUpdates();
         _knownSystems = new Set(db.bom.map(b => b.system).filter(Boolean).map(s => s.toUpperCase()));
         // Shipping 캐시 무효화 — 전역 동기화 후 다음 탭 진입 시 재빌드
-        _shippingData = null;
-        _spoolShippingCache = null;
+        _shippingData         = null;
+        _spoolShippingCache   = null;
+        _supportShippingCache = null;
         renderAllViews();
         initFilterOptions();
 
@@ -441,7 +442,7 @@ async function syncFromSupabase() {
             const id = activeView.id;
             // Use setTimeout to ensure UI is ready for rendering large tables
             setTimeout(() => {
-                if(id === 'piping_bom') renderBomTable();
+                if(id === 'piping_bom') { initBomTabs(); renderBomTable(); }
                 if(id === 'receiving') { initReceivingTabs(); renderActiveReceivingTab(); }
                 if(id === 'matcode_master') renderMatCodeMaster();
             }, 200);
@@ -477,6 +478,7 @@ function initNavigation() {
 
     const REC_TAB_MAP = {
         rec_bulk_piping:    { sec: 'bulk', tab: 'piping' },
+        rec_bulk_fitting:   { sec: 'bulk', tab: 'fitting' },
         rec_bulk_others:    { sec: 'bulk', tab: 'others' },
         rec_tag_spool:      { sec: 'tag',  tab: 'spool' },
         rec_tag_valve:      { sec: 'tag',  tab: 'valve' },
@@ -504,7 +506,7 @@ function initNavigation() {
 
         if(targetId === 'dashboard') updateDashboard();
         if(targetId === 'issue') renderIssueOptions();
-        if(targetId === 'piping_bom') renderBomTable();
+        if(targetId === 'piping_bom') { initBomTabs(); renderBomTable(); }
         if(targetId === 'receiving') { initReceivingTabs(); renderActiveReceivingTab(); }
         if(targetId === 'matcode_master') renderMatCodeMaster();
         if(targetId === 'stock_ledger') { initStockFilters(); initStockTabs(); }
@@ -1171,7 +1173,7 @@ function renderStockTable(forcedCats, hideMatCode) {
 let _stockPage = 1;
 window._stockGoPage = function(p) { _stockPage = p; renderActiveStockTab(); };
 
-let _stActiveSec = 'bulk', _stActiveBulkTab = 'piping', _stActiveTagTab = 'spool', _stTabsInited = false;
+let _stActiveBulkTab = 'piping', _stTabsInited = false;
 
 function _setStockMatCodeCol(visible) {
     const cols = document.querySelectorAll('#stockTable colgroup col');
@@ -1191,114 +1193,25 @@ function _setStockMatCodeCol(visible) {
 }
 
 function renderActiveStockTab() {
-    const spoolPanel = document.getElementById('stSpoolPanel');
-    const mainPanel  = document.getElementById('stTablePanel');
-    const title      = document.getElementById('stPanelTitle');
-    if (_stActiveSec === 'bulk') {
-        if (spoolPanel) spoolPanel.style.display = 'none';
-        if (mainPanel)  mainPanel.style.display  = '';
-        _setStockMatCodeCol(true);
-        if (_stActiveBulkTab === 'piping') {
-            if (title) title.innerHTML = '<i class="fas fa-warehouse"></i> Stock — Pipe & Fitting';
-            renderStockTable(['Pipe', 'Fitting'], false);
-        } else {
-            if (title) title.innerHTML = '<i class="fas fa-warehouse"></i> Stock — Others';
-            renderStockTable(['Others'], false);
-        }
+    const title = document.getElementById('stPanelTitle');
+    _setStockMatCodeCol(true);
+    if (_stActiveBulkTab === 'piping') {
+        if (title) title.innerHTML = '<i class="fas fa-warehouse"></i> Stock — Pipe & Fitting';
+        renderStockTable(['Pipe', 'Fitting'], false);
     } else {
-        if (_stActiveTagTab === 'spool') {
-            if (mainPanel)  mainPanel.style.display  = 'none';
-            if (spoolPanel) spoolPanel.style.display = '';
-            renderStockSpoolTable();
-        } else {
-            if (spoolPanel) spoolPanel.style.display = 'none';
-            if (mainPanel)  mainPanel.style.display  = '';
-            _setStockMatCodeCol(false);
-            const cats   = { valve: ['Valve'], speciality: ['Speciality'] };
-            const labels = { valve: 'Valve', speciality: 'Speciality' };
-            if (title) title.innerHTML = `<i class="fas fa-warehouse"></i> Stock — ${labels[_stActiveTagTab] || ''}`;
-            renderStockTable(cats[_stActiveTagTab], true);
-        }
+        if (title) title.innerHTML = '<i class="fas fa-warehouse"></i> Stock — Others';
+        renderStockTable(['Others'], false);
     }
 }
 
-async function renderStockSpoolTable() {
-    const tbody = document.getElementById('stSpoolTbody');
-    if (!tbody) return;
-    if (!_srData) {
-        tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
-        if (!supabaseClient) return;
-        const { data, error } = await supabaseClient
-            .from('spool_receiving').select('*')
-            .order('pkg_seq', { ascending: true }).order('id', { ascending: true }).limit(10000);
-        if (error) {
-            tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:#c00;padding:20px;">Error: ${error.message}</td></tr>`;
-            return;
-        }
-        _srData = data || [];
-    }
-    const rows = _srData;
-    const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-    if (_stSpoolPage > totalPages) _stSpoolPage = 1;
-    const page = rows.slice((_stSpoolPage - 1) * PAGE_SIZE, _stSpoolPage * PAGE_SIZE);
-    const inStock = '<span class="status-badge ok">In Stock</span>';
-    tbody.innerHTML = page.length === 0
-        ? '<tr><td colspan="12" style="text-align:center;color:#999;padding:20px;">No spool data</td></tr>'
-        : page.map(r => {
-            const pkgShort = (r.pkg_no || '').match(/^(PGU-DE-\d+)/)?.[1] || r.pkg_no || '';
-            return `<tr>
-                <td>${pkgShort}</td>
-                <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.pkg_no||''}">${r.pkg_no||''}</td>
-                <td>${r.system||''}</td>
-                <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.description||''}">${r.description||''}</td>
-                <td style="font-weight:600;">${r.tag_no||''}</td>
-                <td>${r.item||'Spool'}</td>
-                <td>${r.size||''}</td>
-                <td>${r.unit||'EA'}</td>
-                <td style="text-align:center;font-weight:700;">${r.qty??1}</td>
-                <td style="text-align:center;">-</td>
-                <td style="text-align:center;font-weight:700;">${r.qty??1}</td>
-                <td>${inStock}</td>
-            </tr>`;
-        }).join('');
-    const info = document.getElementById('stSpoolCountLabel');
-    if (info) info.textContent = `(${rows.length.toLocaleString()} items)`;
-    renderPagination('stSpoolPagination', _stSpoolPage, totalPages, '_stSpoolGoPage');
-}
-let _stSpoolPage = 1;
-window._stSpoolGoPage = function(p) { _stSpoolPage = p; renderStockSpoolTable(); };
 
 function initStockTabs() {
     if (_stTabsInited) { renderActiveStockTab(); return; }
     _stTabsInited = true;
-    document.querySelectorAll('.st-sec-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            _stActiveSec = btn.dataset.sec;
-            document.querySelectorAll('.st-sec-btn').forEach(b => {
-                const on = b === btn;
-                b.style.background   = on ? '#0A2540' : '#f8fafc';
-                b.style.color        = on ? '#fff' : '#666';
-                b.style.borderBottom = on ? '3px solid #0A2540' : '3px solid transparent';
-            });
-            document.getElementById('stSecBulk').style.display = _stActiveSec === 'bulk' ? '' : 'none';
-            document.getElementById('stSecTag').style.display  = _stActiveSec === 'tag'  ? '' : 'none';
-            _stockPage = 1; renderActiveStockTab();
-        });
-    });
     document.querySelectorAll('.st-bulk-tab').forEach(btn => {
         btn.addEventListener('click', () => {
             _stActiveBulkTab = btn.dataset.tab;
             document.querySelectorAll('.st-bulk-tab').forEach(b => {
-                b.style.color        = b === btn ? '#0A2540' : '#888';
-                b.style.borderBottom = b === btn ? '3px solid #0A2540' : '3px solid transparent';
-            });
-            _stockPage = 1; renderActiveStockTab();
-        });
-    });
-    document.querySelectorAll('.st-tag-tab').forEach(btn => {
-        btn.addEventListener('click', () => {
-            _stActiveTagTab = btn.dataset.tab;
-            document.querySelectorAll('.st-tag-tab').forEach(b => {
                 b.style.color        = b === btn ? '#0A2540' : '#888';
                 b.style.borderBottom = b === btn ? '3px solid #0A2540' : '3px solid transparent';
             });
@@ -1489,6 +1402,115 @@ function goSurplusPage(p) {
     renderSurplusTable();
 }
 
+// ── Packing List Modal ─────────────────────────────────────────
+window.openPackingListModal = function(pkgNo, packing) {
+    const modal   = document.getElementById('plModal');
+    const area    = document.getElementById('plPrintArea');
+    if (!modal || !area) return;
+    modal.style.display = 'flex';
+
+    const isSpool = (_spoolShippingCache || []).some(s => s.pkg_no === pkgNo);
+    const merged  = mergeRow({ pkg_no: pkgNo, packing, description: '', qty: 0, unit: '', purpose: '', status: '', on_site: '', custom_clear: '', issue_date: '', remark: '' });
+    const today   = new Date().toISOString().slice(0, 10);
+
+    const infoHtml = `
+        <table style="width:100%;border-collapse:collapse;margin-bottom:6px;font-size:11pt;">
+            <tr>
+                <td style="width:50%;padding:4px 0;"><strong>Packing (PKG):</strong> ${packing}</td>
+                <td style="width:50%;padding:4px 0;"><strong>Package No:</strong> ${pkgNo}</td>
+            </tr>
+            <tr>
+                <td style="padding:4px 0;"><strong>Status:</strong> ${merged.status || '—'}</td>
+                <td style="padding:4px 0;"><strong>On-Site Date:</strong> ${merged.on_site || '—'}</td>
+            </tr>
+            <tr>
+                <td style="padding:4px 0;"><strong>Custom Clear:</strong> ${merged.custom_clear || '—'}</td>
+                <td style="padding:4px 0;"><strong>Issue Date:</strong> ${merged.issue_date || '—'}</td>
+            </tr>
+        </table>`;
+
+    let tableHtml = '';
+    if (isSpool) {
+        const rows = (_spoolShippingCache || []).filter(s => s.pkg_no === pkgNo);
+        tableHtml = `<table style="width:100%;border-collapse:collapse;">
+            <thead><tr style="background:#0A2540;color:#fff;">
+                <th style="padding:6px;text-align:center;width:40px;">No</th>
+                <th style="padding:6px;text-align:center;">System</th>
+                <th style="padding:6px;text-align:left;">Description</th>
+                <th style="padding:6px;text-align:center;">Unit</th>
+                <th style="padding:6px;text-align:center;">Q'TY</th>
+            </tr></thead>
+            <tbody>${rows.map((r, i) => `<tr style="${i%2?'background:#f8fafc':''}">
+                <td style="padding:5px;text-align:center;">${i+1}</td>
+                <td style="padding:5px;text-align:center;">${r.system || '—'}</td>
+                <td style="padding:5px;">${r.description || '—'}</td>
+                <td style="padding:5px;text-align:center;">${r.unit || 'EA'}</td>
+                <td style="padding:5px;text-align:center;font-weight:600;">${r.qty ?? '—'}</td>
+            </tr>`).join('')}</tbody>
+        </table>`;
+    } else {
+        const rows = db.receiving.filter(r => r.plNo === pkgNo);
+        tableHtml = `<table style="width:100%;border-collapse:collapse;">
+            <thead><tr style="background:#0A2540;color:#fff;">
+                <th style="padding:6px;text-align:center;width:36px;">No</th>
+                <th style="padding:6px;text-align:center;min-width:90px;">Tag</th>
+                <th style="padding:6px;text-align:center;min-width:80px;">Item</th>
+                <th style="padding:6px;text-align:left;">Description</th>
+                <th style="padding:6px;text-align:center;min-width:80px;">Material</th>
+                <th style="padding:6px;text-align:center;min-width:60px;">Size</th>
+                <th style="padding:6px;text-align:center;">Unit</th>
+                <th style="padding:6px;text-align:center;">Q'TY</th>
+            </tr></thead>
+            <tbody>${rows.map((r, i) => {
+                const parts = (r.matCode || '').split('-');
+                const item  = window.extractItemFromMatCode(r.matCode) || '—';
+                const matl  = parts[1] || '—';
+                const size  = window.extractSizeFromMatCode(r.matCode) || parts[2] || '—';
+                return `<tr style="${i%2?'background:#f8fafc':''}">
+                <td style="padding:5px;text-align:center;">${i+1}</td>
+                <td style="padding:5px;text-align:center;font-size:10px;">${r.tag || '—'}</td>
+                <td style="padding:5px;text-align:center;">${item}</td>
+                <td style="padding:5px;">${r.desc || '—'}</td>
+                <td style="padding:5px;text-align:center;">${matl}</td>
+                <td style="padding:5px;text-align:center;">${size}</td>
+                <td style="padding:5px;text-align:center;">${r.unit || '—'}</td>
+                <td style="padding:5px;text-align:center;font-weight:600;">${r.qty ?? '—'}</td>
+            </tr>`;}).join('')}</tbody>
+        </table>`;
+    }
+
+    area.innerHTML = `
+        <div style="padding:24px 28px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
+                <div>
+                    <div style="font-size:20px;font-weight:800;color:#0A2540;letter-spacing:0.5px;">PACKING LIST</div>
+                    <div style="font-size:11px;color:#888;margin-top:3px;">CCGT Material Control System</div>
+                </div>
+                <div style="text-align:right;font-size:11px;color:#666;">
+                    <div>Date: ${today}</div>
+                    <div>Items: ${isSpool
+                        ? (_spoolShippingCache||[]).filter(s=>s.pkg_no===pkgNo).length
+                        : db.receiving.filter(r=>r.plNo===pkgNo).length}</div>
+                </div>
+            </div>
+            <hr style="border:none;border-top:2px solid #0A2540;margin-bottom:14px;">
+            ${infoHtml}
+            <hr style="border:none;border-top:1px solid #c8cfe0;margin:10px 0 14px;">
+            ${tableHtml}
+        </div>`;
+};
+
+window.printPlModal = function() {
+    window.print();
+};
+
+// plModal 닫기 — 배경 클릭
+document.addEventListener('click', e => {
+    const modal = document.getElementById('plModal');
+    if (modal && e.target === modal) modal.style.display = 'none';
+});
+
+
 // --- 2. MatCode Master ---
 function renderMatCodeMaster() {
     let tbody = document.querySelector('#matCodeTable tbody');
@@ -1547,6 +1569,7 @@ window._matCodeGoPage = function(p) { _matCodePage = p; renderMatCodeMaster(); }
 
 // --- 3. BOM & Receiving Paginations ---
 let currentBomPage = 1;
+let _bomActiveTab = 'piping'; // 'piping' | 'fitting' | 'others'
 let currentPlPage = 1;
 let currentSrecPage = 1;
 
@@ -1611,9 +1634,17 @@ function initFilterOptions() {
         bomSys.innerHTML = '<option value="All">All Systems</option>' + systems.map(s => `<option value="${s}">${s}</option>`).join('');
         bomIsoData.innerHTML = isos.map(i => `<option value="${i}">`).join('');
 
-        // Category → Item → Size 연동
-        const bomCatF = document.getElementById('bomCategoryFilter');
-        setupCatItemSize(bomCatF, bomItemF, bomSizeF, getBomItemsForCat, getBomSizesForCatItem, 'All');
+        // 탭 기반 Item → Size 연동 (Category는 _bomActiveTab이 결정)
+        if (bomItemF) {
+            bomItemF.addEventListener('change', () => {
+                const TAB_CAT = { piping: 'Pipe', fitting: 'Fitting', others: 'Others' };
+                const cat = TAB_CAT[_bomActiveTab] || 'Pipe';
+                const sizes = getBomSizesForCatItem(cat, bomItemF.value);
+                if (bomSizeF) bomSizeF.innerHTML = '<option value="All">All Sizes</option>'
+                    + sizes.map(s => `<option value="${s.replace(/"/g, '&quot;')}">${s}</option>`).join('');
+            });
+        }
+        refreshBomItemFilter();
     }
 
     // Support Receiving 필터 — pkg / package_no / system / support_tag 동적 로드
@@ -1687,51 +1718,47 @@ function initFilterOptions() {
         setupCatItemSize(mCat, mItem, mSize, getMasterItemsForCat, getMasterSizesForCatItem, 'All');
     }
 
-    // PL Filters (Bulk Piping) — DOC/PKG 목록 초기화
-    const plDoc  = document.getElementById('plDocFilter');
-    const plPkg  = document.getElementById('plPkgFilter');
-    const plItemF = document.getElementById('plItemFilter');
-    const plSizeF = document.getElementById('plSizeFilter');
-    if(plDoc && plPkg) {
-        const pipingRecv = db.receiving.filter(r => isReceivingActive(r.plNo) && ['Pipe','Fitting'].includes(r.category));
-        const docs = [...new Set(pipingRecv.map(r => r.docNo))].sort();
-        const pkgs = [...new Set(pipingRecv.map(r => r.plNo))].sort();
-        plDoc.innerHTML = '<option value="All">All DOCs</option>' + docs.map(d => `<option value="${d}">${d}</option>`).join('');
-        plPkg.innerHTML = '<option value="All">All PKGs</option>' + pkgs.map(p => `<option value="${p}">${p}</option>`).join('');
-        setupCatItemSize(null, plItemF, plSizeF, getBomItemsForCat, getBomSizesForCatItem, 'All');
+    // Receiving 단일 패스 분류 (5회 반복 filter → 1회 forEach)
+    const recByCat = { Pipe: [], Fitting: [], Others: [], Valve: [], Speciality: [] };
+    db.receiving.forEach(r => {
+        if (isReceivingActive(r.plNo) && recByCat[r.category]) recByCat[r.category].push(r);
+    });
+
+    const setDocPkg = (docEl, pkgEl, rows) => {
+        const docs = [...new Set(rows.map(r => r.docNo))].sort();
+        const pkgs = [...new Set(rows.map(r => r.plNo))].sort();
+        docEl.innerHTML = '<option value="All">All DOCs</option>' + docs.map(d => `<option value="${d}">${d}</option>`).join('');
+        pkgEl.innerHTML = '<option value="All">All PKGs</option>' + pkgs.map(p => `<option value="${p}">${p}</option>`).join('');
+    };
+
+    // PL Filters (Pipe)
+    const plDoc = document.getElementById('plDocFilter'), plPkg = document.getElementById('plPkgFilter');
+    if (plDoc && plPkg) {
+        setDocPkg(plDoc, plPkg, recByCat.Pipe);
+        setupCatItemSize(null, document.getElementById('plItemFilter'), document.getElementById('plSizeFilter'), getBomItemsForCat, getBomSizesForCatItem, 'All');
+    }
+
+    // Fitting Filters
+    const fitDoc = document.getElementById('fitDocFilter'), fitPkg = document.getElementById('fitPkgFilter');
+    if (fitDoc && fitPkg) {
+        setDocPkg(fitDoc, fitPkg, recByCat.Fitting);
+        setupCatItemSize(null, document.getElementById('fitItemFilter'), document.getElementById('fitSizeFilter'), getBomItemsForCat, getBomSizesForCatItem, 'All');
     }
 
     // Others Filters
-    const othDoc  = document.getElementById('othDocFilter');
-    const othPkg  = document.getElementById('othPkgFilter');
-    const othItemF = document.getElementById('othItemFilter');
-    const othSizeF = document.getElementById('othSizeFilter');
-    if(othDoc && othPkg) {
-        const othersRecv = db.receiving.filter(r => isReceivingActive(r.plNo) && r.category === 'Others');
-        const othDocs = [...new Set(othersRecv.map(r => r.docNo))].sort();
-        const othPkgs = [...new Set(othersRecv.map(r => r.plNo))].sort();
-        othDoc.innerHTML = '<option value="All">All DOCs</option>' + othDocs.map(d => `<option value="${d}">${d}</option>`).join('');
-        othPkg.innerHTML = '<option value="All">All PKGs</option>' + othPkgs.map(p => `<option value="${p}">${p}</option>`).join('');
-        setupCatItemSize(null, othItemF, othSizeF, getBomItemsForCat, getBomSizesForCatItem, 'All');
+    const othDoc = document.getElementById('othDocFilter'), othPkg = document.getElementById('othPkgFilter');
+    if (othDoc && othPkg) {
+        setDocPkg(othDoc, othPkg, recByCat.Others);
+        setupCatItemSize(null, document.getElementById('othItemFilter'), document.getElementById('othSizeFilter'), getBomItemsForCat, getBomSizesForCatItem, 'All');
     }
 
     // Valve Filters
-    const valDoc = document.getElementById('valDocFilter');
-    const valPkg = document.getElementById('valPkgFilter');
-    if(valDoc && valPkg) {
-        const valRecv = db.receiving.filter(r => isReceivingActive(r.plNo) && r.category === 'Valve');
-        valDoc.innerHTML = '<option value="All">All DOCs</option>' + [...new Set(valRecv.map(r => r.docNo))].sort().map(d => `<option value="${d}">${d}</option>`).join('');
-        valPkg.innerHTML = '<option value="All">All PKGs</option>' + [...new Set(valRecv.map(r => r.plNo))].sort().map(p => `<option value="${p}">${p}</option>`).join('');
-    }
+    const valDoc = document.getElementById('valDocFilter'), valPkg = document.getElementById('valPkgFilter');
+    if (valDoc && valPkg) setDocPkg(valDoc, valPkg, recByCat.Valve);
 
     // Speciality Filters
-    const splDoc = document.getElementById('splDocFilter');
-    const splPkg = document.getElementById('splPkgFilter');
-    if(splDoc && splPkg) {
-        const splRecv = db.receiving.filter(r => isReceivingActive(r.plNo) && r.category === 'Speciality');
-        splDoc.innerHTML = '<option value="All">All DOCs</option>' + [...new Set(splRecv.map(r => r.docNo))].sort().map(d => `<option value="${d}">${d}</option>`).join('');
-        splPkg.innerHTML = '<option value="All">All PKGs</option>' + [...new Set(splRecv.map(r => r.plNo))].sort().map(p => `<option value="${p}">${p}</option>`).join('');
-    }
+    const splDoc = document.getElementById('splDocFilter'), splPkg = document.getElementById('splPkgFilter');
+    if (splDoc && splPkg) setDocPkg(splDoc, splPkg, recByCat.Speciality);
 
 }
 
@@ -1743,8 +1770,10 @@ async function renderBomTable() {
 
     const search  = (document.getElementById('bomIsoSearch')?.value || '').trim();
     const sys     = document.getElementById('bomSystemFilter')?.value || 'All';
-    const cat     = document.getElementById('bomCategoryFilter')?.value || 'All';
+    const TAB_CAT = { piping: 'Pipe', fitting: 'Fitting', others: 'Others' };
+    const cat     = TAB_CAT[_bomActiveTab] || 'Pipe';
     const item    = document.getElementById('bomItemFilter')?.value || 'All';
+    const mat     = document.getElementById('bomMatFilter')?.value || 'All';
     const size    = document.getElementById('bomSizeFilter')?.value || 'All';
 
     // Item명 → MatCode prefix 역매핑 (extractItemFromMatCode와 동일 기준)
@@ -1770,7 +1799,8 @@ async function renderBomTable() {
     const applyFilters = (q) => {
         if (sys  !== 'All') q = q.eq('system', sys);
         if (search) q = q.or(`iso_dwg_no.ilike.%${search}%,mat_code.ilike.%${search}%,category.ilike.%${search}%,full_description.ilike.%${search}%`);
-        if (cat  !== 'All') q = q.ilike('category', `%${cat}%`);
+        if (cat  !== 'All') q = q.eq('category', cat);
+        if (mat  !== 'All') q = q.ilike('mat_code', `%-${mat}-%`);
         if (item !== 'All') {
             if (item === 'CONTROL VALVE') {
                 q = q.or('tag.ilike.%-TCV-%,tag.ilike.%-LCV-%,tag.ilike.%-FCV-%,tag.ilike.%-PCV-%,tag.ilike.%-FV-%');
@@ -1828,10 +1858,6 @@ async function renderBomTable() {
         : ((currentBomPage - 1) * PAGE_SIZE + data.length + (hasMore ? PAGE_SIZE : 0));
 
     tbody.innerHTML = data.map(b => {
-        let displayCat = b.category;
-        if (displayCat === 'BULK' || !displayCat) {
-            displayCat = window.getCategory(b.full_description, b.mat_code);
-        }
         const isAuto = (b.mat_code || '').includes('NEW-MAT');
         const badgeClass = isAuto ? 'warn' : 'ok';
         const desc = (b.full_description || '-').replace(/_/g, '-');
@@ -1847,13 +1873,15 @@ async function renderBomTable() {
         const item = window.extractItemFromDesc(desc);
         // Steam Trap: description에 사이즈 정보 없을 때 기본값 1" (확인된 사실)
         if (size === '-' && /STEAM TRAP/i.test(item)) size = '1"';
+        const matParts = (b.mat_code || '').split('-');
+        const matSpec  = matParts[1] || '-';
         return `<tr>
             <td style="text-align:center;white-space:nowrap;"><span class="status-badge ${badgeClass}">${b.mat_code || '-'}</span></td>
-            <td style="text-align:center;white-space:nowrap;"><strong>${displayCat}</strong></td>
             <td style="text-align:center;white-space:nowrap;">${b.system || '-'}</td>
             <td style="text-align:center;white-space:nowrap;">${b.iso_dwg_no || '-'}</td>
             <td style="text-align:center;white-space:nowrap;">${b.line_no || '-'}</td>
             <td style="text-align:center;font-weight:600;white-space:nowrap;">${item}</td>
+            <td style="text-align:center;white-space:nowrap;">${matSpec}</td>
             <td style="text-align:center;font-weight:600;white-space:nowrap;">${size}</td>
             <td title="${desc}">${desc.length > 55 ? desc.substring(0, 52) + '...' : desc}</td>
             <td style="text-align:center;white-space:nowrap;">${b.uom || 'EA'}</td>
@@ -1865,6 +1893,49 @@ async function renderBomTable() {
     renderPagination('bomPagination', currentBomPage, bomTotalPages, '_bomGoPage');
 }
 window._bomGoPage = function(p) { currentBomPage = p; renderBomTable(); };
+
+function refreshBomItemFilter() {
+    const TAB_CAT = { piping: 'Pipe', fitting: 'Fitting', others: 'Others' };
+    const cat = TAB_CAT[_bomActiveTab] || 'Pipe';
+
+    const itemEl = document.getElementById('bomItemFilter');
+    if (itemEl) {
+        const items = getBomItemsForCat(cat);
+        itemEl.innerHTML = '<option value="All">All Items</option>'
+            + items.map(i => `<option value="${i.replace(/"/g, '&quot;')}">${i}</option>`).join('');
+    }
+
+    const matEl = document.getElementById('bomMatFilter');
+    if (matEl) {
+        const src = (cat === 'All') ? db.bom : db.bom.filter(b => b.category === cat);
+        const mats = [...new Set(
+            src.map(b => (b.matCode || '').split('-')[1]).filter(v => v && v !== '-')
+        )].sort();
+        matEl.innerHTML = '<option value="All">All Materials</option>'
+            + mats.map(m => `<option value="${m}">${m}</option>`).join('');
+    }
+
+    const sizeEl = document.getElementById('bomSizeFilter');
+    if (sizeEl) sizeEl.innerHTML = '<option value="All">All Sizes</option>';
+}
+
+let _bomTabsInited = false;
+function initBomTabs() {
+    if (_bomTabsInited) return;
+    _bomTabsInited = true;
+    document.querySelectorAll('.bom-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            _bomActiveTab = btn.dataset.tab;
+            document.querySelectorAll('.bom-tab-btn').forEach(b => {
+                b.style.borderBottomColor = b === btn ? '#0A2540' : 'transparent';
+                b.style.color = b === btn ? '#0A2540' : '#888';
+            });
+            currentBomPage = 1;
+            refreshBomItemFilter();
+            renderBomTable();
+        });
+    });
+}
 
 function _renderRecvCore(cfg) {
     let tbody = document.querySelector(`#${cfg.tableId} tbody`);
@@ -1981,12 +2052,25 @@ function renderBulkPipingTable() {
         tableId: 'plTable', searchId: 'plItemSearch',
         docId: 'plDocFilter', pkgId: 'plPkgFilter', statusId: 'plStatusFilter',
         itemId: 'plItemFilter', sizeId: 'plSizeFilter',
-        forcedCats: ['Pipe', 'Fitting'],
-        catOrder: { 'Pipe': 0, 'Fitting': 1 },
+        forcedCats: ['Pipe'],
         catFirst: true,
         hideTag: true,
         getPage: () => currentPlPage,
         paginationId: 'plPagination', goPageFn: '_plGoPage'
+    });
+}
+
+let currentFitPage = 1;
+function renderBulkFittingTable() {
+    _renderRecvCore({
+        tableId: 'fitTable', searchId: 'fitItemSearch',
+        docId: 'fitDocFilter', pkgId: 'fitPkgFilter', statusId: 'fitStatusFilter',
+        itemId: 'fitItemFilter', sizeId: 'fitSizeFilter',
+        forcedCats: ['Fitting'],
+        catFirst: true,
+        hideTag: true,
+        getPage: () => currentFitPage,
+        paginationId: 'fitPagination', goPageFn: '_fitGoPage'
     });
 }
 
@@ -2027,7 +2111,8 @@ function renderTagSpecialityTable() {
 
 function renderActiveReceivingTab() {
     if (_recActiveSec === 'bulk') {
-        if (_recActiveBulkTab === 'piping') renderBulkPipingTable();
+        if (_recActiveBulkTab === 'piping')   renderBulkPipingTable();
+        else if (_recActiveBulkTab === 'fitting') renderBulkFittingTable();
         else renderBulkOthersTable();
     } else {
         if (_recActiveTagTab === 'spool') initSpoolReceiving();
@@ -2049,9 +2134,11 @@ function switchReceivingTab(sec, tab) {
 
     if (sec === 'bulk') {
         const pip = document.getElementById('recTabPiping');
+        const fit = document.getElementById('recTabFitting');
         const oth = document.getElementById('recTabOthers');
-        if (pip) pip.style.display = tab === 'piping' ? '' : 'none';
-        if (oth) oth.style.display = tab === 'others' ? '' : 'none';
+        if (pip) pip.style.display = tab === 'piping'  ? '' : 'none';
+        if (fit) fit.style.display = tab === 'fitting' ? '' : 'none';
+        if (oth) oth.style.display = tab === 'others'  ? '' : 'none';
     } else {
         const sp = document.getElementById('recTagSpool');
         const vl = document.getElementById('recTagValve');
@@ -2116,13 +2203,15 @@ function initReceivingTabs() {
     });
 
     // Filter buttons
-    document.getElementById('btnFilterPl')?.addEventListener('click', () => { currentPlPage = 1; renderBulkPipingTable(); });
+    document.getElementById('btnFilterPl')?.addEventListener('click',  () => { currentPlPage  = 1; renderBulkPipingTable(); });
+    document.getElementById('btnFilterFit')?.addEventListener('click', () => { currentFitPage = 1; renderBulkFittingTable(); });
     document.getElementById('btnFilterOth')?.addEventListener('click', () => { currentOthPage = 1; renderBulkOthersTable(); });
     document.getElementById('btnFilterVal')?.addEventListener('click', () => { currentValPage = 1; renderTagValveTable(); });
     document.getElementById('btnFilterSpl')?.addEventListener('click', () => { currentSplPage = 1; renderTagSpecialityTable(); });
 }
 
 window._plGoPage  = function(p) { currentPlPage  = p; renderBulkPipingTable(); };
+window._fitGoPage = function(p) { currentFitPage = p; renderBulkFittingTable(); };
 window._othGoPage = function(p) { currentOthPage = p; renderBulkOthersTable(); };
 window._valGoPage = function(p) { currentValPage = p; renderTagValveTable(); };
 window._splGoPage = function(p) { currentSplPage = p; renderTagSpecialityTable(); };
@@ -2753,13 +2842,10 @@ function attachEventListeners() {
             if (bomIsoSearch) bomIsoSearch.value = '';
             const bomSystemFilter = document.getElementById('bomSystemFilter');
             if (bomSystemFilter) bomSystemFilter.value = 'All';
-            const bomCategoryFilter = document.getElementById('bomCategoryFilter');
-            if (bomCategoryFilter) {
-                bomCategoryFilter.value = 'All';
-                bomCategoryFilter.dispatchEvent(new Event('change'));
-            }
             const bomItemFilter = document.getElementById('bomItemFilter');
             if (bomItemFilter) bomItemFilter.value = 'All';
+            const bomMatFilter = document.getElementById('bomMatFilter');
+            if (bomMatFilter) bomMatFilter.value = 'All';
             const bomSizeFilter = document.getElementById('bomSizeFilter');
             if (bomSizeFilter) bomSizeFilter.value = 'All';
             currentBomPage = 1;
@@ -2918,7 +3004,7 @@ function attachEventListeners() {
             const itemF = document.getElementById('plItemFilter')?.value || 'All';
             const sizeF = document.getElementById('plSizeFilter')?.value || 'All';
 
-            let data = db.receiving.filter(r => isReceivingActive(r.plNo));
+            let data = db.receiving.filter(r => isReceivingActive(r.plNo) && r.category === 'Pipe');
             if (doc   !== 'All') data = data.filter(r => r.docNo === doc);
             if (pkg   !== 'All') data = data.filter(r => r.plNo  === pkg);
             if (itemF !== 'All') data = data.filter(r => window.extractItemFromMatCode(r.matCode) === itemF);
@@ -2941,6 +3027,40 @@ function attachEventListeners() {
             XLSX.utils.book_append_sheet(wb, ws, 'Receiving');
             const today = new Date().toISOString().split('T')[0];
             XLSX.writeFile(wb, `Receiving_Export_${today}.xlsx`);
+        });
+    }
+
+    const btnExportFit = document.getElementById('btnExportFit');
+    if (btnExportFit) {
+        btnExportFit.addEventListener('click', () => {
+            const item  = (document.getElementById('fitItemSearch')?.value || '').trim().toUpperCase();
+            const doc   = document.getElementById('fitDocFilter')?.value || 'All';
+            const pkg   = document.getElementById('fitPkgFilter')?.value || 'All';
+            const itemF = document.getElementById('fitItemFilter')?.value || 'All';
+            const sizeF = document.getElementById('fitSizeFilter')?.value || 'All';
+
+            let data = db.receiving.filter(r => isReceivingActive(r.plNo) && r.category === 'Fitting');
+            if (doc   !== 'All') data = data.filter(r => r.docNo === doc);
+            if (pkg   !== 'All') data = data.filter(r => r.plNo  === pkg);
+            if (itemF !== 'All') data = data.filter(r => window.extractItemFromMatCode(r.matCode) === itemF);
+            if (sizeF !== 'All') data = data.filter(r => window.extractSizeFromMatCode(r.matCode) === sizeF);
+            if (item)            data = data.filter(r => r.desc.toUpperCase().includes(item));
+
+            const rows = data.map(r => ({
+                'DOC NO':           r.docNo    || '-',
+                'PKG NO':           r.plNo     || '-',
+                'Mat Code':         r.matCode  || '-',
+                'Category':         r.category || '-',
+                'Full Description': r.desc     || '-',
+                'Unit':             r.unit     || 'EA',
+                'Qty':              r.qty      || 0,
+            }));
+            const ws = XLSX.utils.json_to_sheet(rows);
+            ws['!cols'] = [16, 26, 24, 14, 55, 8, 10].map(w => ({ wch: w }));
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Receiving');
+            const today = new Date().toISOString().split('T')[0];
+            XLSX.writeFile(wb, `Fitting_Receiving_Export_${today}.xlsx`);
         });
     }
 
@@ -3840,8 +3960,9 @@ window.showReceivingDetail = function(matCode) {
 
 
 // ── Shipping / Custom Clearance ────────────────────────────────────────
-let _shippingData        = null;
-let _spoolShippingCache  = null;
+let _shippingData          = null;
+let _spoolShippingCache    = null;
+let _supportShippingCache  = null;
 let _shippingFilteredRows = [];
 let _shippingPage        = 1;
 let _plUpdatesCache   = {};
@@ -3920,6 +4041,17 @@ async function initShipping() {
             _spoolShippingCache = spoolRows || [];
         }
 
+        // support_packing_list: 캐시 있으면 재사용, 없을 때만 조회
+        if (!_supportShippingCache && supabaseClient) {
+            const { data: suppRows } = await supabaseClient
+                .from('support_packing_list')
+                .select('pkg,package_no,description,qty,unit,block_info')
+                .order('pkg', { ascending: true })
+                .order('package_no', { ascending: true })
+                .limit(500);
+            _supportShippingCache = suppRows || [];
+        }
+
         const spoolShipping = [];
         if (_spoolShippingCache) {
             const spoolSeen = new Set();
@@ -3972,6 +4104,29 @@ async function initShipping() {
                 _shippingData.push(s);
             }
         });
+
+        // support_packing_list 병합 (중복 PKG NO 제외)
+        if (_supportShippingCache) {
+            _supportShippingCache.forEach(s => {
+                if (!pkgSeen.has(s.package_no)) {
+                    pkgSeen.add(s.package_no);
+                    _shippingData.push({
+                        packing:      s.pkg || (s.package_no || '').match(/^(PGU-DE-\d+)/)?.[1] || '',
+                        pkg_no:       s.package_no,
+                        description:  s.description || 'Support',
+                        qty:          s.qty || 1,
+                        unit:         s.unit || 'EA',
+                        purpose:      'Permanent',
+                        status:       '',
+                        on_site:      '',
+                        custom_clear: '',
+                        issue_date:   '',
+                        remark:       s.block_info || '',
+                    });
+                }
+            });
+        }
+
         _shippingData.sort((a, b) => a.packing.localeCompare(b.packing) || a.pkg_no.localeCompare(b.pkg_no));
 
         buildShippingGroupFilter(_shippingData);
@@ -3986,6 +4141,7 @@ async function initShipping() {
 function buildShippingGroupFilter(data) {
     const groups = [...new Set(data.map(r => r.packing))].sort();
     const sel = document.getElementById('shippingGroupFilter');
+    if (!sel) return;
     sel.innerHTML = '<option value="">All</option>';
     groups.forEach(g => {
         const opt = document.createElement('option');
@@ -4006,9 +4162,9 @@ function buildShippingGroupFilter(data) {
 }
 
 function getShippingFiltered() {
-    const group  = document.getElementById('shippingGroupFilter').value;
-    const pkgF   = document.getElementById('shippingPkgFilter')?.value || '';
-    const search = document.getElementById('shippingSearch').value.trim().toLowerCase();
+    const group  = document.getElementById('shippingGroupFilter')?.value || '';
+    const pkgF   = document.getElementById('shippingPkgFilter')?.value  || '';
+    const search = (document.getElementById('shippingSearch')?.value || '').trim().toLowerCase();
     const statusF = document.getElementById('shippingStatusFilter')?.value || '';
     const customF = document.getElementById('shippingCustomFilter')?.value || '';
     return (_shippingData || [])
@@ -4126,6 +4282,8 @@ function renderShippingTable(rows) {
         return;
     }
 
+    const _supportPkgSet = new Set((_supportShippingCache || []).map(s => s.package_no));
+
     let prevPacking = null;
     let prevPkg = null;
     tbody.innerHTML = merged.map(r => {
@@ -4163,9 +4321,14 @@ function renderShippingTable(rows) {
             ? `<td style="text-align:center;padding:3px;"><select class="pl-purpose-pkg-sel" style="${PL_INPUT_CSS}color:#1565c0;font-weight:600;" data-pkg="${pkg}">${purposeOpts}</select></td>`
             : `<td style="${roStyle}" data-pkg-ro="${pkg}" data-field-ro="purpose">${r.purpose || '—'}</td>`;
 
+        const isSupport = _supportPkgSet.has(r.pkg_no);
+        const pkgNoCell = isSupport
+            ? `<td style="text-align:center;font-weight:700;font-size:11px;color:#1565c0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.pkg_no}">${r.pkg_no}</td>`
+            : `<td style="text-align:center;font-weight:700;font-size:11px;color:#1565c0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;" title="${r.pkg_no}" onclick="openPackingListModal('${r.pkg_no}','${r.packing}')">${r.pkg_no}</td>`;
+
         return `<tr${newGroup ? ' style="background:#f8fafc;"' : ''}>
             ${packingCell}
-            <td style="text-align:center;font-weight:700;font-size:11px;color:#1565c0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.pkg_no}">${r.pkg_no}</td>
+            ${pkgNoCell}
             <td style="text-align:center;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.description}">${r.description}</td>
             <td style="text-align:center;font-weight:600;">${qtyDisplay}</td>
             <td style="text-align:center;color:#555;">${r.unit || '—'}</td>
