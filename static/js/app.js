@@ -909,6 +909,7 @@ function updateCategoryCharts() {
 function initStockFilters() {
     const stockCatEl  = document.getElementById('stockCatFilter');
     const stockItemEl = document.getElementById('stockItemFilter');
+    const stockMatlEl = document.getElementById('stockMatlFilter');
     const stockSizeEl = document.getElementById('stockSizeFilter');
 
     // 선택값 보존 (탭 재진입 시 초기화 방지)
@@ -916,6 +917,7 @@ function initStockFilters() {
     const savedPkg  = document.getElementById('stockPkgFilter')?.value  || 'All';
     const savedCat  = stockCatEl?.value  || 'All';
     const savedItem = stockItemEl?.value || 'All';
+    const savedMatl = stockMatlEl?.value || 'All';
     const savedSize = stockSizeEl?.value || 'All';
 
     const docs  = [...new Set(db.receiving.map(r => r.docNo).filter(Boolean))].sort();
@@ -948,20 +950,28 @@ function initStockFilters() {
         const items = stockGetItemsForCat(cat);
         stockItemEl.innerHTML = '<option value="All">All Items</option>' + items.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
     }
+    function refreshStockMatlOptions(cat) {
+        if (!stockMatlEl) return;
+        const src = cat === 'All' ? db.receiving : db.receiving.filter(r => (r.category || '') === cat);
+        const matls = [...new Set(src.map(r => (r.matCode || '').split('-')[1]).filter(Boolean))].sort();
+        stockMatlEl.innerHTML = '<option value="All">All Materials</option>' + matls.map(m => `<option value="${m}">${m}</option>`).join('');
+    }
     function refreshStockSizeOptions(cat, item) {
         if (!stockSizeEl) return;
         const sizes = stockGetSizesForCatItem(cat, item);
         stockSizeEl.innerHTML = '<option value="All">All Sizes</option>' + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
     }
 
-    // 카테고리 → 아이템 → 사이즈 순서로 재빌드 후 저장값 복원
+    // 카테고리 → 아이템 → Material → 사이즈 순서로 재빌드 후 저장값 복원
     if (stockCatEl && [...stockCatEl.options].some(o => o.value === savedCat)) stockCatEl.value = savedCat;
     refreshStockItemOptions(stockCatEl?.value || 'All');
+    refreshStockMatlOptions(stockCatEl?.value || 'All');
     const docEl = document.getElementById('stockDocFilter');
     const pkgEl = document.getElementById('stockPkgFilter');
     if (docEl && [...docEl.options].some(o => o.value === savedDoc)) docEl.value = savedDoc;
     if (pkgEl && [...pkgEl.options].some(o => o.value === savedPkg)) pkgEl.value = savedPkg;
     if (stockItemEl && [...stockItemEl.options].some(o => o.value === savedItem)) stockItemEl.value = savedItem;
+    if (stockMatlEl && [...stockMatlEl.options].some(o => o.value === savedMatl)) stockMatlEl.value = savedMatl;
     refreshStockSizeOptions(stockCatEl?.value || 'All', stockItemEl?.value || 'All');
     if (stockSizeEl && [...stockSizeEl.options].some(o => o.value === savedSize)) stockSizeEl.value = savedSize;
 
@@ -971,6 +981,7 @@ function initStockFilters() {
         if (stockCatEl) {
             stockCatEl.addEventListener('change', () => {
                 refreshStockItemOptions(stockCatEl.value);
+                refreshStockMatlOptions(stockCatEl.value);
                 refreshStockSizeOptions(stockCatEl.value, 'All');
             });
         }
@@ -991,6 +1002,7 @@ function initStockFilters() {
         });
         if (stockCatEl) { stockCatEl.value = 'All'; stockCatEl.dispatchEvent(new Event('change')); }
         if (stockItemEl) stockItemEl.value = 'All';
+        if (stockMatlEl) stockMatlEl.value = 'All';
         if (stockSizeEl) stockSizeEl.value = 'All';
         renderActiveStockTab();
     });
@@ -1071,6 +1083,7 @@ function renderStockTable(forcedCats, hideMatCode) {
     const fPkg     = document.getElementById('stockPkgFilter')  ?.value || 'All';
     const fCat     = document.getElementById('stockCatFilter')  ?.value || 'All';
     const fItem    = document.getElementById('stockItemFilter')  ?.value || 'All';
+    const fMatl    = document.getElementById('stockMatlFilter')  ?.value || 'All';
     const fSize    = document.getElementById('stockSizeFilter')  ?.value || 'All';
 
     // Pre-build maps
@@ -1113,10 +1126,12 @@ function renderStockTable(forcedCats, hideMatCode) {
         const mData = masterMap[matCode] || {};
         let cat  = mData.category && mData.category !== '-' ? mData.category : window.getCategory(mData.itemDesc, matCode);
         const item = window.extractItemFromMatCode(matCode);
+        const matl = (matCode.split('-')[1]) || '-';
         const fullDesc = db.bomDesc[matCode] || recDescMap[matCode] || '-';
         const size = sizeOverride || window.getEffectiveSize(matCode, fullDesc, mData.size1);
         if (!Array.isArray(forcedCats) && fCat !== 'All' && cat !== fCat) return false;
         if (fItem !== 'All' && item !== fItem)  return false;
+        if (fMatl !== 'All' && matl !== fMatl)  return false;
         if (fSize !== 'All' && size !== fSize)  return false;
         if (search && !matCode.toLowerCase().includes(search) &&
             !(mData.itemDesc || '').toLowerCase().includes(search)) return false;
@@ -1145,6 +1160,7 @@ function renderStockTable(forcedCats, hideMatCode) {
             if (tagItem) cat = tagItem.category;
         }
         const item    = mData.itemDesc || '-';
+        const matl    = (matCode.split('-')[1]) || '-';
         const fullDesc = db.bomDesc[matCode] || recDescMap[matCode] || '-';
         const size    = sizeOverride || window.getEffectiveSize(matCode, fullDesc, mData.size1);
         const unitStr = bomLookup[matCode]?.unit || 'EA';
@@ -1157,8 +1173,8 @@ function renderStockTable(forcedCats, hideMatCode) {
             <td>${pkgs}</td>
             <td style="${hideMatCode ? 'padding:0;width:0;overflow:hidden;' : 'font-weight:600;color:var(--color-primary);'}">${hideMatCode ? '' : matCode}</td>
             <td><strong>${cat}</strong></td>
-            <td>${fullDesc}</td>
             <td>${item}</td>
+            <td>${matl}</td>
             <td>${size}</td>
             <td>${unitStr}</td>
             <td style="text-align:center;">${rec.toFixed(2)}</td>
@@ -1181,8 +1197,8 @@ function _setStockMatCodeCol(visible) {
     if (!cols.length) return;
     // null = auto(width 미지정), 0 = 0px(완전 숨김), 숫자 = 해당 px
     const W = visible
-        ? [90,  150, 140,  70, null,  95, 55, 50, 75, 70, 75, 75]
-        : [ 90, 165,   0,  75, null,  85, 65, 55, 80, 75, 80, 85];
+        ? [90,  150, 140,  70,  95, 70, 55, 50, 75, 70, 75, 75]
+        : [ 90, 165,   0,  75, 110, 80, 65, 55, 80, 75, 80, 85];
     cols.forEach((c, i) => { c.style.width = W[i] === null ? '' : W[i] + 'px'; });
     // display:none 대신 width:0+padding:0으로 처리 (헤더/데이터 정렬 유지)
     if (ths[2]) {

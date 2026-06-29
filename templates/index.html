@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EPC Piping Material Management System</title>
     <!-- CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260629n">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260629o">
     <!-- FontAwesome for Icons (local) -->
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/css/fa-all.min.css') }}">
     <!-- Google Fonts: Inter (local) -->
@@ -1152,6 +1152,10 @@
                                  <label>Item</label>
                                  <select id="stockItemFilter" class="form-control"><option value="All">All Items</option></select>
                              </div>
+                             <div class="form-group" style="flex: 1; min-width: 110px;">
+                                 <label>Material</label>
+                                 <select id="stockMatlFilter" class="form-control"><option value="All">All Materials</option></select>
+                             </div>
                              <div class="form-group" style="flex: 1; min-width: 100px;">
                                  <label>Size</label>
                                  <select id="stockSizeFilter" class="form-control"><option value="All">All Sizes</option></select>
@@ -1190,8 +1194,8 @@
                                  <col style="width:150px;">
                                  <col style="width:140px;">
                                  <col style="width:70px;">
-                                 <col>
                                  <col style="width:95px;">
+                                 <col style="width:70px;">
                                  <col style="width:55px;">
                                  <col style="width:50px;">
                                  <col style="width:75px;">
@@ -1205,8 +1209,8 @@
                                      <th>PKG NO</th>
                                      <th>MatCode</th>
                                      <th>Category</th>
-                                     <th>Full Description</th>
                                      <th>Item</th>
+                                     <th>Material</th>
                                      <th>Size</th>
                                      <th>Unit</th>
                                      <th style="white-space:normal;text-align:center;">Total<br>Received</th>
@@ -1806,7 +1810,7 @@
     <script src="{{ url_for('static', filename='vendor/js/jquery.min.js') }}"></script>
     <script src="{{ url_for('static', filename='vendor/js/jquery.dataTables.min.js') }}"></script>
     <!-- Preloaded backend data (Removed large data.js) -->
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260629n"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260629o"></script>
     <script>
         (function () {
             var BASE_W = 1920, BASE_H = 1080;
