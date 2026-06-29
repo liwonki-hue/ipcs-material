@@ -475,23 +475,39 @@ function initNavigation() {
     const navItems = document.querySelectorAll('.sidebar .nav-item');
     const sections = document.querySelectorAll('.main-content .view-section');
 
+    const REC_TAB_MAP = {
+        rec_bulk_piping:    { sec: 'bulk', tab: 'piping' },
+        rec_bulk_others:    { sec: 'bulk', tab: 'others' },
+        rec_tag_spool:      { sec: 'tag',  tab: 'spool' },
+        rec_tag_valve:      { sec: 'tag',  tab: 'valve' },
+        rec_tag_speciality: { sec: 'tag',  tab: 'speciality' },
+        rec_tag_support:    { sec: 'tag',  tab: 'support' },
+    };
+
     window.showSection = function(targetId) {
         navItems.forEach(n => n.classList.remove('active'));
         sections.forEach(s => s.classList.remove('active'));
-        
+
         const navItem = Array.from(navItems).find(n => n.getAttribute('data-target') === targetId);
         if (navItem) navItem.classList.add('active');
-        
+
+        if (REC_TAB_MAP[targetId]) {
+            document.getElementById('receiving').classList.add('active');
+            initReceivingTabs();
+            const { sec, tab } = REC_TAB_MAP[targetId];
+            switchReceivingTab(sec, tab);
+            return;
+        }
+
         const section = document.getElementById(targetId);
         if (section) section.classList.add('active');
-        
+
         if(targetId === 'dashboard') updateDashboard();
         if(targetId === 'issue') renderIssueOptions();
         if(targetId === 'piping_bom') renderBomTable();
         if(targetId === 'receiving') { initReceivingTabs(); renderActiveReceivingTab(); }
         if(targetId === 'matcode_master') renderMatCodeMaster();
         if(targetId === 'stock_ledger') { initStockFilters(); initStockTabs(); }
-        if(targetId === 'mr_history') renderMrHistory();
         if(targetId === 'shipping') initShipping();
 
         // Material Shortage 탭: 진입 시 즉시 싱크 + 폴링 시작, 이탈 시 정리
@@ -586,6 +602,45 @@ function renderIsoTable(data, dashStage) {
     renderIsoPage(1);
 }
 
+function renderBulkProgressBars(categories) {
+    const container = document.getElementById('bulkProgressChart');
+    if (!container) return;
+
+    container.innerHTML = categories.map(({ label, unit, bom, rec }) => {
+        const pct      = bom > 0 ? (rec / bom) * 100 : 0;
+        const surplus  = rec > bom ? rec - bom : 0;
+        const shortage = rec < bom ? bom - rec : 0;
+        const fillPct  = Math.min(pct, 100);
+        const barColor = pct >= 90 ? '#2e7d32' : pct >= 70 ? '#e65100' : '#c62828';
+        const pctColor = pct >= 90 ? '#2e7d32' : pct >= 70 ? '#e65100' : '#c62828';
+
+        const diffHtml = surplus > 0
+            ? `<span style="color:#e65100;font-weight:700;">Surplus +${Math.round(surplus).toLocaleString()} ${unit}</span>`
+            : shortage > 0
+            ? `<span style="color:#c62828;font-weight:700;">Shortage -${Math.round(shortage).toLocaleString()} ${unit}</span>`
+            : `<span style="color:#2e7d32;font-weight:700;">✓ Complete</span>`;
+
+        return `
+        <div style="margin-bottom:18px;">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">
+                <span style="font-size:13px;font-weight:700;color:#0A2540;">
+                    ${label} <span style="font-size:11px;font-weight:400;color:#888;">(${unit})</span>
+                </span>
+                <span style="font-size:14px;font-weight:800;color:${pctColor};">${pct.toFixed(1)}%</span>
+            </div>
+            <div style="position:relative;height:24px;background:#e8edf5;border-radius:5px;overflow:hidden;">
+                <div style="position:absolute;left:0;top:0;height:100%;width:${fillPct.toFixed(1)}%;background:${barColor};border-radius:5px;"></div>
+                ${surplus > 0 ? `<div style="position:absolute;right:0;top:0;height:100%;width:6px;background:#e65100;"></div>` : ''}
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:11px;color:#555;">
+                <span>BOM <b style="color:#0A2540;">${Math.round(bom).toLocaleString()} ${unit}</b></span>
+                <span>Received <b style="color:#1565c0;">${Math.round(rec).toLocaleString()} ${unit}</b></span>
+                ${diffHtml}
+            </div>
+        </div>`;
+    }).join('');
+}
+
 function updateDashboard() {
     if (!supabaseClient) return;
 
@@ -633,30 +688,6 @@ function updateDashboard() {
             return q;
         })()
     ]).then(([summaryRes, listRes]) => {
-        // --- 1. Update top KPI cards ---
-        if (summaryRes.error) console.error('v_project_summary error:', summaryRes.error);
-        const summary = Array.isArray(summaryRes.data) ? summaryRes.data[0] : summaryRes.data;
-        if (summary) {
-            const totalBom = parseFloat(summary.global_bom_qty) || 0;
-            // Received KPI: On-Site 도착 패키지 + Valve/Speciality는 Tag 항목만 집계
-            const totalRec = db.receiving
-                .filter(r => (r.purpose === 'Permanent' || r.purpose === '') && isReceivingActive(r.plNo) && isKpiReceiving(r))
-                .reduce((s, r) => s + (r.qty || 0), 0);
-            const totalIss = parseFloat(summary.global_issued_qty) || 0;
-            const prog = totalBom > 0 ? (totalRec / totalBom * 100).toFixed(1) : 0;
-            const kpiMap = {
-                'kpi-progress': `${prog}%`,
-                'kpi-bom': `${totalBom.toLocaleString()} <span class="unit">EA</span>`,
-                'kpi-received': `${totalRec.toLocaleString()} <span class="unit">EA</span>`,
-                'kpi-issued': `${totalIss.toLocaleString()} <span class="unit">EA</span>`,
-                'kpi-stock': `${Math.max(0, totalRec - totalIss).toLocaleString()} <span class="unit">EA</span>`
-            };
-            for (const [id, val] of Object.entries(kpiMap)) {
-                const el = document.getElementById(id);
-                if (el) el.innerHTML = val;
-            }
-        }
-
         // Always run these regardless of v_iso_stage_status result
         if (typeof updateExpediteAlerts === 'function') updateExpediteAlerts();
         if (typeof updateCategoryCharts === 'function') updateCategoryCharts();
@@ -783,12 +814,14 @@ function updateExpediteAlerts() {
 function updateCategoryCharts() {
     if (!supabaseClient) return;
 
-    // Fetch category summary + Valve/Speciality tag-based receiving + Spool counts
+    // Fetch category summary + Valve/Speciality tag-based receiving + Spool counts + Support
     Promise.all([
         supabaseClient.from('v_category_readiness').select('*'),
         supabaseClient.from('receiving').select('category, qty, tag, full_description').not('tag', 'is', null).in('category', ['Valve', 'Speciality']).limit(10000),
-        supabaseClient.from('spool_receiving').select('id', { count: 'exact', head: true })
-    ]).then(([catRes, tagRecRes, spoolRecRes]) => {
+        supabaseClient.from('spool_receiving').select('id', { count: 'exact', head: true }),
+        supabaseClient.from('support_receiving').select('qty, package_no').limit(50000),
+        supabaseClient.from('pl_updates').select('pkg_no, status').limit(10000)
+    ]).then(([catRes, tagRecRes, spoolRecRes, suppRecRes, plUpdRes]) => {
         const data = catRes.data;
         if (catRes.error || !data) {
             console.error("❌ Chart Sync Error:", catRes.error);
@@ -833,67 +866,39 @@ function updateCategoryCharts() {
 
         const recDataArr = catLabels.map(l => activeRecByCategory[l] || 0);
 
-        // Update KPI cards with unit-aware breakdown (Pipe=M, Others=EA)
-        const pipeData  = data.find(d => d.category === 'Pipe');
-        const pipeBom   = pipeData ? parseFloat(pipeData.total_bom) : 0;
-        const pipeRec   = activeRecByCategory['Pipe'] || 0;
-        const otherBom  = bomDataArr.slice(1).reduce((s, v) => s + v, 0) + spoolBomCount;
-        const otherRec  = catLabels.slice(1).reduce((s, l) => s + (activeRecByCategory[l] || 0), 0) + spoolRecCount;
-
-        // Issued breakdown by category using matCodeMaster lookup
-        const mMap = {};
-        db.matCodeMaster.forEach(m => { mMap[m.matCode] = m; });
-        let pipeIss = 0, otherIss = 0;
-        db.issued.forEach(i => {
-            const master = mMap[i.matCode];
-            const cat = master ? master.category : window.getCategory('', i.matCode);
-            if (cat === 'Pipe') pipeIss += i.qty;
-            else otherIss += i.qty;
-        });
-        const pipeStk = Math.max(0, pipeRec - pipeIss);
-        const othStk  = Math.max(0, otherRec - otherIss);
-
-        // Helper: render KPI card (big number = total, subtitle = breakdown)
-        function setKpi(valueId, subId, pipeVal, otherVal) {
-            const total = Math.round(pipeVal + otherVal);
-            const elVal = document.getElementById(valueId);
-            if (elVal) elVal.innerHTML = `${total.toLocaleString()} <span class="unit">M/EA</span>`;
+        // Category KPI cards — % progress per category
+        function setCatKpi(pctId, subId, bom, rec, unit) {
+            const pct = bom > 0 ? (rec / bom * 100) : 0;
+            const color = pct >= 90 ? '#2e7d32' : pct >= 70 ? '#e65100' : '#c62828';
+            const elPct = document.getElementById(pctId);
+            if (elPct) { elPct.textContent = pct.toFixed(1) + '%'; elPct.style.color = color; }
             const elSub = document.getElementById(subId);
-            if (elSub) elSub.textContent = `Pipe: ${Math.round(pipeVal).toLocaleString()} M | Others: ${Math.round(otherVal).toLocaleString()} EA`;
+            if (elSub) elSub.textContent = `${Math.round(rec).toLocaleString()} / ${Math.round(bom).toLocaleString()} ${unit}`;
         }
+        setCatKpi('kpi-pipe-pct', 'kpi-pipe-sub', bomDataArr[0], recDataArr[0], 'M');
+        setCatKpi('kpi-fit-pct',  'kpi-fit-sub',  bomDataArr[1], recDataArr[1], 'EA');
+        setCatKpi('kpi-oth-pct',  'kpi-oth-sub',  bomDataArr[5], recDataArr[5], 'EA');
 
-        setKpi('kpi-bom',      'kpi-bom-sub',      pipeBom,  otherBom);
-        setKpi('kpi-received',  'kpi-received-pct', pipeRec,  otherRec);
-        setKpi('kpi-issued',    'kpi-issued-pct',   pipeIss,  otherIss);
-        setKpi('kpi-stock',     'kpi-stock-sub',    pipeStk,  othStk);
+        // Support: BOM = support_receiving 전체 qty 합계
+        //          Received = On-Site PKG에 속한 qty 합계
+        const onSitePkgs = new Set(
+            (plUpdRes.data || []).filter(r => r.status === 'On-Site').map(r => r.pkg_no)
+        );
+        let supportBom = 0, supportRec = 0;
+        (suppRecRes.data || []).forEach(r => {
+            const qty = parseFloat(r.qty || 0);
+            supportBom += qty;
+            if (onSitePkgs.has(r.package_no)) supportRec += qty;
+        });
+        setCatKpi('kpi-sup-pct', 'kpi-sup-sub', supportBom, supportRec, 'EA');
 
-        // 1. Progress Bar Chart
-        if (window.myChart) window.myChart.destroy();
-        const ctxBar = document.getElementById('progressChart');
-        if (ctxBar && typeof Chart !== 'undefined') {
-            // Spool을 Support 앞(index 4) 위치에 삽입
-            const chartLabels = catLabels.map(l => l === 'Pipe' ? 'Pipe (M)' : `${l} (EA)`);
-            chartLabels.splice(4, 0, 'Spool (EA)');
-            const chartBom = [...bomDataArr];
-            chartBom.splice(4, 0, spoolBomCount);
-            const chartRec = [...recDataArr];
-            chartRec.splice(4, 0, spoolRecCount);
-            window.myChart = new Chart(ctxBar, {
-                type: 'bar',
-                data: {
-                    labels: chartLabels,
-                    datasets: [
-                        { label: 'Total BOM Req', data: chartBom, backgroundColor: 'rgba(2, 136, 209, 0.7)' },
-                        { label: 'Total Received', data: chartRec, backgroundColor: 'rgba(46, 125, 50, 0.7)' }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: { y: { beginAtZero: true, title: { display: true, text: 'Qty (Pipe=M, Others=EA)', font: { size: 11 } } } }
-                }
-            });
-        }
+        // Bulk Material Progress Bars (Pipe / Fitting / Others / Support)
+        renderBulkProgressBars([
+            { label: 'Pipe',    unit: 'M',  bom: bomDataArr[0], rec: recDataArr[0] },
+            { label: 'Fitting', unit: 'EA', bom: bomDataArr[1], rec: recDataArr[1] },
+            { label: 'Others',  unit: 'EA', bom: bomDataArr[5], rec: recDataArr[5] },
+            { label: 'Support', unit: 'EA', bom: supportBom,    rec: supportRec    },
+        ]);
 
     });
 }
@@ -996,22 +1001,17 @@ function initStockFilters() {
             const { recMap, docMap, pkgMap } = buildRecvMaps(r => isReceivingActive(r.plNo) && isKpiReceiving(r));
             const recDescMap = {};
             db.receiving.forEach(r => { if (r.matCode && !recDescMap[r.matCode]) recDescMap[r.matCode] = r.desc; });
-            const issuedPkgNos = new Set(Object.entries(_plUpdatesCache).filter(([,v]) => v.issue_date).map(([k]) => k));
             const issMap = {};
-            db.receiving.filter(r => issuedPkgNos.has(r.plNo)).forEach(r => {
-                const tagInfo = db.bomTagMap[(r.tag || '').toUpperCase()];
-                const effMat = r.matCode || (tagInfo ? tagInfo.matCode : '');
-                if (!effMat) return;
-                const size = window.getSizeFromTagInfo(tagInfo);
-                const key = (size && size !== '-') ? `${effMat}__${size}` : effMat;
-                issMap[key] = (issMap[key] || 0) + r.qty;
+            db.issued.forEach(i => {
+                if (!i.matCode) return;
+                issMap[i.matCode] = (issMap[i.matCode] || 0) + i.qty;
             });
-            const codes = [...new Set([...Object.keys(recMap), ...Object.keys(issMap)])].sort();
+            const codes = [...new Set(Object.keys(recMap))].sort();
             const rows = codes.map(key => {
                 const { matCode, sizeOverride } = window.parseStockKey(key);
                 const m   = masterMap[matCode] || {};
                 const rec = recMap[key] || 0;
-                const iss = issMap[key] || 0;
+                const iss = issMap[matCode] || 0;
                 const fullDesc = db.bomDesc[matCode] || recDescMap[matCode] || '-';
                 const size = sizeOverride || window.getEffectiveSize(matCode, fullDesc, m.size1);
                 return {
@@ -1085,25 +1085,20 @@ function renderStockTable(forcedCats, hideMatCode) {
         (!Array.isArray(forcedCats) || forcedCats.includes(r.category))
     );
 
-    // Aggregate Issued per MatCode — issue_date가 설정된 Package의 입고 수량 기준
-    const issuedPkgNos = new Set(Object.entries(_plUpdatesCache).filter(([,v]) => v.issue_date).map(([k]) => k));
+    // Aggregate Issued per MatCode — db.issued 실제 출고 기록 기준 (matCode 단위)
     const issMap = {};
-    db.receiving.filter(r => issuedPkgNos.has(r.plNo) && (!Array.isArray(forcedCats) || forcedCats.includes(r.category))).forEach(r => {
-        const tagInfo = db.bomTagMap[(r.tag || '').toUpperCase()];
-        const effMat = r.matCode || (tagInfo ? tagInfo.matCode : '');
-        if (!effMat) return;
-        const size = window.getSizeFromTagInfo(tagInfo);
-        const key = (size && size !== '-') ? `${effMat}__${size}` : effMat;
-        issMap[key] = (issMap[key] || 0) + r.qty;
+    db.issued.forEach(i => {
+        if (!i.matCode) return;
+        const mData = masterMap[i.matCode] || {};
+        const cat = mData.category && mData.category !== '-'
+            ? mData.category
+            : window.getCategory(mData.itemDesc, i.matCode);
+        if (Array.isArray(forcedCats) && !forcedCats.includes(cat)) return;
+        issMap[i.matCode] = (issMap[i.matCode] || 0) + i.qty;
     });
 
-    // If DOC/PKG filter active, only show matCodes that appear in recMap
-    let activeCodes;
-    if (fDoc !== 'All' || fPkg !== 'All') {
-        activeCodes = [...new Set(Object.keys(recMap))].sort();
-    } else {
-        activeCodes = [...new Set([...Object.keys(recMap), ...Object.keys(issMap)])].sort();
-    }
+    // activeCodes: recMap 기준 (issued만 있는 항목은 재고 0 → 표시 불필요)
+    const activeCodes = [...new Set(Object.keys(recMap))].sort();
 
     // pre-build receiving desc fallback map (O(n) 1회)
     const recDescMap = {};
@@ -1137,7 +1132,7 @@ function renderStockTable(forcedCats, hideMatCode) {
     const stockRows = display.map(key => {
         const { matCode, sizeOverride } = window.parseStockKey(key);
         let rec   = recMap[key] || 0;
-        let iss   = issMap[key] || 0;
+        let iss   = issMap[matCode] || 0;  // matCode 기준 (복합키 제거)
         let stock = Math.max(0, rec - iss);
 
         const mData = masterMap[matCode] || { category: '-', itemDesc: '-', size1: '-' };
@@ -2040,6 +2035,35 @@ function renderActiveReceivingTab() {
         else if (_recActiveTagTab === 'speciality') renderTagSpecialityTable();
         else if (_recActiveTagTab === 'support') renderSupportReceivingTable();
     }
+}
+
+function switchReceivingTab(sec, tab) {
+    _recActiveSec = sec;
+    if (sec === 'bulk') _recActiveBulkTab = tab;
+    else _recActiveTagTab = tab;
+
+    const bulkEl = document.getElementById('recSecBulk');
+    const tagEl  = document.getElementById('recSecTag');
+    if (bulkEl) bulkEl.style.display = sec === 'bulk' ? '' : 'none';
+    if (tagEl)  tagEl.style.display  = sec === 'tag'  ? '' : 'none';
+
+    if (sec === 'bulk') {
+        const pip = document.getElementById('recTabPiping');
+        const oth = document.getElementById('recTabOthers');
+        if (pip) pip.style.display = tab === 'piping' ? '' : 'none';
+        if (oth) oth.style.display = tab === 'others' ? '' : 'none';
+    } else {
+        const sp = document.getElementById('recTagSpool');
+        const vl = document.getElementById('recTagValve');
+        const sl = document.getElementById('recTagSpeciality');
+        const su = document.getElementById('recTagSupport');
+        if (sp) sp.style.display = tab === 'spool'      ? '' : 'none';
+        if (vl) vl.style.display = tab === 'valve'      ? '' : 'none';
+        if (sl) sl.style.display = tab === 'speciality' ? '' : 'none';
+        if (su) su.style.display = tab === 'support'    ? '' : 'none';
+    }
+
+    renderActiveReceivingTab();
 }
 
 let _recTabsInited = false;

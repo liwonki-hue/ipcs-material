@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EPC Piping Material Management System</title>
     <!-- CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260627a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260628b">
     <!-- FontAwesome for Icons (local) -->
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/css/fa-all.min.css') }}">
     <!-- Google Fonts: Inter (local) -->
@@ -42,10 +42,18 @@
                  <div class="nav-item" data-target="matcode_master"><i class="fas fa-barcode"></i> MatCode Master</div>
                  <div class="nav-item" data-target="piping_bom"><i class="fas fa-layer-group"></i> Piping BOM</div>
 
-                 <div class="section-title">Operations</div>
-                 <div class="nav-item" data-target="receiving"><i class="fas fa-truck"></i> Material Receiving</div>
+                 <div class="section-title">Bulk Item (Receiving)</div>
+                 <div class="nav-item" data-target="rec_bulk_piping"><i class="fas fa-stream"></i> Piping</div>
+                 <div class="nav-item" data-target="rec_bulk_others"><i class="fas fa-bolt"></i> Others</div>
+                 <div class="nav-item" data-target="rec_tag_support"><i class="fas fa-tools"></i> Support</div>
+
+                 <div class="section-title">TAG Item (Receiving)</div>
+                 <div class="nav-item" data-target="rec_tag_spool"><i class="fas fa-circle-notch"></i> Spool</div>
+                 <div class="nav-item" data-target="rec_tag_valve"><i class="fas fa-faucet"></i> Valve</div>
+                 <div class="nav-item" data-target="rec_tag_speciality"><i class="fas fa-star"></i> Speciality</div>
+
+                 <div class="section-title">Finding</div>
                  <div class="nav-item" data-target="issue"><i class="fas fa-file-signature"></i> Material Finding</div>
-                 <div class="nav-item" data-target="mr_history"><i class="fas fa-history"></i> MR History</div>
 
                  <div class="section-title">Reports</div>
                  <div class="nav-item" data-target="stock_ledger"><i class="fas fa-warehouse"></i> Material Stock</div>
@@ -179,57 +187,55 @@
                      </div>
                  </div>
                  
-                 <!-- KPI Cards -->
-                 <div class="kpi-grid">
-                     <div class="kpi-card highlight" style="background-color: #0A2540; color: white;">
-                         <div class="kpi-info" style="color:white;">
-                             <div class="kpi-title" style="color:rgba(255,255,255,0.8);">Overall Receiving Progress</div>
-                             <div class="kpi-value" id="kpi-progress">0%</div>
-                             <div class="kpi-desc" style="color:rgba(255,255,255,0.7);">Total BOM vs Received</div>
+                 <!-- KPI Cards — Category % Progress -->
+                 <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
+                     <div class="kpi-card">
+                         <div class="kpi-info" style="flex:1;">
+                             <div class="kpi-title" style="display:flex;align-items:center;gap:6px;">
+                                 <i class="fas fa-stream" style="color:#1565c0;font-size:11px;"></i> Pipe
+                                 <span style="font-size:10px;color:#aaa;font-weight:400;">(M)</span>
+                             </div>
+                             <div class="kpi-value" id="kpi-pipe-pct" style="font-size:26px;">—</div>
+                             <div style="font-size:10px;color:#888;margin-top:2px;">Received / BOM</div>
+                             <div class="kpi-desc" id="kpi-pipe-sub" style="margin-top:4px;">— M / — M</div>
                          </div>
-                         <div class="kpi-icon" style="background-color:rgba(255,255,255,0.1); color:white;">
-                             <i class="fas fa-chart-line"></i>
-                         </div>
+                         <div class="kpi-icon"><i class="fas fa-stream"></i></div>
                      </div>
                      <div class="kpi-card">
-                         <div class="kpi-info">
-                             <div class="kpi-title">Total BOM Requirements</div>
-                             <div class="kpi-value" id="kpi-bom">0 <span class="unit">EA</span></div>
-                             <div class="kpi-desc" id="kpi-bom-sub">Total materials in engineering design</div>
+                         <div class="kpi-info" style="flex:1;">
+                             <div class="kpi-title" style="display:flex;align-items:center;gap:6px;">
+                                 <i class="fas fa-puzzle-piece" style="color:#6a1b9a;font-size:11px;"></i> Fitting
+                                 <span style="font-size:10px;color:#aaa;font-weight:400;">(EA)</span>
+                             </div>
+                             <div class="kpi-value" id="kpi-fit-pct" style="font-size:26px;">—</div>
+                             <div style="font-size:10px;color:#888;margin-top:2px;">Received / BOM</div>
+                             <div class="kpi-desc" id="kpi-fit-sub" style="margin-top:4px;">— EA / — EA</div>
                          </div>
-                         <div class="kpi-icon">
-                             <i class="fas fa-cubes"></i>
-                         </div>
+                         <div class="kpi-icon" style="background:rgba(106,27,154,0.08);color:#6a1b9a;"><i class="fas fa-puzzle-piece"></i></div>
                      </div>
                      <div class="kpi-card">
-                         <div class="kpi-info">
-                             <div class="kpi-title">Total Received</div>
-                             <div class="kpi-value" id="kpi-received">0 <span class="unit">EA</span></div>
-                             <div class="kpi-desc" id="kpi-received-pct">0% of Total BOM</div>
+                         <div class="kpi-info" style="flex:1;">
+                             <div class="kpi-title" style="display:flex;align-items:center;gap:6px;">
+                                 <i class="fas fa-bolt" style="color:#e65100;font-size:11px;"></i> Others
+                                 <span style="font-size:10px;color:#aaa;font-weight:400;">(EA)</span>
+                             </div>
+                             <div class="kpi-value" id="kpi-oth-pct" style="font-size:26px;">—</div>
+                             <div style="font-size:10px;color:#888;margin-top:2px;">Received / BOM</div>
+                             <div class="kpi-desc" id="kpi-oth-sub" style="margin-top:4px;">— EA / — EA</div>
                          </div>
-                         <div class="kpi-icon received">
-                             <i class="fas fa-truck-loading"></i>
-                         </div>
+                         <div class="kpi-icon received" style="background:rgba(230,81,0,0.08);color:#e65100;"><i class="fas fa-bolt"></i></div>
                      </div>
                      <div class="kpi-card">
-                         <div class="kpi-info">
-                             <div class="kpi-title">Total Issued (Field)</div>
-                             <div class="kpi-value" id="kpi-issued">0 <span class="unit">EA</span></div>
-                             <div class="kpi-desc" id="kpi-issued-pct">0% of Total BOM</div>
+                         <div class="kpi-info" style="flex:1;">
+                             <div class="kpi-title" style="display:flex;align-items:center;gap:6px;">
+                                 <i class="fas fa-tools" style="color:#2e7d32;font-size:11px;"></i> Support
+                                 <span style="font-size:10px;color:#aaa;font-weight:400;">(EA)</span>
+                             </div>
+                             <div class="kpi-value" id="kpi-sup-pct" style="font-size:26px;">—</div>
+                             <div style="font-size:10px;color:#888;margin-top:2px;">On-Site PKG / BOM</div>
+                             <div class="kpi-desc" id="kpi-sup-sub" style="margin-top:4px;">— EA / — EA</div>
                          </div>
-                         <div class="kpi-icon issued">
-                             <i class="fas fa-clipboard-check"></i>
-                         </div>
-                     </div>
-                     <div class="kpi-card" style="border:1px solid #00509E;">
-                         <div class="kpi-info">
-                             <div class="kpi-title">Current Stock Available</div>
-                             <div class="kpi-value" id="kpi-stock">0 <span class="unit">EA</span></div>
-                             <div class="kpi-desc" id="kpi-stock-sub">Ready for material issue check</div>
-                         </div>
-                         <div class="kpi-icon" style="background-color: rgba(0,80,158,0.1); color:#00509E;">
-                             <i class="fas fa-boxes"></i>
-                         </div>
+                         <div class="kpi-icon issued" style="background:rgba(46,125,50,0.08);color:#2e7d32;"><i class="fas fa-tools"></i></div>
                      </div>
                  </div>
 
@@ -245,14 +251,12 @@
                          </div>
                      </div>
 
-                     <!-- Chart 2: Material Progress (Bar) -->
+                     <!-- Chart 2: Bulk Material Progress -->
                      <div class="panel chart-panel">
                           <div class="panel-header">
-                              <h2><i class="fas fa-chart-bar"></i> Material Progress by Category</h2>
+                              <h2><i class="fas fa-tasks"></i> Bulk Material Progress <span style="font-size:11px;font-weight:400;color:#888;">(BOM vs Receiving)</span></h2>
                           </div>
-                          <div class="chart-container" style="min-height: 300px;">
-                              <canvas id="progressChart"></canvas>
-                          </div>
+                          <div id="bulkProgressChart" style="padding:6px 4px;"></div>
                       </div>
                  </div>
 
@@ -512,18 +516,8 @@
                     </div>
                 </div>
 
-                <!-- Section toggle: Bulk / Tag -->
-                <div style="display:flex;gap:0;margin-bottom:0;border-bottom:2px solid #0A2540;">
-                    <button class="rec-sec-btn active" data-sec="bulk" style="padding:8px 28px;border:none;font-weight:700;font-size:14px;cursor:pointer;background:#0A2540;color:#fff;border-radius:6px 6px 0 0;">Bulk</button>
-                    <button class="rec-sec-btn" data-sec="tag" style="padding:8px 28px;border:none;font-weight:700;font-size:14px;cursor:pointer;background:#e0e4ef;color:#0A2540;border-radius:6px 6px 0 0;">Tag</button>
-                </div>
-
                 <!-- ===== BULK SECTION ===== -->
                 <div id="recSecBulk" style="margin-top:16px;">
-                    <div style="display:flex;gap:0;border-bottom:1px solid #c8cfe0;margin-bottom:16px;">
-                        <button class="bulk-tab-btn active" data-tab="piping" style="padding:6px 20px;border:none;border-bottom:3px solid #0A2540;font-size:13px;font-weight:600;cursor:pointer;background:#fff;color:#0A2540;margin-bottom:-1px;">Piping</button>
-                        <button class="bulk-tab-btn" data-tab="others" style="padding:6px 20px;border:none;border-bottom:3px solid transparent;font-size:13px;font-weight:600;cursor:pointer;background:#fff;color:#888;margin-bottom:-1px;">Others</button>
-                    </div>
 
                     <!-- Piping tab (Pipe + Fitting) -->
                     <div id="recTabPiping">
@@ -706,12 +700,6 @@
 
                 <!-- ===== TAG SECTION ===== -->
                 <div id="recSecTag" style="display:none;margin-top:16px;">
-                    <div style="display:flex;gap:0;border-bottom:1px solid #c8cfe0;margin-bottom:16px;">
-                        <button class="tag-tab-btn active" data-tab="spool" style="padding:6px 20px;border:none;border-bottom:3px solid #0A2540;font-size:13px;font-weight:600;cursor:pointer;background:#fff;color:#0A2540;margin-bottom:-1px;">Spool</button>
-                        <button class="tag-tab-btn" data-tab="valve" style="padding:6px 20px;border:none;border-bottom:3px solid transparent;font-size:13px;font-weight:600;cursor:pointer;background:#fff;color:#888;margin-bottom:-1px;">Valve</button>
-                        <button class="tag-tab-btn" data-tab="speciality" style="padding:6px 20px;border:none;border-bottom:3px solid transparent;font-size:13px;font-weight:600;cursor:pointer;background:#fff;color:#888;margin-bottom:-1px;">Speciality</button>
-                        <button class="tag-tab-btn" data-tab="support" style="padding:6px 20px;border:none;border-bottom:3px solid transparent;font-size:13px;font-weight:600;cursor:pointer;background:#fff;color:#888;margin-bottom:-1px;">Support</button>
-                    </div>
 
                     <!-- Spool tab -->
                     <div id="recTagSpool">
@@ -1463,99 +1451,6 @@
                 </div>
             </section>
 
-            <!-- 9. MR History -->
-            <section id="mr_history" class="view-section">
-                <div class="page-header">
-                    <div>
-                        <h1>MR History</h1>
-                        <p class="subtitle">MR Issuance History & ISO Completion Status (Supplement MR Management)</p>
-                    </div>
-                </div>
-
-                <!-- Filter Panel -->
-                <div class="panel filter-panel" style="margin-bottom:20px;">
-                    <div style="display:flex;align-items:flex-end;gap:15px;width:100%;flex-wrap:wrap;">
-                        <div class="form-group" style="flex:1;min-width:130px;">
-                            <label>Date From</label>
-                            <input type="date" id="mrHistDateFrom" class="form-control">
-                        </div>
-                        <div class="form-group" style="flex:1;min-width:130px;">
-                            <label>Date To</label>
-                            <input type="date" id="mrHistDateTo" class="form-control">
-                        </div>
-                        <div class="form-group" style="flex:3;min-width:200px;">
-                            <label>ISO Drawing</label>
-                            <input type="text" id="mrHistIsoSearch" class="form-control" placeholder="Search ISO Drawing...">
-                        </div>
-                        <div class="form-group" style="flex:1;min-width:130px;">
-                            <label>Status</label>
-                            <select id="mrHistStatus" class="form-control">
-                                <option value="All">All Status</option>
-                                <option value="PARTIAL">Partial (Supplement Required)</option>
-                                <option value="CLOSED">Closed (Complete)</option>
-                            </select>
-                        </div>
-                        <div class="form-group" style="flex:0 0 130px;">
-                            <button class="btn btn-primary" id="btnFilterMrHist" style="height:38px;width:130px;display:flex;align-items:center;justify-content:center;gap:8px;padding:0;">
-                                <i class="fas fa-search"></i> Search
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- MR Issuance History -->
-                <div class="panel data-panel" style="margin-bottom:20px;">
-                    <div class="panel-header">
-                        <h3><i class="fas fa-history"></i> MR Issuance History</h3>
-                    </div>
-                    <div class="table-responsive">
-                        <table class="data-table" id="mrHistTable">
-                            <thead>
-                                <tr>
-                                    <th>MR No</th>
-                                    <th>ISO Drawing</th>
-                                    <th>Issue Date</th>
-                                    <th style="text-align:center;">Items</th>
-                                    <th style="text-align:right;">Total Qty</th>
-                                    <th>Status</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
-                            <tbody id="mrHistTbody">
-                                <tr><td colspan="7" style="text-align:center;color:#888;padding:20px;">Click MR History in the sidebar to load data.</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <div id="mrHistPagination"></div>
-                </div>
-
-                <!-- MR Completion by ISO -->
-                <div class="panel data-panel">
-                    <div class="panel-header" style="background:#e8f5e9;border-bottom:1px solid #c8e6c9;">
-                        <h3 style="color:#2e7d32;margin:0;"><i class="fas fa-chart-bar"></i> MR Completion by ISO</h3>
-                    </div>
-                    <div class="table-responsive">
-                        <table class="data-table" id="isoMrProgressTable">
-                            <thead>
-                                <tr>
-                                    <th>ISO Drawing</th>
-                                    <th style="text-align:center;">BOM Items</th>
-                                    <th style="color:#0d47a1;text-align:right;">Total BOM Qty</th>
-                                    <th style="color:#2e7d32;text-align:right;">Total Issued</th>
-                                    <th style="color:#c62828;text-align:right;">Remaining</th>
-                                    <th>Progress</th>
-                                    <th>Status</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
-                            <tbody id="isoMrProgressTbody">
-                                <tr><td colspan="8" style="text-align:center;color:#888;padding:20px;">Loading...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <div id="mrProgPagination"></div>
-                </div>
-            </section>
 
             <!-- ── Shipping / Custom Clearance ──────────────────────────── -->
             <section id="shipping" class="view-section">
@@ -1945,6 +1840,17 @@
     <script src="{{ url_for('static', filename='vendor/js/jquery.min.js') }}"></script>
     <script src="{{ url_for('static', filename='vendor/js/jquery.dataTables.min.js') }}"></script>
     <!-- Preloaded backend data (Removed large data.js) -->
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260627a"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260628b"></script>
+    <script>
+        (function () {
+            var BASE_W = 1920, BASE_H = 1080;
+            function fitScreen() {
+                var scale = Math.min(window.innerWidth / BASE_W, window.innerHeight / BASE_H);
+                document.documentElement.style.zoom = scale;
+            }
+            fitScreen();
+            window.addEventListener('resize', fitScreen);
+        })();
+    </script>
 </body>
 </html>

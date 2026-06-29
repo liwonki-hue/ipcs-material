@@ -14,5 +14,5 @@ def index():
     return response
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5100))
+    port = int(os.environ.get('PORT', 5200))
     app.run(host='0.0.0.0', port=port)
