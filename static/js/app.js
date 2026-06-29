@@ -1272,18 +1272,19 @@ function _enrichRow(matCode, bomMap, recMap, masterMap) {
     const item = (_itemMc && _itemMc !== '-') ? _itemMc : window.extractItemFromDesc(desc);
     const _sc = window.extractSizeFromMatCode(matCode);
     const size = (_sc && _sc !== '-') ? _sc : (mData.size1 || '-');
-    const cat = mData.category || window.getCategory(mData.itemDesc || '', matCode);
+    const cat  = mData.category || window.getCategory(mData.itemDesc || '', matCode);
+    const matl = (matCode.split('-')[1]) || '-';
     const unit = recMap[matCode]?.unit || bomMap[matCode]?.uom || 'EA';
     const bomQty = bomMap[matCode]?.qty ?? 0;
     const recQty = recMap[matCode]?.qty ?? 0;
-    return { matCode, cat, desc, item, size, unit, bomQty, recQty };
+    return { matCode, cat, desc, item, matl, size, unit, bomQty, recQty };
 }
 
-const _TABLE_ROW_TPL = ({ matCode, cat, desc, item, size, unit, bomQty, recQty, diffQty, diffColor }) => `<tr>
+const _TABLE_ROW_TPL = ({ matCode, cat, item, matl, size, unit, bomQty, recQty, diffQty, diffColor }) => `<tr>
     <td style="text-align:center;"><strong>${cat}</strong></td>
     <td style="text-align:center;font-weight:600;color:var(--color-primary);white-space:nowrap;">${matCode}</td>
-    <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${desc}">${desc}</td>
     <td style="text-align:center;">${item}</td>
+    <td style="text-align:center;">${matl}</td>
     <td style="text-align:center;">${size}</td>
     <td style="text-align:center;">${unit}</td>
     <td style="text-align:center;">${Math.round(bomQty).toLocaleString()}</td>
@@ -1306,6 +1307,7 @@ function renderShortageTable() {
 
     const catFilter  = (document.getElementById('shortCatFilter')  || {}).value || 'ALL';
     const itemFilter = (document.getElementById('shortItemFilter') || {}).value || 'ALL';
+    const matlFilter = (document.getElementById('shortMatlFilter') || {}).value || 'ALL';
     const sizeFilter = (document.getElementById('shortSizeFilter') || {}).value || 'ALL';
     const searchQ    = ((document.getElementById('shortSearch')    || {}).value || '').toUpperCase();
 
@@ -1317,8 +1319,9 @@ function renderShortageTable() {
         if (!['Pipe', 'Fitting', 'Others'].includes(row.cat)) return;
         if (catFilter  !== 'ALL' && row.cat  !== catFilter)  return;
         if (itemFilter !== 'ALL' && row.item !== itemFilter) return;
+        if (matlFilter !== 'ALL' && row.matl !== matlFilter) return;
         if (sizeFilter !== 'ALL' && row.size !== sizeFilter) return;
-        if (searchQ && ![row.matCode, row.desc, row.item, row.size].some(v => v.toUpperCase().includes(searchQ))) return;
+        if (searchQ && ![row.matCode, row.item, row.matl, row.size].some(v => (v||'').toUpperCase().includes(searchQ))) return;
         list.push({ ...row, diffQty });
     });
     _sortByCatItemSize(list);
@@ -1361,6 +1364,7 @@ function renderSurplusTable() {
 
     const catFilter  = (document.getElementById('surplusCatFilter')  || {}).value || 'ALL';
     const itemFilter = (document.getElementById('surplusItemFilter') || {}).value || 'ALL';
+    const matlFilter = (document.getElementById('surplusMatlFilter') || {}).value || 'ALL';
     const sizeFilter = (document.getElementById('surplusSizeFilter') || {}).value || 'ALL';
     const searchQ    = ((document.getElementById('surplusSearch')    || {}).value || '').toUpperCase();
 
@@ -1373,8 +1377,9 @@ function renderSurplusTable() {
         if (!['Pipe', 'Fitting', 'Others'].includes(row.cat)) return;
         if (catFilter  !== 'ALL' && row.cat  !== catFilter)  return;
         if (itemFilter !== 'ALL' && row.item !== itemFilter) return;
+        if (matlFilter !== 'ALL' && row.matl !== matlFilter) return;
         if (sizeFilter !== 'ALL' && row.size !== sizeFilter) return;
-        if (searchQ && ![row.matCode, row.desc, row.item, row.size].some(v => v.toUpperCase().includes(searchQ))) return;
+        if (searchQ && ![row.matCode, row.item, row.matl, row.size].some(v => (v||'').toUpperCase().includes(searchQ))) return;
         list.push({ ...row, diffQty });
     });
     _sortByCatItemSize(list);
@@ -1691,20 +1696,41 @@ function initFilterOptions() {
         } catch(e) { console.error('Support Receiving filter init failed:', e); }
     })();
 
-    // Shortage Filters — db.bom 기반으로 실제 존재하는 항목만 표시
-    const sCat  = document.getElementById('shortCatFilter');
-    const sItem = document.getElementById('shortItemFilter');
-    const sSize = document.getElementById('shortSizeFilter');
-    if (sItem && db.bom.length > 0) {
-        setupCatItemSize(sCat, sItem, sSize, getBomItemsForCat, getBomSizesForCatItem, 'ALL');
+    // Shortage/Surplus Material 필터 공용 초기화 헬퍼
+    const initShortSurplusMatl = (catEl, itemEl, matlEl, sizeEl, allVal) => {
+        if (!itemEl) return;
+        setupCatItemSize(catEl, itemEl, sizeEl, getBomItemsForCat, getBomSizesForCatItem, allVal);
+        const refreshMatl = () => {
+            const TAB_CAT = { ALL: 'ALL', Pipe: 'Pipe', Fitting: 'Fitting', Others: 'Others' };
+            const cat = catEl ? (TAB_CAT[catEl.value] || 'ALL') : 'ALL';
+            const matls = [...new Set(
+                db.bom.filter(b => cat === 'ALL' || b.category === cat)
+                      .map(b => (b.matCode || '').split('-')[1]).filter(Boolean)
+            )].sort();
+            if (matlEl) matlEl.innerHTML = `<option value="${allVal}">All Materials</option>` + matls.map(m => `<option value="${m}">${m}</option>`).join('');
+        };
+        refreshMatl();
+        if (catEl) catEl.addEventListener('change', refreshMatl);
+    };
+
+    // Shortage Filters
+    if (document.getElementById('shortItemFilter') && db.bom.length > 0) {
+        initShortSurplusMatl(
+            document.getElementById('shortCatFilter'),
+            document.getElementById('shortItemFilter'),
+            document.getElementById('shortMatlFilter'),
+            document.getElementById('shortSizeFilter'), 'ALL'
+        );
     }
 
-    // Surplus Filters — db.bom 기반 동일 연동
-    const surplusCat  = document.getElementById('surplusCatFilter');
-    const surplusItem = document.getElementById('surplusItemFilter');
-    const surplusSize = document.getElementById('surplusSizeFilter');
-    if (surplusItem && db.bom.length > 0) {
-        setupCatItemSize(surplusCat, surplusItem, surplusSize, getBomItemsForCat, getBomSizesForCatItem, 'ALL');
+    // Surplus Filters
+    if (document.getElementById('surplusItemFilter') && db.bom.length > 0) {
+        initShortSurplusMatl(
+            document.getElementById('surplusCatFilter'),
+            document.getElementById('surplusItemFilter'),
+            document.getElementById('surplusMatlFilter'),
+            document.getElementById('surplusSizeFilter'), 'ALL'
+        );
     }
 
     // MatCode Master Filters (BOM/Receiving과 동일하게 MatCode 파싱 함수 사용)

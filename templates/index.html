@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EPC Piping Material Management System</title>
     <!-- CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260629l">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260629n">
     <!-- FontAwesome for Icons (local) -->
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/css/fa-all.min.css') }}">
     <!-- Google Fonts: Inter (local) -->
@@ -1248,13 +1248,19 @@
                         </div>
                         <div class="form-group">
                             <label>Item</label>
-                            <select id="shortItemFilter" class="form-control" style="width: 230px;">
+                            <select id="shortItemFilter" class="form-control" style="width: 200px;">
                                 <option value="ALL">All Items</option>
                             </select>
                         </div>
                         <div class="form-group">
+                            <label>Material</label>
+                            <select id="shortMatlFilter" class="form-control" style="width: 160px;">
+                                <option value="ALL">All Materials</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
                             <label>Size</label>
-                            <select id="shortSizeFilter" class="form-control" style="width: 210px;">
+                            <select id="shortSizeFilter" class="form-control" style="width: 160px;">
                                 <option value="ALL">All Sizes</option>
                             </select>
                         </div>
@@ -1262,7 +1268,7 @@
                             <button class="btn btn-primary" onclick="_shortagePage=1;renderShortageTable();" style="height: 38px; display: flex; align-items: center; gap: 8px;">
                                 <i class="fas fa-search"></i> Search
                             </button>
-                            <button class="btn btn-outline" onclick="(function(){var cat=document.getElementById('shortCatFilter');var si=document.getElementById('shortSearch');if(si)si.value='';if(cat){cat.value='ALL';cat.dispatchEvent(new Event('change'));}var ii=document.getElementById('shortItemFilter');var sz=document.getElementById('shortSizeFilter');if(ii)ii.value='ALL';if(sz)sz.value='ALL';_shortagePage=1;renderShortageTable();})()" style="height: 38px;">
+                            <button class="btn btn-outline" onclick="(function(){var cat=document.getElementById('shortCatFilter');var si=document.getElementById('shortSearch');if(si)si.value='';if(cat){cat.value='ALL';cat.dispatchEvent(new Event('change'));}var ii=document.getElementById('shortItemFilter');var mt=document.getElementById('shortMatlFilter');var sz=document.getElementById('shortSizeFilter');if(ii)ii.value='ALL';if(mt)mt.value='ALL';if(sz)sz.value='ALL';_shortagePage=1;renderShortageTable();})()" style="height: 38px;">
                                 Reset
                             </button>
                         </div>
@@ -1277,22 +1283,22 @@
                     <div class="table-responsive">
                         <table class="data-table" id="shortageTable" style="table-layout:fixed;width:100%;">
                             <colgroup>
-                                <col style="width:190px;">
-                                <col style="width:250px;">
-                                <col>
-                                <col style="width:305px;">
-                                <col style="width:145px;">
+                                <col style="width:130px;">
+                                <col style="width:220px;">
+                                <col style="width:180px;">
+                                <col style="width:120px;">
+                                <col style="width:100px;">
+                                <col style="width:70px;">
                                 <col style="width:110px;">
-                                <col style="width:150px;">
-                                <col style="width:160px;">
-                                <col style="width:160px;">
+                                <col style="width:120px;">
+                                <col style="width:120px;">
                             </colgroup>
                             <thead>
                                 <tr>
                                     <th style="text-align:center;">Category</th>
                                     <th style="text-align:center;">MatCode</th>
-                                    <th style="text-align:center;">Full Description</th>
                                     <th style="text-align:center;">Item</th>
+                                    <th style="text-align:center;">Material</th>
                                     <th style="text-align:center;">Size (Inch)</th>
                                     <th style="text-align:center;">Unit</th>
                                     <th style="text-align:center;">BOM QTY</th>
@@ -1334,13 +1340,19 @@
                         </div>
                         <div class="form-group">
                             <label>Item</label>
-                            <select id="surplusItemFilter" class="form-control" style="width: 230px;">
+                            <select id="surplusItemFilter" class="form-control" style="width: 200px;">
                                 <option value="ALL">All Items</option>
                             </select>
                         </div>
                         <div class="form-group">
+                            <label>Material</label>
+                            <select id="surplusMatlFilter" class="form-control" style="width: 160px;">
+                                <option value="ALL">All Materials</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
                             <label>Size</label>
-                            <select id="surplusSizeFilter" class="form-control" style="width: 210px;">
+                            <select id="surplusSizeFilter" class="form-control" style="width: 160px;">
                                 <option value="ALL">All Sizes</option>
                             </select>
                         </div>
@@ -1348,7 +1360,7 @@
                             <button class="btn btn-primary" onclick="_surplusPage=1;renderSurplusTable();" style="height: 38px; display: flex; align-items: center; gap: 8px;">
                                 <i class="fas fa-search"></i> Search
                             </button>
-                            <button class="btn btn-outline" onclick="(function(){var cat=document.getElementById('surplusCatFilter');var si=document.getElementById('surplusSearch');if(si)si.value='';if(cat){cat.value='ALL';cat.dispatchEvent(new Event('change'));}var ii=document.getElementById('surplusItemFilter');var sz=document.getElementById('surplusSizeFilter');if(ii)ii.value='ALL';if(sz)sz.value='ALL';_surplusPage=1;renderSurplusTable();})()" style="height: 38px;">
+                            <button class="btn btn-outline" onclick="(function(){var cat=document.getElementById('surplusCatFilter');var si=document.getElementById('surplusSearch');if(si)si.value='';if(cat){cat.value='ALL';cat.dispatchEvent(new Event('change'));}var ii=document.getElementById('surplusItemFilter');var mt=document.getElementById('surplusMatlFilter');var sz=document.getElementById('surplusSizeFilter');if(ii)ii.value='ALL';if(mt)mt.value='ALL';if(sz)sz.value='ALL';_surplusPage=1;renderSurplusTable();})()" style="height: 38px;">
                                 Reset
                             </button>
                         </div>
@@ -1363,22 +1375,22 @@
                     <div class="table-responsive">
                         <table class="data-table" id="surplusTable" style="table-layout:fixed;width:100%;">
                             <colgroup>
-                                <col style="width:190px;">
-                                <col style="width:250px;">
-                                <col>
-                                <col style="width:305px;">
-                                <col style="width:145px;">
+                                <col style="width:130px;">
+                                <col style="width:220px;">
+                                <col style="width:180px;">
+                                <col style="width:120px;">
+                                <col style="width:100px;">
+                                <col style="width:70px;">
                                 <col style="width:110px;">
-                                <col style="width:150px;">
-                                <col style="width:160px;">
-                                <col style="width:160px;">
+                                <col style="width:120px;">
+                                <col style="width:120px;">
                             </colgroup>
                             <thead>
                                 <tr>
                                     <th style="text-align:center;">Category</th>
                                     <th style="text-align:center;">MatCode</th>
-                                    <th style="text-align:center;">Full Description</th>
                                     <th style="text-align:center;">Item</th>
+                                    <th style="text-align:center;">Material</th>
                                     <th style="text-align:center;">Size (Inch)</th>
                                     <th style="text-align:center;">Unit</th>
                                     <th style="text-align:center;">BOM QTY</th>
@@ -1794,7 +1806,7 @@
     <script src="{{ url_for('static', filename='vendor/js/jquery.min.js') }}"></script>
     <script src="{{ url_for('static', filename='vendor/js/jquery.dataTables.min.js') }}"></script>
     <!-- Preloaded backend data (Removed large data.js) -->
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260629l"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260629n"></script>
     <script>
         (function () {
             var BASE_W = 1920, BASE_H = 1080;
