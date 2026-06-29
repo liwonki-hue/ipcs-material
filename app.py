@@ -2,7 +2,7 @@ from flask import Flask, render_template, make_response
 import os
 
 app = Flask(__name__)
-app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1년 — ?v= 캐시버스팅으로 무효화
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # 정적 파일 캐시 비활성화 (항상 최신 로드)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 
 @app.route('/')

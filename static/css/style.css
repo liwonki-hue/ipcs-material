@@ -26,12 +26,13 @@
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: var(--font-family); background-color: var(--bg-main); color: var(--text-primary); font-size: 14px; }
+html { height: 100%; overflow: hidden; }
+body { height: 100%; overflow: hidden; font-family: var(--font-family); background-color: var(--bg-main); color: var(--text-primary); font-size: 14px; }
 a { text-decoration: none; color: inherit; }
 ul { list-style: none; }
 
 /* Layout */
-.app-container { display: flex; height: 100vh; overflow: hidden; }
+.app-container { display: flex; height: 100%; overflow: hidden; }
 
 /* Sidebar */
 .sidebar { width: 260px; background-color: var(--bg-sidebar); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; z-index: 100; box-shadow: var(--shadow-sm); }

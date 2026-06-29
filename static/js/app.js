@@ -557,8 +557,9 @@ function renderIsoPage(page) {
     const tbody = document.getElementById('priorityIsoTbody');
     if (!tbody) return;
     tbody.innerHTML = '';
-    const start = (page - 1) * PAGE_SIZE;
-    const pageData = isoSortedData.slice(start, start + PAGE_SIZE);
+    const ISO_PAGE_SIZE = 10;
+    const start = (page - 1) * ISO_PAGE_SIZE;
+    const pageData = isoSortedData.slice(start, start + ISO_PAGE_SIZE);
     if (pageData.length === 0) {
         tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#888;padding:20px;">No ISOs found.</td></tr>`;
     } else {
@@ -579,7 +580,7 @@ function renderIsoPage(page) {
             </tr>`;
         }).join('');
     }
-    const totalPages = Math.max(1, Math.ceil(isoSortedData.length / PAGE_SIZE));
+    const totalPages = Math.max(1, Math.ceil(isoSortedData.length / ISO_PAGE_SIZE));
     renderPagination('isoPaginator', page, totalPages, 'isoGoPage');
 }
 
@@ -1986,6 +1987,7 @@ function _renderRecvCore(cfg) {
 
     const hideTag     = !!cfg.hideTag;
     const hideMatCode = !!cfg.hideMatCode;
+    const hideType    = !!cfg.hideType;
 
     const search  = (document.getElementById(cfg.searchId)?.value || '').trim().toUpperCase();
     const doc     = document.getElementById(cfg.docId)?.value    || 'All';
@@ -2065,7 +2067,7 @@ function _renderRecvCore(cfg) {
             ${cfg.catFirst ? '' : `<td style="white-space:nowrap;"><span class="status-badge ${catBadge}">${displayCat}</span></td>`}
             ${hideTag ? '' : `<td style="text-align:center;">${r.tag || '-'}</td>`}
             <td style="font-weight:600;">${item}</td>
-            <td style="text-align:center;font-weight:600;white-space:nowrap;color:${flangeType!=='-'?'#1565c0':'#aaa'};">${flangeType}</td>
+            ${hideType ? '' : `<td style="text-align:center;font-weight:600;white-space:nowrap;color:${flangeType!=='-'?'#1565c0':'#aaa'};">${flangeType}</td>`}
             <td style="text-align:center;font-size:11px;">${matl}</td>
             <td style="font-weight:600;white-space:nowrap;">${size}</td>
             <td style="text-align:center;font-size:11px;">${rating}</td>
@@ -2097,6 +2099,7 @@ function renderBulkPipingTable() {
         forcedCats: ['Pipe'],
         catFirst: true,
         hideTag: true,
+        hideType: true,
         getPage: () => currentPlPage,
         paginationId: 'plPagination', goPageFn: '_plGoPage'
     });
