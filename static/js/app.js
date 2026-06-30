@@ -624,18 +624,18 @@ function renderBulkProgressBars(categories) {
             : `<span style="color:#2e7d32;font-weight:700;">✓ Complete</span>`;
 
         return `
-        <div style="margin-bottom:18px;">
-            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">
-                <span style="font-size:13px;font-weight:700;color:#0A2540;">
-                    ${label} <span style="font-size:11px;font-weight:400;color:#888;">(${unit})</span>
+        <div style="margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">
+                <span style="font-size:12px;font-weight:700;color:#0A2540;">
+                    ${label} <span style="font-size:10px;font-weight:400;color:#888;">(${unit})</span>
                 </span>
-                <span style="font-size:14px;font-weight:800;color:${pctColor};">${pct.toFixed(1)}%</span>
+                <span style="font-size:13px;font-weight:800;color:${pctColor};">${pct.toFixed(1)}%</span>
             </div>
-            <div style="position:relative;height:24px;background:#e8edf5;border-radius:5px;overflow:hidden;">
-                <div style="position:absolute;left:0;top:0;height:100%;width:${fillPct.toFixed(1)}%;background:${barColor};border-radius:5px;"></div>
-                ${surplus > 0 ? `<div style="position:absolute;right:0;top:0;height:100%;width:6px;background:#e65100;"></div>` : ''}
+            <div style="position:relative;height:16px;background:#e8edf5;border-radius:4px;overflow:hidden;">
+                <div style="position:absolute;left:0;top:0;height:100%;width:${fillPct.toFixed(1)}%;background:${barColor};border-radius:4px;"></div>
+                ${surplus > 0 ? `<div style="position:absolute;right:0;top:0;height:100%;width:5px;background:#e65100;"></div>` : ''}
             </div>
-            <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:11px;color:#555;">
+            <div style="display:flex;justify-content:space-between;margin-top:2px;font-size:10px;color:#555;">
                 <span>BOM <b style="color:#0A2540;">${Math.round(bom).toLocaleString()} ${unit}</b></span>
                 <span>Received <b style="color:#1565c0;">${Math.round(rec).toLocaleString()} ${unit}</b></span>
                 ${diffHtml}
@@ -788,7 +788,7 @@ function updateExpediteAlerts() {
     let hasAlert = false;
     let alertCount = 0;
     Object.keys(bomSummary).forEach(matCode => {
-        if(alertCount > 20) return; 
+        if (alertCount >= 20) return;
         let req = bomSummary[matCode].qty;
         let rec = recSummary[matCode] || 0;
         let pct = (req > 0) ? (rec / req) * 100 : 100;
@@ -822,16 +822,14 @@ function updateCategoryCharts() {
         supabaseClient.from('v_category_readiness').select('*'),
         supabaseClient.from('receiving').select('category, qty, tag, full_description').not('tag', 'is', null).in('category', ['Valve', 'Speciality']).limit(10000),
         supabaseClient.from('spool_receiving').select('id', { count: 'exact', head: true }),
-        supabaseClient.from('support_receiving').select('qty, package_no').limit(50000),
-        supabaseClient.from('pl_updates').select('pkg_no, status').limit(10000)
-    ]).then(([catRes, tagRecRes, spoolRecRes, suppRecRes, plUpdRes]) => {
+        supabaseClient.from('v_support_kpi').select('total_bom, total_received').single(),
+    ]).then(([catRes, tagRecRes, spoolRecRes, suppKpiRes]) => {
         const data = catRes.data;
         if (catRes.error || !data) {
             console.error("❌ Chart Sync Error:", catRes.error);
             return;
         }
 
-        const spoolBomCount = 0;
         const spoolRecCount = spoolRecRes.count || 0;
 
         const catLabels = ['Pipe', 'Fitting', 'Valve', 'Speciality', 'Support', 'Others'];
@@ -882,17 +880,9 @@ function updateCategoryCharts() {
         setCatKpi('kpi-fit-pct',  'kpi-fit-sub',  bomDataArr[1], recDataArr[1], 'EA');
         setCatKpi('kpi-oth-pct',  'kpi-oth-sub',  bomDataArr[5], recDataArr[5], 'EA');
 
-        // Support: BOM = support_receiving 전체 qty 합계
-        //          Received = On-Site PKG에 속한 qty 합계
-        const onSitePkgs = new Set(
-            (plUpdRes.data || []).filter(r => r.status === 'On-Site').map(r => r.pkg_no)
-        );
-        let supportBom = 0, supportRec = 0;
-        (suppRecRes.data || []).forEach(r => {
-            const qty = parseFloat(r.qty || 0);
-            supportBom += qty;
-            if (onSitePkgs.has(r.package_no)) supportRec += qty;
-        });
+        // Support: v_support_kpi 뷰에서 집계값 직접 사용
+        const supportBom = parseFloat(suppKpiRes.data?.total_bom || 0);
+        const supportRec = parseFloat(suppKpiRes.data?.total_received || 0);
         setCatKpi('kpi-sup-pct', 'kpi-sup-sub', supportBom, supportRec, 'EA');
 
         // Bulk Material Progress Bars (Pipe / Fitting / Others / Support)
@@ -1677,22 +1667,46 @@ function initFilterOptions() {
         const stripType = tag => tag ? tag.replace(/\([^)]+\)$/, '') : tag;
         const el = id => document.getElementById(id);
 
-        // change 리스너는 fetch 성공 여부와 무관하게 항상 등록
+        const rebuildIsoFilter = (rows) => {
+            const isos = [...new Set(rows.map(r => r.iso_dwg_no).filter(Boolean))].sort();
+            if (el('srecIsoFilter'))
+                el('srecIsoFilter').innerHTML = '<option value="All">All ISOs</option>' + isos.map(v => `<option value="${v}">${v}</option>`).join('');
+        };
+
+        const rebuildTagFilter = (rows) => {
+            const tags = [...new Set(rows.map(r => stripType(r.support_tag)).filter(Boolean))].sort();
+            if (el('srecTagFilter'))
+                el('srecTagFilter').innerHTML = '<option value="All">All Support No</option>' + tags.map(v => `<option value="${v}">${v}</option>`).join('');
+        };
+
+        // System 변경 → ISO 필터 갱신 → Support No 필터 갱신
         srecSys.addEventListener('change', () => {
             const selSys = srecSys.value;
-            const rows = selSys === 'All'
+            const bySystem = selSys === 'All'
                 ? (window._srecAllRows || [])
                 : (window._srecAllRows || []).filter(r => r.system === selSys);
-            const filteredTags = [...new Set(rows.map(r => stripType(r.support_tag)).filter(Boolean))].sort();
-            if (el('srecTagFilter'))
-                el('srecTagFilter').innerHTML = '<option value="All">All Support No</option>' + filteredTags.map(v => `<option value="${v}">${v}</option>`).join('');
+            rebuildIsoFilter(bySystem);
+            rebuildTagFilter(bySystem);
         });
+
+        // ISO 변경 → Support No 필터 갱신
+        const isoEl = el('srecIsoFilter');
+        if (isoEl) {
+            isoEl.addEventListener('change', () => {
+                const selSys = srecSys.value;
+                const selIso = isoEl.value;
+                let rows = window._srecAllRows || [];
+                if (selSys !== 'All') rows = rows.filter(r => r.system === selSys);
+                if (selIso !== 'All') rows = rows.filter(r => r.iso_dwg_no === selIso);
+                rebuildTagFilter(rows);
+            });
+        }
 
         try {
             const { data, error } = await supabaseClient.from('support_receiving')
-                .select('pkg,package_no,system,support_tag')
+                .select('pkg,package_no,system,iso_dwg_no,support_tag')
                 .not('system', 'is', null)
-                .limit(10000);
+                .limit(20000);
             if (error) throw error;
             if (!data) return;
 
@@ -1701,15 +1715,14 @@ function initFilterOptions() {
             const pkgs       = [...new Set(data.map(r => r.pkg).filter(Boolean))].sort();
             const packageNos = [...new Set(data.map(r => r.package_no).filter(Boolean))].sort();
             const systems    = [...new Set(data.map(r => r.system).filter(Boolean))].sort();
-            const tags       = [...new Set(data.map(r => stripType(r.support_tag)).filter(Boolean))].sort();
 
             if (el('srecPkgFilter'))
-                el('srecPkgFilter').innerHTML = '<option value="All">All PKGs</option>' + pkgs.map(v => `<option value="${v}">${v}</option>`).join('');
+                el('srecPkgFilter').innerHTML = '<option value="All">All PKGs</option>' + pkgs.map(v => `<option value="${v}">${v}</option>`).join('') + '<option value="NULL">(미배정 PKG)</option>';
             if (el('srecPackageNoFilter'))
                 el('srecPackageNoFilter').innerHTML = '<option value="All">All Package No</option>' + packageNos.map(v => `<option value="${v}">${v}</option>`).join('');
-            if (el('srecTagFilter'))
-                el('srecTagFilter').innerHTML = '<option value="All">All Support No</option>' + tags.map(v => `<option value="${v}">${v}</option>`).join('');
             srecSys.innerHTML = '<option value="All">All Systems</option>' + systems.map(s => `<option value="${s}">${s}</option>`).join('');
+            rebuildIsoFilter(data);
+            rebuildTagFilter(data);
         } catch(e) { console.error('Support Receiving filter init failed:', e); }
     })();
 
@@ -1798,10 +1811,51 @@ function initFilterOptions() {
     // Valve Filters
     const valDoc = document.getElementById('valDocFilter'), valPkg = document.getElementById('valPkgFilter');
     if (valDoc && valPkg) setDocPkg(valDoc, valPkg, recByCat.Valve);
+    const _tagSize = r => {
+        const ti = db.bomTagMap[(r.tag || '').toUpperCase()];
+        const effM = r.matCode || (ti ? ti.matCode : '');
+        const ms = window.extractSizeFromMatCode(effM);
+        return (ms && ms !== '-') ? ms : window.extractSizeFromLineNo(ti?.lineNo);
+    };
+    const _tagItem = r => {
+        const ti = db.bomTagMap[(r.tag || '').toUpperCase()];
+        const effM = r.matCode || (ti ? ti.matCode : '');
+        const bd   = ti ? ti.fullDescription : '';
+        const mi   = window.extractItemFromMatCode(effM);
+        const raw  = (mi && mi !== '-') ? mi : window.extractItemFromDesc(bd || r.desc);
+        return (r.plNo || '').toUpperCase().includes('BYPS') ? 'BYPASS VALVE' : raw;
+    };
+
+    const valItemEl = document.getElementById('valItemFilter');
+    if (valItemEl) {
+        const items = [...new Set(recByCat.Valve.map(_tagItem).filter(v => v && v !== '-'))].sort();
+        valItemEl.innerHTML = '<option value="All">All Items</option>'
+            + items.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
+    }
+    const valSizeEl = document.getElementById('valSizeFilter');
+    if (valSizeEl) {
+        const sizes = [...new Set(recByCat.Valve.map(_tagSize).filter(v => v && v !== '-'))]
+            .sort((a, b) => parseFloat(a) - parseFloat(b));
+        valSizeEl.innerHTML = '<option value="All">All Sizes</option>'
+            + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
+    }
 
     // Speciality Filters
     const splDoc = document.getElementById('splDocFilter'), splPkg = document.getElementById('splPkgFilter');
     if (splDoc && splPkg) setDocPkg(splDoc, splPkg, recByCat.Speciality);
+    const splItemEl = document.getElementById('splItemFilter');
+    if (splItemEl) {
+        const items = [...new Set(recByCat.Speciality.map(_tagItem).filter(v => v && v !== '-'))].sort();
+        splItemEl.innerHTML = '<option value="All">All Items</option>'
+            + items.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
+    }
+    const splSizeEl = document.getElementById('splSizeFilter');
+    if (splSizeEl) {
+        const sizes = [...new Set(recByCat.Speciality.map(_tagSize).filter(v => v && v !== '-'))]
+            .sort((a, b) => parseFloat(a) - parseFloat(b));
+        splSizeEl.innerHTML = '<option value="All">All Sizes</option>'
+            + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
+    }
 
 }
 
@@ -1816,7 +1870,8 @@ async function renderBomTable() {
     const TAB_CAT = { piping: 'Pipe', fitting: 'Fitting', others: 'Others' };
     const cat     = TAB_CAT[_bomActiveTab] || 'Pipe';
     const item    = document.getElementById('bomItemFilter')?.value || 'All';
-    const mat     = document.getElementById('bomMatFilter')?.value || 'All';
+    const mat1    = document.getElementById('bomMat1Filter')?.value || 'All';
+    const mat2    = document.getElementById('bomMat2Filter')?.value || 'All';
     const size    = document.getElementById('bomSizeFilter')?.value || 'All';
 
     // Item명 → MatCode prefix 역매핑 (extractItemFromMatCode와 동일 기준)
@@ -1843,7 +1898,8 @@ async function renderBomTable() {
         if (sys  !== 'All') q = q.eq('system', sys);
         if (search) q = q.or(`iso_dwg_no.ilike.%${search}%,mat_code.ilike.%${search}%,category.ilike.%${search}%,full_description.ilike.%${search}%`);
         if (cat  !== 'All') q = q.eq('category', cat);
-        if (mat  !== 'All') q = q.ilike('mat_code', `%-${mat}-%`);
+        if (mat1 !== 'All') q = q.eq('mat1', mat1);
+        if (mat2 !== 'All') q = q.eq('mat2', mat2);
         if (item !== 'All') {
             if (item === 'CONTROL VALVE') {
                 q = q.or('tag.ilike.%-TCV-%,tag.ilike.%-LCV-%,tag.ilike.%-FCV-%,tag.ilike.%-PCV-%,tag.ilike.%-FV-%');
@@ -1874,8 +1930,8 @@ async function renderBomTable() {
     // 데이터 쿼리 + COUNT 쿼리를 병렬 실행
     const dataQ  = applyFilters(
         supabaseClient.from('bom_detail')
-            .select('mat_code, category, system, iso_dwg_no, line_no, tag, full_description, uom, qty')
-            .range((currentBomPage - 1) * PAGE_SIZE, currentBomPage * PAGE_SIZE)
+            .select('mat_code, category, system, iso_dwg_no, line_no, tag, full_description, uom, qty, mat1, mat2')
+            .range((currentBomPage - 1) * PAGE_SIZE, currentBomPage * PAGE_SIZE - 1)
             .order('system', { ascending: true, nullsFirst: false })
             .order('iso_dwg_no', { ascending: true, nullsFirst: false })
     );
@@ -1916,15 +1972,16 @@ async function renderBomTable() {
         const item = window.extractItemFromDesc(desc);
         // Steam Trap: description에 사이즈 정보 없을 때 기본값 1" (확인된 사실)
         if (size === '-' && /STEAM TRAP/i.test(item)) size = '1"';
-        const matParts = (b.mat_code || '').split('-');
-        const matSpec  = matParts[1] || '-';
+        const mat1Val = b.mat1 || '-';
+        const mat2Val = b.mat2 || '-';
         return `<tr>
             <td style="text-align:center;white-space:nowrap;"><span class="status-badge ${badgeClass}">${b.mat_code || '-'}</span></td>
             <td style="text-align:center;white-space:nowrap;">${b.system || '-'}</td>
             <td style="text-align:center;white-space:nowrap;">${b.iso_dwg_no || '-'}</td>
             <td style="text-align:center;white-space:nowrap;">${b.line_no || '-'}</td>
             <td style="text-align:center;font-weight:600;white-space:nowrap;">${item}</td>
-            <td style="text-align:center;white-space:nowrap;">${matSpec}</td>
+            <td style="text-align:center;white-space:nowrap;">${mat1Val}</td>
+            <td style="text-align:center;white-space:nowrap;">${mat2Val}</td>
             <td style="text-align:center;font-weight:600;white-space:nowrap;">${size}</td>
             <td title="${desc}">${desc.length > 55 ? desc.substring(0, 52) + '...' : desc}</td>
             <td style="text-align:center;white-space:nowrap;">${b.uom || 'EA'}</td>
@@ -1948,14 +2005,25 @@ function refreshBomItemFilter() {
             + items.map(i => `<option value="${i.replace(/"/g, '&quot;')}">${i}</option>`).join('');
     }
 
-    const matEl = document.getElementById('bomMatFilter');
-    if (matEl) {
-        const src = (cat === 'All') ? db.bom : db.bom.filter(b => b.category === cat);
-        const mats = [...new Set(
-            src.map(b => (b.matCode || '').split('-')[1]).filter(v => v && v !== '-')
-        )].sort();
-        matEl.innerHTML = '<option value="All">All Materials</option>'
-            + mats.map(m => `<option value="${m}">${m}</option>`).join('');
+    const mat1El = document.getElementById('bomMat1Filter');
+    const mat2El = document.getElementById('bomMat2Filter');
+    if (mat1El) mat1El.innerHTML = '<option value="All">All Mat 1</option>';
+    if (mat2El) mat2El.innerHTML = '<option value="All">All Mat 2</option>';
+    if (cat === 'Others' && (mat1El || mat2El)) {
+        supabaseClient.from('bom_detail')
+            .select('mat1, mat2')
+            .eq('category', 'Others')
+            .not('mat1', 'is', null)
+            .limit(10000)
+            .then(({ data }) => {
+                if (!data) return;
+                const vals1 = [...new Set(data.map(r => r.mat1).filter(Boolean))].sort();
+                const vals2 = [...new Set(data.map(r => r.mat2).filter(Boolean))].sort();
+                if (mat1El) mat1El.innerHTML = '<option value="All">All Mat 1</option>'
+                    + vals1.map(v => `<option value="${v.replace(/"/g, '&quot;')}">${v}</option>`).join('');
+                if (mat2El) mat2El.innerHTML = '<option value="All">All Mat 2</option>'
+                    + vals2.map(v => `<option value="${v.replace(/"/g, '&quot;')}">${v}</option>`).join('');
+            });
     }
 
     const sizeEl = document.getElementById('bomSizeFilter');
@@ -2012,7 +2080,9 @@ function _renderRecvCore(cfg) {
         const _rawItem     = (_mcItem && _mcItem !== '-') ? _mcItem : window.extractItemFromDesc(_bomDesc || r.desc);
         const itemFromMat  = (r.plNo || '').toUpperCase().includes('BYPS') ? 'BYPASS VALVE' : _rawItem;
         const matchItemF   = itemF === 'All' || itemFromMat === itemF || (itemFromMat === '-' && window.extractItemFromDesc(r.desc) === itemF);
-        const matchSizeF   = sizeF === 'All' || window.extractSizeFromMatCode(effMat) === sizeF;
+        const _msz = window.extractSizeFromMatCode(effMat);
+        const matchSizeF = sizeF === 'All' || (_msz && _msz !== '-' ? _msz === sizeF
+            : window.extractSizeFromLineNo(db.bomTagMap[(r.tag||'').toUpperCase()]?.lineNo) === sizeF);
         const pkgSt        = (_plUpdatesCache[r.plNo] || {}).status || '';
         const matchStatusF = statusF === 'All' || pkgSt === statusF;
         return matchSearch && matchDoc && matchPkg && matchCat && matchItemF && matchSizeF && matchStatusF;
@@ -2136,6 +2206,7 @@ function renderTagValveTable() {
     _renderRecvCore({
         tableId: 'valTable', searchId: 'valItemSearch',
         docId: 'valDocFilter', pkgId: 'valPkgFilter', statusId: 'valStatusFilter',
+        itemId: 'valItemFilter', sizeId: 'valSizeFilter',
         forcedCats: ['Valve'],
         hideMatCode: true,
         getPage: () => currentValPage,
@@ -2147,6 +2218,7 @@ function renderTagSpecialityTable() {
     _renderRecvCore({
         tableId: 'splTable', searchId: 'splItemSearch',
         docId: 'splDocFilter', pkgId: 'splPkgFilter', statusId: 'splStatusFilter',
+        itemId: 'splItemFilter', sizeId: 'splSizeFilter',
         forcedCats: ['Speciality'],
         hideMatCode: true,
         getPage: () => currentSplPage,
@@ -2265,19 +2337,22 @@ async function renderSupportReceivingTable() {
     const tbody = document.querySelector('#srecTable tbody');
     if (!tbody) return;
     if (!supabaseClient) return;
-    tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
 
     const search    = (document.getElementById('srecSearch')?.value || '').trim();
     const pkg       = document.getElementById('srecPkgFilter')?.value || 'All';
     const packageNo = document.getElementById('srecPackageNoFilter')?.value || 'All';
     const sys       = document.getElementById('srecSystemFilter')?.value || 'All';
+    const iso       = document.getElementById('srecIsoFilter')?.value || 'All';
     const tag       = document.getElementById('srecTagFilter')?.value || 'All';
     const type      = document.getElementById('srecTypeFilter')?.value || 'All';
 
     const applyFilters = (q) => {
-        if (pkg !== 'All')       q = q.eq('pkg', pkg);
+        if (pkg === 'NULL')      q = q.is('pkg', null);
+        else if (pkg !== 'All')  q = q.eq('pkg', pkg);
         if (packageNo !== 'All') q = q.eq('package_no', packageNo);
         if (sys !== 'All')       q = q.eq('system', sys);
+        if (iso !== 'All')       q = q.eq('iso_dwg_no', iso);
         if (tag !== 'All')       q = q.ilike('support_tag', `${tag}%`);
         if (type === 'SPECIAL')  q = q.eq('type', 'SPECIAL');
         else if (type !== 'All') q = q.ilike('type', `(${type}-%`);
@@ -2292,15 +2367,15 @@ async function renderSupportReceivingTable() {
 
     const [dataRes, countRes] = await Promise.all([
         applyFilters(supabaseClient.from('support_receiving')
-            .select('pkg,package_no,system,iso_dwg_no,support_tag,type,part_no,id_no,item,matl,size_or_type,length_mm,qty')
+            .select('pkg,package_no,system,iso_dwg_no,support_tag,type,part_no,id_no,item,matl,size_or_type,length_mm,qty,delivery_date')
             .range(from, to)
-            .order('system').order('support_tag').order('part_no')),
+            .order('sys_rank').order('pkg_null_rank').order('support_tag').order('part_no')),
         applyFilters(supabaseClient.from('support_receiving')
             .select('*', { count: 'exact', head: true })),
     ]);
 
     if (dataRes.error) {
-        tbody.innerHTML = `<tr><td colspan="13" style="color:red;text-align:center;">Error: ${dataRes.error.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="14" style="color:red;text-align:center;">Error: ${dataRes.error.message}</td></tr>`;
         return;
     }
 
@@ -2308,7 +2383,7 @@ async function renderSupportReceivingTable() {
     const totalCount = countRes.count ?? data.length;
 
     if (data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:#888;padding:20px;">No data found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="14" style="text-align:center;color:#888;padding:20px;">No data found.</td></tr>';
     } else {
         tbody.innerHTML = data.map(r => {
             const tag = r.support_tag
@@ -2328,6 +2403,7 @@ async function renderSupportReceivingTable() {
             <td style="text-align:center;white-space:nowrap;">${r.size_or_type || '-'}</td>
             <td style="text-align:center;white-space:nowrap;">${r.length_mm || '-'}</td>
             <td style="text-align:center;white-space:nowrap;">${r.qty ?? '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${r.delivery_date || '-'}</td>
         </tr>`;
         }).join('');
     }
@@ -2889,8 +2965,10 @@ function attachEventListeners() {
             if (bomSystemFilter) bomSystemFilter.value = 'All';
             const bomItemFilter = document.getElementById('bomItemFilter');
             if (bomItemFilter) bomItemFilter.value = 'All';
-            const bomMatFilter = document.getElementById('bomMatFilter');
-            if (bomMatFilter) bomMatFilter.value = 'All';
+            const bomMat1Filter = document.getElementById('bomMat1Filter');
+            if (bomMat1Filter) bomMat1Filter.value = 'All';
+            const bomMat2Filter = document.getElementById('bomMat2Filter');
+            if (bomMat2Filter) bomMat2Filter.value = 'All';
             const bomSizeFilter = document.getElementById('bomSizeFilter');
             if (bomSizeFilter) bomSizeFilter.value = 'All';
             currentBomPage = 1;
@@ -2974,6 +3052,7 @@ function attachEventListeners() {
             const pno = document.getElementById('srecPackageNoFilter'); if (pno) pno.value = 'All';
             const sys = document.getElementById('srecSystemFilter');
             if (sys) { sys.value = 'All'; sys.dispatchEvent(new Event('change')); }
+            const isoF = document.getElementById('srecIsoFilter'); if (isoF) isoF.value = 'All';
             const typ = document.getElementById('srecTypeFilter'); if (typ) typ.value = 'All';
             currentSrecPage = 1;
             renderSupportReceivingTable();
@@ -2991,15 +3070,18 @@ function attachEventListeners() {
                 const pkg       = document.getElementById('srecPkgFilter')?.value || 'All';
                 const packageNo = document.getElementById('srecPackageNoFilter')?.value || 'All';
                 const sys       = document.getElementById('srecSystemFilter')?.value || 'All';
+                const iso       = document.getElementById('srecIsoFilter')?.value || 'All';
                 const tag       = document.getElementById('srecTagFilter')?.value || 'All';
                 const type      = document.getElementById('srecTypeFilter')?.value || 'All';
                 let query = supabaseClient.from('support_receiving')
-                    .select('pkg,package_no,system,iso_dwg_no,support_tag,type,part_no,id_no,item,matl,size_or_type,length_mm,qty')
-                    .order('system').order('support_tag').order('part_no')
+                    .select('pkg,package_no,system,iso_dwg_no,support_tag,type,part_no,id_no,item,matl,size_or_type,length_mm,qty,delivery_date')
+                    .order('sys_rank').order('pkg_null_rank').order('support_tag').order('part_no')
                     .limit(10000);
-                if (pkg !== 'All')       query = query.eq('pkg', pkg);
+                if (pkg === 'NULL')      query = query.is('pkg', null);
+                else if (pkg !== 'All')  query = query.eq('pkg', pkg);
                 if (packageNo !== 'All') query = query.eq('package_no', packageNo);
                 if (sys !== 'All')       query = query.eq('system', sys);
+                if (iso !== 'All')       query = query.eq('iso_dwg_no', iso);
                 if (tag !== 'All')       query = query.ilike('support_tag', `${tag}%`);
                 if (type === 'SPECIAL') query = query.eq('type', 'SPECIAL');
                 else if (type !== 'All') query = query.ilike('type', `(${type}-%`);
