@@ -258,8 +258,9 @@
                                  </button>
                              </div>
                          </div>
-                         <div style="padding-bottom:1px; margin-left:12px;">
+                         <div style="padding-bottom:1px; margin-left:12px; display:flex; align-items:center; gap:12px;">
                              <span id="masterInfo" style="font-size:11px; color:#666; white-space:nowrap;"></span>
+                             <button class="btn btn-outline" id="btnExportMaster" style="height:38px; white-space:nowrap; display:flex; align-items:center; gap:6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export Excel</button>
                          </div>
                      </div>
                  </div>
@@ -730,6 +731,7 @@
                                 </div>
                                 <button class="btn btn-primary" id="btnSrSearch" style="height:38px;"><i class="fas fa-search"></i> Search</button>
                                 <button class="btn btn-outline" id="btnSrReset" style="height:38px;">Reset</button>
+                                <button class="btn btn-outline" id="btnExportSr" style="height:38px;white-space:nowrap;display:flex;align-items:center;gap:6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export Excel</button>
                             </div>
                         </div>
                         <div class="panel" style="padding:0;overflow:hidden;">
@@ -904,7 +906,7 @@
                     <!-- Support tab -->
                     <div id="recTagSupport" style="display:none;">
                         <div class="panel filter-panel" style="margin-bottom:20px;">
-                            <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:nowrap;width:66%;">
+                            <div style="display:flex;align-items:flex-end;justify-content:space-between;width:100%;gap:10px;flex-wrap:nowrap;">
                                 <div style="display:flex;align-items:flex-end;gap:10px;flex:1;min-width:0;">
                                     <div class="form-group" style="flex:2;min-width:0;margin-bottom:0;">
                                         <label>Search (ISO / Support Tag / Item / MATL)</label>
@@ -1300,6 +1302,7 @@
                             <button class="btn btn-outline" onclick="(function(){var cat=document.getElementById('shortCatFilter');var si=document.getElementById('shortSearch');if(si)si.value='';if(cat){cat.value='ALL';cat.dispatchEvent(new Event('change'));}var ii=document.getElementById('shortItemFilter');var mt=document.getElementById('shortMatlFilter');var sz=document.getElementById('shortSizeFilter');if(ii)ii.value='ALL';if(mt)mt.value='ALL';if(sz)sz.value='ALL';_shortagePage=1;renderShortageTable();})()" style="height: 38px;">
                                 Reset
                             </button>
+                            <button class="btn btn-outline" id="btnExportShortage" style="height: 38px; white-space:nowrap; display:flex; align-items:center; gap:6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export Excel</button>
                         </div>
                     </div>
                 </div>
@@ -1392,6 +1395,7 @@
                             <button class="btn btn-outline" onclick="(function(){var cat=document.getElementById('surplusCatFilter');var si=document.getElementById('surplusSearch');if(si)si.value='';if(cat){cat.value='ALL';cat.dispatchEvent(new Event('change'));}var ii=document.getElementById('surplusItemFilter');var mt=document.getElementById('surplusMatlFilter');var sz=document.getElementById('surplusSizeFilter');if(ii)ii.value='ALL';if(mt)mt.value='ALL';if(sz)sz.value='ALL';_surplusPage=1;renderSurplusTable();})()" style="height: 38px;">
                                 Reset
                             </button>
+                            <button class="btn btn-outline" id="btnExportSurplus" style="height: 38px; white-space:nowrap; display:flex; align-items:center; gap:6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export Excel</button>
                         </div>
                     </div>
                 </div>

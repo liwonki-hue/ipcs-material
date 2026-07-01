@@ -1414,6 +1414,26 @@ function goSurplusPage(p) {
     renderSurplusTable();
 }
 
+function _exportDiffList(list, sheetName, filenamePrefix) {
+    const rows = list.map(r => ({
+        'Category':      r.cat,
+        'MatCode':       r.matCode,
+        'Item':          r.item,
+        'Material':      r.matl,
+        'Size (Inch)':   r.size,
+        'Unit':          r.unit,
+        'BOM QTY':       Math.round(r.bomQty),
+        'Receiving QTY': Math.round(r.recQty),
+        [`${filenamePrefix} QTY`]: Math.round(r.diffQty),
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [12, 22, 18, 12, 10, 8, 12, 14, 14].map(w => ({ wch: w }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    const today = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, `${filenamePrefix}_Export_${today}.xlsx`);
+}
+
 // ── Packing List Modal ─────────────────────────────────────────
 window.openPackingListModal = function(pkgNo, packing) {
     const modal   = document.getElementById('plModal');
@@ -2995,6 +3015,55 @@ function attachEventListeners() {
         });
     }
 
+    const btnExportMaster = document.getElementById('btnExportMaster');
+    if (btnExportMaster) {
+        btnExportMaster.addEventListener('click', () => {
+            const q    = (document.getElementById('masterSearch')?.value || '').toUpperCase();
+            const cat  = document.getElementById('masterCatFilter')?.value  || 'All';
+            const item = document.getElementById('masterItemFilter')?.value || 'All';
+            const size = document.getElementById('masterSizeFilter')?.value || 'All';
+            const recDescMap = {};
+            db.receiving.forEach(r => { if (r.matCode && !recDescMap[r.matCode]) recDescMap[r.matCode] = r.desc; });
+
+            const data = db.matCodeMaster.filter(m => {
+                if (q && !m.matCode.includes(q) && !m.itemDesc.toUpperCase().includes(q) &&
+                    !m.matlDesc.toUpperCase().includes(q) && !m.category.toUpperCase().includes(q)) return false;
+                if (cat  !== 'All' && m.category !== cat) return false;
+                if (item !== 'All' && window.extractItemFromMatCode(m.matCode) !== item) return false;
+                if (size !== 'All' && window.extractSizeFromMatCode(m.matCode) !== size) return false;
+                return true;
+            });
+
+            const rows = data.map(m => ({
+                'MatCode':          m.matCode,
+                'Category':         m.category,
+                'Full Description': db.bomDesc[m.matCode.trim().toUpperCase()] || recDescMap[m.matCode]
+                    || [m.itemDesc, m.matlDesc, m.size2, m.classDesc, m.etDesc].filter(v => v && v !== '-').join(', ') || '-',
+                'Item':      m.itemDesc,
+                'Material':  m.matlDesc,
+                'Size (Inch)': m.size1,
+                'Size (DN)': m.size2,
+                'Class':     m.classDesc,
+                'End Type':  m.etDesc,
+            }));
+            const ws = XLSX.utils.json_to_sheet(rows);
+            ws['!cols'] = [20, 12, 40, 18, 14, 10, 10, 10, 10].map(w => ({ wch: w }));
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'MatCode Master');
+            const today = new Date().toISOString().split('T')[0];
+            XLSX.writeFile(wb, `MatCode_Master_Export_${today}.xlsx`);
+        });
+    }
+
+    document.getElementById('btnExportShortage')?.addEventListener('click', () => {
+        renderShortageTable();
+        _exportDiffList(_shortageList, 'Shortage', 'Shortage');
+    });
+    document.getElementById('btnExportSurplus')?.addEventListener('click', () => {
+        renderSurplusTable();
+        _exportDiffList(_surplusList, 'Surplus', 'Surplus');
+    });
+
     // BOM Export Excel Button
     const btnExportBom = document.getElementById('btnExportBom');
     if (btnExportBom) {
@@ -3098,7 +3167,28 @@ function attachEventListeners() {
                 if (search) query = query.or(`iso_dwg_no.ilike.%${search}%,support_tag.ilike.%${search}%,item.ilike.%${search}%,matl.ilike.%${search}%,id_no.ilike.%${search}%`);
                 const { data, error } = await query;
                 if (error) throw error;
-                exportToExcel(data, 'support_receiving_export.xlsx');
+                const rows = (data || []).map(r => ({
+                    'PKG':           r.pkg           || '-',
+                    'PACKAGE NO':    r.package_no    || '-',
+                    'SYSTEM':        r.system        || '-',
+                    'ISO DWG NO':    r.iso_dwg_no    || '-',
+                    'SUPPORT TAG NO': r.support_tag  || '-',
+                    'TYPE':          r.type          || '-',
+                    'PART NO':       r.part_no       || '-',
+                    'ID NO':         r.id_no         || '-',
+                    'ITEM':          r.item          || '-',
+                    'MATL':          r.matl          || '-',
+                    'SIZE OR TYPE':  r.size_or_type  || '-',
+                    'LENGTH (MM)':   r.length_mm     || '-',
+                    "Q'TY":          r.qty           || 0,
+                    'DELIVERY DATE': r.delivery_date || '-',
+                }));
+                const ws = XLSX.utils.json_to_sheet(rows);
+                ws['!cols'] = [12, 22, 10, 20, 22, 10, 10, 10, 16, 12, 16, 12, 8, 14].map(w => ({ wch: w }));
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Support Receiving');
+                const today = new Date().toISOString().split('T')[0];
+                XLSX.writeFile(wb, `Support_Receiving_Export_${today}.xlsx`);
             } catch(err) {
                 alert('Export failed: ' + err.message);
             } finally {
@@ -3198,6 +3288,131 @@ function attachEventListeners() {
             XLSX.utils.book_append_sheet(wb, ws, 'Receiving');
             const today = new Date().toISOString().split('T')[0];
             XLSX.writeFile(wb, `Fitting_Receiving_Export_${today}.xlsx`);
+        });
+    }
+
+    const btnExportOth = document.getElementById('btnExportOth');
+    if (btnExportOth) {
+        btnExportOth.addEventListener('click', () => {
+            const item  = (document.getElementById('othItemSearch')?.value || '').trim().toUpperCase();
+            const doc   = document.getElementById('othDocFilter')?.value || 'All';
+            const pkg   = document.getElementById('othPkgFilter')?.value || 'All';
+            const itemF = document.getElementById('othItemFilter')?.value || 'All';
+            const sizeF = document.getElementById('othSizeFilter')?.value || 'All';
+
+            let data = db.receiving.filter(r => isReceivingActive(r.plNo) && r.category === 'Others');
+            if (doc   !== 'All') data = data.filter(r => r.docNo === doc);
+            if (pkg   !== 'All') data = data.filter(r => r.plNo  === pkg);
+            if (itemF !== 'All') data = data.filter(r => window.extractItemFromMatCode(r.matCode) === itemF);
+            if (sizeF !== 'All') data = data.filter(r => window.extractSizeFromMatCode(r.matCode) === sizeF);
+            if (item)            data = data.filter(r => r.desc.toUpperCase().includes(item));
+
+            const rows = data.map(r => ({
+                'DOC NO':           r.docNo    || '-',
+                'PKG NO':           r.plNo     || '-',
+                'Mat Code':         r.matCode  || '-',
+                'Category':         r.category || '-',
+                'Full Description': r.desc     || '-',
+                'Unit':             r.unit     || 'EA',
+                'Qty':              r.qty      || 0,
+            }));
+            const ws = XLSX.utils.json_to_sheet(rows);
+            ws['!cols'] = [16, 26, 24, 14, 55, 8, 10].map(w => ({ wch: w }));
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Receiving');
+            const today = new Date().toISOString().split('T')[0];
+            XLSX.writeFile(wb, `Others_Receiving_Export_${today}.xlsx`);
+        });
+    }
+
+    // Tag Item (Valve / Speciality) Export: BOM tag 매핑을 통해 item/matl/size/rating을 산출
+    function _buildTagRecvExportRows({ searchId, docId, pkgId, itemId, sizeId, statusId, forcedCat }) {
+        const search  = (document.getElementById(searchId)?.value || '').trim().toUpperCase();
+        const doc     = document.getElementById(docId)?.value    || 'All';
+        const pkg     = document.getElementById(pkgId)?.value    || 'All';
+        const itemF   = document.getElementById(itemId)?.value   || 'All';
+        const sizeF   = document.getElementById(sizeId)?.value   || 'All';
+        const statusF = document.getElementById(statusId)?.value || 'All';
+        const masterMap = _buildMasterMap();
+
+        return db.receiving.filter(r => {
+            if (r.category !== forcedCat) return false;
+            const matchSearch = !search || (r.matCode||'').toUpperCase().includes(search) || r.plNo.toUpperCase().includes(search) || (r.category||'').toUpperCase().includes(search) || r.desc.toUpperCase().includes(search);
+            const matchDoc    = doc === 'All' || r.docNo === doc;
+            const matchPkg    = pkg === 'All' || r.plNo  === pkg;
+            const tagInfo     = db.bomTagMap[(r.tag || '').toUpperCase()];
+            const effMat      = r.matCode || (tagInfo ? tagInfo.matCode : '');
+            const bomDesc     = tagInfo ? tagInfo.fullDescription : '';
+            const mcItem      = window.extractItemFromMatCode(effMat);
+            const rawItem     = (mcItem && mcItem !== '-') ? mcItem : window.extractItemFromDesc(bomDesc || r.desc);
+            const itemFromMat = (r.plNo || '').toUpperCase().includes('BYPS') ? 'BYPASS VALVE' : rawItem;
+            const matchItemF  = itemF === 'All' || itemFromMat === itemF || (itemFromMat === '-' && window.extractItemFromDesc(r.desc) === itemF);
+            const msz         = window.extractSizeFromMatCode(effMat);
+            const matchSizeF  = sizeF === 'All' || (msz && msz !== '-' ? msz === sizeF : window.extractSizeFromLineNo(tagInfo?.lineNo) === sizeF);
+            const pkgSt       = (_plUpdatesCache[r.plNo] || {}).status || '';
+            const matchStatusF = statusF === 'All' || pkgSt === statusF;
+            return matchSearch && matchDoc && matchPkg && matchItemF && matchSizeF && matchStatusF;
+        }).map(r => {
+            const tagInfo  = db.bomTagMap[(r.tag || '').toUpperCase()];
+            const effMat   = r.matCode || (tagInfo ? tagInfo.matCode : '');
+            const bomDesc  = tagInfo ? tagInfo.fullDescription : '';
+            const mcItem   = window.extractItemFromMatCode(effMat);
+            const rawItem  = (mcItem && mcItem !== '-') ? mcItem : window.extractItemFromDesc(bomDesc || r.desc);
+            const item     = (r.plNo || '').toUpperCase().includes('BYPS') ? 'BYPASS VALVE' : rawItem;
+            const szFromMat = window.extractSizeFromMatCode(effMat);
+            const size     = (szFromMat && szFromMat !== '-') ? szFromMat : ((bomDesc || r.desc).match(/(\d+(?:\.\d+)?"\s*[Xx×]\s*\d+(?:\.\d+)?"|DN\s*\d+)/i) || [])[0] || '-';
+            const mData    = masterMap[effMat] || {};
+            const mcParts  = (effMat || '').split('-');
+            const matl     = mData.matlDesc || mcParts[1] || '-';
+            const rating   = mData.classDesc || mcParts[3] || '-';
+            const pkgStatus = (_plUpdatesCache[r.plNo] || {}).status || '';
+            return {
+                'PKG':     r.docNo || '-',
+                'PKG NO':  r.plNo  || '-',
+                'Category': r.category || '-',
+                'Tag No':  r.tag || '-',
+                'Item':    item,
+                'Mat':     matl,
+                'Size':    size,
+                'Rating':  rating,
+                'Unit':    r.unit || 'EA',
+                'Qty':     r.qty || 0,
+                'Status':  pkgStatus || '-',
+                'Purpose': r.purpose || '-',
+            };
+        });
+    }
+
+    function _exportTagRecvRows(rows, sheetName, filenamePrefix) {
+        const ws = XLSX.utils.json_to_sheet(rows);
+        ws['!cols'] = [10, 18, 12, 22, 16, 14, 10, 10, 8, 8, 10, 14].map(w => ({ wch: w }));
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+        const today = new Date().toISOString().split('T')[0];
+        XLSX.writeFile(wb, `${filenamePrefix}_Export_${today}.xlsx`);
+    }
+
+    const btnExportVal = document.getElementById('btnExportVal');
+    if (btnExportVal) {
+        btnExportVal.addEventListener('click', () => {
+            const rows = _buildTagRecvExportRows({
+                searchId: 'valItemSearch', docId: 'valDocFilter', pkgId: 'valPkgFilter',
+                itemId: 'valItemFilter', sizeId: 'valSizeFilter', statusId: 'valStatusFilter',
+                forcedCat: 'Valve',
+            });
+            _exportTagRecvRows(rows, 'Valve', 'Valve_Receiving');
+        });
+    }
+
+    const btnExportSpl = document.getElementById('btnExportSpl');
+    if (btnExportSpl) {
+        btnExportSpl.addEventListener('click', () => {
+            const rows = _buildTagRecvExportRows({
+                searchId: 'splItemSearch', docId: 'splDocFilter', pkgId: 'splPkgFilter',
+                itemId: 'splItemFilter', sizeId: 'splSizeFilter', statusId: 'splStatusFilter',
+                forcedCat: 'Speciality',
+            });
+            _exportTagRecvRows(rows, 'Speciality', 'Speciality_Receiving');
         });
     }
 
@@ -4799,4 +5014,27 @@ document.addEventListener('DOMContentLoaded', () => {
         _srPage = 1; renderSpoolReceiving();
     });
     if (srSearchEl) srSearchEl.addEventListener('keydown', e => { if (e.key === 'Enter') { _srPage = 1; renderSpoolReceiving(); }});
+
+    const btnExportSr = document.getElementById('btnExportSr');
+    if (btnExportSr) {
+        btnExportSr.addEventListener('click', () => {
+            const rows = _getSrFiltered().map(r => ({
+                'PKG NO':      r.pkg_no      || '-',
+                'System':      r.system      || '-',
+                'Description': r.description || '-',
+                'Tag No':      r.tag_no      || '-',
+                'Item':        r.item        || 'Spool',
+                'Size':        r.size        || '-',
+                'Unit':        r.unit        || 'EA',
+                'Qty':         r.qty ?? 1,
+                'Purpose':     r.purpose     || '-',
+            }));
+            const ws = XLSX.utils.json_to_sheet(rows);
+            ws['!cols'] = [22, 8, 40, 20, 14, 14, 8, 8, 14].map(w => ({ wch: w }));
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Spool Receiving');
+            const today = new Date().toISOString().split('T')[0];
+            XLSX.writeFile(wb, `Spool_Receiving_Export_${today}.xlsx`);
+        });
+    }
 });
