@@ -66,6 +66,11 @@ PKG No를 클릭하면 기존 `openPackingListModal(pkgNo, packing)`을 재사�
 - 결과: 해당 Tag의 모든 파트 — `support_bom`에서 Item/Matl/Size or Type/BOM Qty, `support_receiving`을 tag 기준 집계해 Received Qty, PKG No는 `support_receiving.package_no` + `pl_updates` 조인.
 
 #### 모드 C: Item (Valve · Speciality)
+
+> **[2026-07-01 개정]** 아래 내용은 `2026-07-01-tab-restructure-and-tag-override-design.md`의 "섹션 3"으로 대체되었다. Valve/Speciality는 BOM 없이 순수 Tag 기반으로 관리하므로 BOM Qty 비교를 하지 않으며, `db.receiving`을 Tag로 그룹핑하는 방식으로 데이터 소스가 바뀌고 BOM 미매칭 Tag에 대한 수동 ISO/Line No 지정 기능(`tag_overrides` 테이블)이 추가되었다. 최신 내용은 위 문서를 참조할 것.
+>
+> (이하는 개정 전 원안 — 참고용으로 보존)
+
 - 입력: Category(Valve/Speciality) 드롭다운 → Item 드롭다운(기존 `getBomItemsForCat(cat)` 재사용) → System/Size 필터(선택) → 검색
 - 결과: 조건에 맞는 모든 TAG NO, 각 행에 자동 조회된 ISO Drawing을 참고 컬럼으로 표시 (현장에서 ISO를 몰라도 검색 후 알 수 있음)
 - 데이터 소스/필터링 로직은 이번 세션에서 이미 구현한 `_buildTagRecvExportRows()` 헬퍼(app.js, Valve/Speciality Export용)의 계산 방식을 재사용/응용한다.
@@ -73,7 +78,7 @@ PKG No를 클릭하면 기존 `openPackingListModal(pkgNo, packing)`을 재사�
 ### 3. Stock/Issued 계산 방식 변경
 
 - `Issued 수량(matCode 또는 tag 단위) = Issue Date가 설정된 PKG들의 Received 수량 합`
-- 공용 헬�러 함수(가칭 `isPkgIssued(pkgNo)` → `pl_updates` 조회, `getIssuedQtyMap(filterFn)` → `db.receiving`/`support_receiving`을 이 기준으로 집계)를 추가하고, 기존 `db.issued` 기반 집계를 이걸로 교체한다.
+- 공용 헬퍼 함수(가칭 `isPkgIssued(pkgNo)` → `pl_updates` 조회, `getIssuedQtyMap(filterFn)` → `db.receiving`/`support_receiving`을 이 기준으로 집계)를 추가하고, 기존 `db.issued` 기반 집계를 이걸로 교체한다.
 - **Material Stock 탭**(`renderStockTable`)의 `issMap` 계산과 Export Excel의 동일 로직을 새 함수로 교체.
 - Material Finding의 Stock Qty 컬럼도 동일 헬퍼를 사용해 모드 A/B/C 전부 일관된 계산을 하도록 한다.
 - `issued` Supabase 테이블은 그대로 두되(삭제하지 않음) 더 이상 읽지도 쓰지도 않는다.

@@ -1556,6 +1556,8 @@ git commit -m "feat: Mode B(Support Tag No 단독 검색) 구현"
 
 ### Task 7: Mode C (Item — Valve · Speciality) 구현
 
+> **[2026-07-01 개정] 이 Task는 폐기되었다.** Valve/Speciality는 BOM 없이 순수 Tag 기반으로 관리하기로 방향이 바뀌어, 아래 내용(bom_detail 기반 BOM Qty 조회) 대신 `docs/superpowers/specs/2026-07-01-tab-restructure-and-tag-override-design.md`의 "섹션 3" 설계를 구현하는 새 Task로 대체해야 한다 (해당 설계의 구현 계획은 별도 plan 문서에서 작성 예정). 이 Task의 내용은 이력 보존용으로만 남긴다.
+
 **Files:**
 - Modify: `static/js/app.js` (`setupItemModeFilters` 신규, `btnFilterItem` 핸들러 추가)
 
