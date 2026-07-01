@@ -19,8 +19,7 @@ let db = {
     bomDesc: {},       // bom_desc view: matCode → full_description (BOM 설계 원문)
     bomTagMap: {},     // bom_detail: tag → {matCode, fullDescription, lineNo} (NULL matCode 입고 레코드 매칭용)
     specialityItems: [], // Speciality category distinct items (mat_code NULL → desc 기반)
-    receiving: [],
-    issued: []
+    receiving: []
 };
 
 // Cached ISO stage data for client-side re-filtering (donut chart clicks)
@@ -339,12 +338,11 @@ async function syncFromSupabase() {
     
     showLoading(true);
     try {
-        const [matMasterRaw, bomRaw, bomIsoRaw, recvRaw, issuedRaw, bomDescRaw, specialityRaw, bomTagRaw] = await Promise.all([
+        const [matMasterRaw, bomRaw, bomIsoRaw, recvRaw, bomDescRaw, specialityRaw, bomTagRaw] = await Promise.all([
             fetchAllRows('matcode_master'),
             supabaseClient.from('bom_agg').select('*').limit(10000).then(r => r.data || []),
             supabaseClient.from('bom_iso_list').select('*').limit(10000).then(r => r.data || []),
             fetchAllRows('receiving'),
-            fetchAllRows('issued'),
             supabaseClient.from('bom_desc').select('mat_code,full_description').limit(10000).then(r => r.data || []),
             supabaseClient.from('bom_detail').select('full_description').eq('category', 'Speciality').not('full_description', 'is', null).limit(1000).then(r => r.data || []),
             supabaseClient.from('bom_detail').select('tag,mat_code,full_description,line_no').not('tag', 'is', null).limit(10000).then(r => r.data || [])
@@ -411,16 +409,6 @@ async function syncFromSupabase() {
                 purpose:  r.purpose || '',
             })).filter(r => r.qty > 0);
             invalidateRecvPurposeMap();
-        }
-
-        if (issuedRaw.length > 0) {
-            db.issued = issuedRaw.map(i => ({
-                matCode: (i.mat_code || '').trim().toUpperCase(),
-                qty: parseFloat(i.qty) || 0,
-                iso: i.iso || '-',
-                mrNo: i.mr_no || '-',
-                issueDate: i.issue_date ? i.issue_date.split('T')[0] : '-'
-            }));
         }
 
         await loadPlUpdates();
