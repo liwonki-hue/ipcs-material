@@ -2764,7 +2764,16 @@ async function savePLReview() {
     }
 }
 
-async function loadSupportTagDatalist() { /* Task 6에서 구현 */ }
+let _supportTagDatalistLoaded = false;
+async function loadSupportTagDatalist() {
+    if (_supportTagDatalistLoaded) return;
+    const dl = document.getElementById('mfSupportTagDatalist');
+    if (!dl || !supabaseClient) return;
+    const { data } = await supabaseClient.from('support_bom').select('support_tag').limit(20000);
+    const tags = [...new Set((data || []).map(r => r.support_tag).filter(Boolean))].sort();
+    dl.innerHTML = tags.map(t => `<option value="${t}">`).join('');
+    _supportTagDatalistLoaded = true;
+}
 
 // The action of clicking Search ISO BOM
 function attachEventListeners() {
@@ -3639,6 +3648,23 @@ function attachEventListeners() {
             if (mode === 'support') loadSupportTagDatalist();
         });
     });
+
+    const btnFilterSupportTag = document.getElementById('btnFilterSupportTag');
+    if (btnFilterSupportTag) {
+        btnFilterSupportTag.addEventListener('click', async () => {
+            const tag = (document.getElementById('mfSupportTagSearch')?.value || '').trim();
+            const tbody = document.getElementById('mfSupportTagTbody');
+            if (!tbody) return;
+            if (!tag) {
+                tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#888;">Enter a Support Tag No.</td></tr>';
+                return;
+            }
+            await fetchAndRenderSupportRows({
+                filterField: 'support_tag', filterValue: tag, tbodyEl: tbody,
+                emptyMsg: 'No support materials found for this Tag No.'
+            });
+        });
+    }
 
     const btnAddBomItem = document.getElementById('btnAddBomItem');
     if(btnAddBomItem) {
