@@ -249,16 +249,16 @@ ul { list-style: none; }
 #plTable td, #plTable th { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
 /* Material Stock 탭 글자 크기 1단계 축소 */
-#stock_ledger .page-header h1     { font-size: 22px; }
-#stock_ledger .subtitle           { font-size: 12px; }
-#stock_ledger .form-group label   { font-size: 10px; }
-#stock_ledger .form-control       { font-size: 11px; height: 34px; padding: 4px 10px; }
-#stock_ledger .btn                { font-size: 11px; height: 34px; padding: 4px 12px; }
-#stock_ledger .panel-header h3    { font-size: 14px; }
-#stock_ledger .data-table td      { font-size: 12px; padding: 7px 10px; }
-#stock_ledger .data-table th      { font-size: 10px; }
-#stock_ledger .status-badge       { font-size: 10px; }
-#stock_ledger #stockCountLabel    { font-size: 12px; }
+#material_status .page-header h1                   { font-size: 22px; }
+#material_status .subtitle                         { font-size: 12px; }
+#material_status #msPanelStock .form-group label   { font-size: 10px; }
+#material_status #msPanelStock .form-control       { font-size: 11px; height: 34px; padding: 4px 10px; }
+#material_status #msPanelStock .btn                { font-size: 11px; height: 34px; padding: 4px 12px; }
+#material_status #msPanelStock .panel-header h3    { font-size: 14px; }
+#material_status #msPanelStock .data-table td      { font-size: 12px; padding: 7px 10px; }
+#material_status #msPanelStock .data-table th      { font-size: 10px; }
+#material_status #msPanelStock .status-badge       { font-size: 10px; }
+#material_status #msPanelStock #stockCountLabel    { font-size: 12px; }
 
 /* Shipping / Custom Clearance 탭 글자 크기 1단계 축소 */
 #shipping .page-header h1     { font-size: 22px; }
