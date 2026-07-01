@@ -4345,6 +4345,46 @@ function isReceivingActive(plNo) {
     const status = (_plUpdatesCache[plNo] || {}).status || '';
     return status !== 'Preparing' && status !== 'Shipping';
 }
+
+// PKG의 Issue Date가 설정되어 있으면 "불출 완료"로 판정
+function isPkgIssued(plNo) {
+    return !!(_plUpdatesCache[plNo] || {}).issue_date;
+}
+
+// matCode 단위 Issued 수량 맵 — PKG Issue Date 기준 (구 db.issued 테이블 대체)
+function getIssuedQtyMap(filterFn) {
+    const map = {};
+    db.receiving.forEach(r => {
+        if (!r.matCode) return;
+        if (!filterFn(r)) return;
+        if (!isPkgIssued(r.plNo)) return;
+        map[r.matCode] = (map[r.matCode] || 0) + (r.qty || 0);
+    });
+    return map;
+}
+
+// matCode → { pkgNo: qty } — Packing List 컬럼 렌더링용 원자료
+function buildPkgBreakdown(filterFn) {
+    const map = {};
+    db.receiving.filter(filterFn).forEach(r => {
+        if (!r.matCode || r.plNo === '-') return;
+        if (!map[r.matCode]) map[r.matCode] = {};
+        map[r.matCode][r.plNo] = (map[r.matCode][r.plNo] || 0) + (r.qty || 0);
+    });
+    return map;
+}
+
+// { pkgNo: qty } → "Packing List (PKG No)" 컬럼 HTML (불출 여부 표시 포함)
+function renderPkgListCell(pkgMap) {
+    if (!pkgMap || Object.keys(pkgMap).length === 0) return '-';
+    return Object.entries(pkgMap).sort((a, b) => a[0].localeCompare(b[0])).map(([pkgNo, qty]) => {
+        const done = isPkgIssued(pkgNo);
+        const qtyStr = qty % 1 === 0 ? qty : qty.toFixed(2);
+        const label = done ? `불출 ${(_plUpdatesCache[pkgNo] || {}).issue_date || ''}` : '미불출';
+        return `<div>${pkgNo} (${qtyStr} EA) — <span style="color:${done ? '#2e7d32' : '#999'};">${label}</span></div>`;
+    }).join('');
+}
+
 let _packingToPkgNos  = {};  // packing → [pkg_no, ...]  (전체 필터 기준)
 let _pkgNoToPacking   = {};  // pkg_no  → packing
 // Packing 단위로 공통 관리되는 필드
