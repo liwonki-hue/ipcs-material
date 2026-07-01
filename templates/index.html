@@ -38,8 +38,7 @@
                  <div class="section-title">Dashboard</div>
                  <div class="nav-item active" data-target="dashboard"><i class="fas fa-chart-pie"></i> Integrated Dashboard</div>
 
-                 <div class="section-title">Master Data</div>
-                 <div class="nav-item" data-target="matcode_master"><i class="fas fa-barcode"></i> MatCode Master</div>
+                 <div class="section-title">BOM</div>
                  <div class="nav-item" data-target="piping_bom"><i class="fas fa-layer-group"></i> BOM</div>
 
                  <div class="section-title">Bulk Item (Receiving)</div>
@@ -225,14 +224,128 @@
                 </div>
             </section>
 
-             <!-- 2. MatCode Master Tab -->
-             <section id="matcode_master" class="view-section">
+            <!-- 3. BOM Tab -->
+            <section id="piping_bom" class="view-section">
                 <div class="page-header">
                      <div>
-                         <h1>MatCode Master</h1>
-                         <p class="subtitle">Reference rules for generating MatCodes.</p>
+                         <h1>BOM</h1>
+                         <p class="subtitle">Piping Bill of Materials — Pipe, Fitting, Others</p>
+                     </div>
+                     <div class="actions">
+                         <input type="file" id="bomFileInput" accept=".xlsx,.xls" style="display:none;">
+                         <button class="btn btn-primary" id="btnAddBomItem"><i class="fas fa-plus"></i> Add New Material</button>
                      </div>
                  </div>
+                 
+                 <!-- Add Item Form (Hidden by default) -->
+                 <div class="panel" id="bomFormPanel" style="display: none; margin-bottom: 20px;">
+                    <h3>Add/Edit BOM Item</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>ISO Drawing No</label>
+                            <input type="text" id="bomIso" class="form-control" placeholder="e.g. 100-ISO-01">
+                        </div>
+                        <div class="form-group">
+                            <label>System/Area</label>
+                            <input type="text" id="bomSystem" class="form-control" placeholder="e.g. Unit 100">
+                        </div>
+                        <div class="form-group">
+                            <label>Part Description</label>
+                            <input type="text" id="bomDesc" class="form-control" placeholder="Type, Size, Spec">
+                        </div>
+                        <div class="form-group">
+                            <label>Design Qty</label>
+                            <input type="number" id="bomQty" class="form-control" value="1">
+                        </div>
+                        <div class="form-group">
+                            <label>MatCode Generator</label>
+                            <div class="input-group">
+                                <input type="text" id="bomMatCode" class="form-control" placeholder="Auto-generated or Manual">
+                                <button class="btn btn-outline" id="btnGenMatCode">Generate</button>
+                            </div>
+                        </div>
+                 <div class="form-actions" style="margin-top: 15px;">
+                        <button class="btn btn-primary" id="bomSaveBtn">Save Changes</button>
+                        <button class="btn btn-outline" id="bomCancelBtn">Cancel</button>
+                    </div>
+                 </div>
+                 </div>
+
+                 <!-- BOM Tab bar -->
+                 <div style="display:flex;gap:0;border-bottom:2px solid #c8cfe0;margin-bottom:16px;">
+                     <button class="bom-tab-btn" data-tab="piping" style="padding:8px 24px;border:none;border-bottom:3px solid #0A2540;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#0A2540;margin-bottom:-2px;letter-spacing:0.5px;">PIPING</button>
+                     <button class="bom-tab-btn" data-tab="fitting" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">FITTING</button>
+                     <button class="bom-tab-btn" data-tab="others" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">OTHERS</button>
+                    <button class="bom-tab-btn" data-tab="matcode" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">MATCODE MASTER</button>
+                 </div>
+
+                 <div id="bomMainPanel">
+                 <div class="panel filter-panel" style="margin-bottom: 20px;">
+                      <div style="display: flex; align-items: flex-end; justify-content: space-between; width: 100%; gap: 10px; flex-wrap: nowrap;">
+                          <div style="display: flex; align-items: flex-end; gap: 10px; flex: 1; min-width: 0;">
+                              <div class="form-group" style="flex: 2; min-width: 0; margin-bottom: 0;">
+                                  <label>Search (ISO / MatCode / Description)</label>
+                                  <input type="text" id="bomIsoSearch" class="form-control" style="width: 100%;" placeholder="ISO Drawing, MatCode, Description..." list="bomIsoDatalist">
+                                  <datalist id="bomIsoDatalist"></datalist>
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                                  <label>System</label>
+                                  <select id="bomSystemFilter" class="form-control" style="width: 100%;"><option value="All">All Systems</option></select>
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                                  <label>Item</label>
+                                  <select id="bomItemFilter" class="form-control" style="width: 100%;"><option value="All">All Items</option></select>
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                                  <label>Mat 1</label>
+                                  <select id="bomMat1Filter" class="form-control" style="width: 100%;"><option value="All">All Mat 1</option></select>
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                                  <label>Mat 2</label>
+                                  <select id="bomMat2Filter" class="form-control" style="width: 100%;"><option value="All">All Mat 2</option></select>
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                                  <label>Size</label>
+                                  <select id="bomSizeFilter" class="form-control" style="width: 100%;"><option value="All">All Sizes</option></select>
+                              </div>
+                              <div style="padding-bottom: 1px; display: flex; gap: 8px; flex-shrink: 0;">
+                                  <button class="btn btn-primary" id="btnFilterBom" style="white-space: nowrap;"><i class="fas fa-search"></i> Search</button>
+                                  <button class="btn btn-outline" id="btnClearBomFilters" style="white-space: nowrap;">Clear</button>
+                              </div>
+                          </div>
+                          <div style="padding-bottom: 1px; display: flex; gap: 8px; flex-shrink: 0;">
+                              <button class="btn btn-outline" id="btnExportBom" style="white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export</button>
+                              <button class="btn btn-outline" id="btnUploadBom" style="white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-upload" style="color:#1565c0;"></i> Upload</button>
+                          </div>
+                      </div>
+                  </div>
+
+                 <div class="panel data-panel">
+                     <div class="table-responsive">
+                         <table class="data-table" id="bomTable" style="font-size:0.82em;">
+                             <thead>
+                                 <tr>
+                                     <th style="text-align:center;">Mat Code</th>
+                                     <th style="text-align:center;">System</th>
+                                     <th style="text-align:center;">ISO Drawing</th>
+                                     <th style="text-align:center;">Line No.</th>
+                                     <th style="text-align:center;min-width:135px;">Item</th>
+                                     <th style="text-align:center;">Mat 1</th>
+                                     <th style="text-align:center;">Mat 2</th>
+                                     <th style="text-align:center;">Size</th>
+                                     <th style="text-align:center;min-width:160px;">Description</th>
+                                     <th style="text-align:center;width:40px;">Unit</th>
+                                     <th style="text-align:center;">Design Qty</th>
+                                 </tr>
+                             </thead>
+                             <tbody></tbody>
+                         </table>
+                     </div>
+                     <div id="bomPagination"></div>
+                 </div>
+                 </div>
+
+                 <div id="bomMatCodeMasterPanel" style="display:none;">
                  <div class="panel filter-panel" style="margin-bottom:20px;">
                      <div style="display:flex; align-items:flex-end; justify-content:space-between; width:100%;">
                          <div style="display:flex; align-items:flex-end; gap:12px; width:66.67%;">
@@ -301,124 +414,6 @@
                      </div>
                      <div id="matCodePagination"></div>
                  </div>
-            </section>
-
-            <!-- 3. BOM Tab -->
-            <section id="piping_bom" class="view-section">
-                <div class="page-header">
-                     <div>
-                         <h1>BOM</h1>
-                         <p class="subtitle">Piping Bill of Materials — Pipe, Fitting, Others</p>
-                     </div>
-                     <div class="actions">
-                         <input type="file" id="bomFileInput" accept=".xlsx,.xls" style="display:none;">
-                         <button class="btn btn-primary" id="btnAddBomItem"><i class="fas fa-plus"></i> Add New Material</button>
-                     </div>
-                 </div>
-                 
-                 <!-- Add Item Form (Hidden by default) -->
-                 <div class="panel" id="bomFormPanel" style="display: none; margin-bottom: 20px;">
-                    <h3>Add/Edit BOM Item</h3>
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label>ISO Drawing No</label>
-                            <input type="text" id="bomIso" class="form-control" placeholder="e.g. 100-ISO-01">
-                        </div>
-                        <div class="form-group">
-                            <label>System/Area</label>
-                            <input type="text" id="bomSystem" class="form-control" placeholder="e.g. Unit 100">
-                        </div>
-                        <div class="form-group">
-                            <label>Part Description</label>
-                            <input type="text" id="bomDesc" class="form-control" placeholder="Type, Size, Spec">
-                        </div>
-                        <div class="form-group">
-                            <label>Design Qty</label>
-                            <input type="number" id="bomQty" class="form-control" value="1">
-                        </div>
-                        <div class="form-group">
-                            <label>MatCode Generator</label>
-                            <div class="input-group">
-                                <input type="text" id="bomMatCode" class="form-control" placeholder="Auto-generated or Manual">
-                                <button class="btn btn-outline" id="btnGenMatCode">Generate</button>
-                            </div>
-                        </div>
-                 <div class="form-actions" style="margin-top: 15px;">
-                        <button class="btn btn-primary" id="bomSaveBtn">Save Changes</button>
-                        <button class="btn btn-outline" id="bomCancelBtn">Cancel</button>
-                    </div>
-                 </div>
-                 </div>
-
-                 <!-- BOM Tab bar -->
-                 <div style="display:flex;gap:0;border-bottom:2px solid #c8cfe0;margin-bottom:16px;">
-                     <button class="bom-tab-btn" data-tab="piping" style="padding:8px 24px;border:none;border-bottom:3px solid #0A2540;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#0A2540;margin-bottom:-2px;letter-spacing:0.5px;">PIPING</button>
-                     <button class="bom-tab-btn" data-tab="fitting" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">FITTING</button>
-                     <button class="bom-tab-btn" data-tab="others" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">OTHERS</button>
-                 </div>
-
-                 <div class="panel filter-panel" style="margin-bottom: 20px;">
-                      <div style="display: flex; align-items: flex-end; justify-content: space-between; width: 100%; gap: 10px; flex-wrap: nowrap;">
-                          <div style="display: flex; align-items: flex-end; gap: 10px; flex: 1; min-width: 0;">
-                              <div class="form-group" style="flex: 2; min-width: 0; margin-bottom: 0;">
-                                  <label>Search (ISO / MatCode / Description)</label>
-                                  <input type="text" id="bomIsoSearch" class="form-control" style="width: 100%;" placeholder="ISO Drawing, MatCode, Description..." list="bomIsoDatalist">
-                                  <datalist id="bomIsoDatalist"></datalist>
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
-                                  <label>System</label>
-                                  <select id="bomSystemFilter" class="form-control" style="width: 100%;"><option value="All">All Systems</option></select>
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
-                                  <label>Item</label>
-                                  <select id="bomItemFilter" class="form-control" style="width: 100%;"><option value="All">All Items</option></select>
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
-                                  <label>Mat 1</label>
-                                  <select id="bomMat1Filter" class="form-control" style="width: 100%;"><option value="All">All Mat 1</option></select>
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
-                                  <label>Mat 2</label>
-                                  <select id="bomMat2Filter" class="form-control" style="width: 100%;"><option value="All">All Mat 2</option></select>
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
-                                  <label>Size</label>
-                                  <select id="bomSizeFilter" class="form-control" style="width: 100%;"><option value="All">All Sizes</option></select>
-                              </div>
-                              <div style="padding-bottom: 1px; display: flex; gap: 8px; flex-shrink: 0;">
-                                  <button class="btn btn-primary" id="btnFilterBom" style="white-space: nowrap;"><i class="fas fa-search"></i> Search</button>
-                                  <button class="btn btn-outline" id="btnClearBomFilters" style="white-space: nowrap;">Clear</button>
-                              </div>
-                          </div>
-                          <div style="padding-bottom: 1px; display: flex; gap: 8px; flex-shrink: 0;">
-                              <button class="btn btn-outline" id="btnExportBom" style="white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export</button>
-                              <button class="btn btn-outline" id="btnUploadBom" style="white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-upload" style="color:#1565c0;"></i> Upload</button>
-                          </div>
-                      </div>
-                  </div>
-
-                 <div class="panel data-panel">
-                     <div class="table-responsive">
-                         <table class="data-table" id="bomTable" style="font-size:0.82em;">
-                             <thead>
-                                 <tr>
-                                     <th style="text-align:center;">Mat Code</th>
-                                     <th style="text-align:center;">System</th>
-                                     <th style="text-align:center;">ISO Drawing</th>
-                                     <th style="text-align:center;">Line No.</th>
-                                     <th style="text-align:center;min-width:135px;">Item</th>
-                                     <th style="text-align:center;">Mat 1</th>
-                                     <th style="text-align:center;">Mat 2</th>
-                                     <th style="text-align:center;">Size</th>
-                                     <th style="text-align:center;min-width:160px;">Description</th>
-                                     <th style="text-align:center;width:40px;">Unit</th>
-                                     <th style="text-align:center;">Design Qty</th>
-                                 </tr>
-                             </thead>
-                             <tbody></tbody>
-                         </table>
-                     </div>
-                     <div id="bomPagination"></div>
                  </div>
             </section>
 

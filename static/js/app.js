@@ -426,9 +426,8 @@ async function syncFromSupabase() {
             const id = activeView.id;
             // Use setTimeout to ensure UI is ready for rendering large tables
             setTimeout(() => {
-                if(id === 'piping_bom') { initBomTabs(); renderBomTable(); }
+                if(id === 'piping_bom') { initBomTabs(); if (_bomActiveTab === 'matcode') renderMatCodeMaster(); else renderBomTable(); }
                 if(id === 'receiving') { initReceivingTabs(); renderActiveReceivingTab(); }
-                if(id === 'matcode_master') renderMatCodeMaster();
             }, 200);
         }
 
@@ -490,9 +489,8 @@ function initNavigation() {
 
         if(targetId === 'dashboard') updateDashboard();
         if(targetId === 'issue') renderIssueOptions();
-        if(targetId === 'piping_bom') { initBomTabs(); renderBomTable(); }
+        if(targetId === 'piping_bom') { initBomTabs(); if (_bomActiveTab === 'matcode') renderMatCodeMaster(); else renderBomTable(); }
         if(targetId === 'receiving') { initReceivingTabs(); renderActiveReceivingTab(); }
-        if(targetId === 'matcode_master') renderMatCodeMaster();
         if(targetId === 'stock_ledger') { initStockFilters(); initStockTabs(); }
         if(targetId === 'shipping') initShipping();
 
@@ -2048,6 +2046,17 @@ function initBomTabs() {
                 b.style.borderBottomColor = b === btn ? '#0A2540' : 'transparent';
                 b.style.color = b === btn ? '#0A2540' : '#888';
             });
+
+            const mainPanel = document.getElementById('bomMainPanel');
+            const mcPanel = document.getElementById('bomMatCodeMasterPanel');
+            if (_bomActiveTab === 'matcode') {
+                if (mainPanel) mainPanel.style.display = 'none';
+                if (mcPanel) mcPanel.style.display = '';
+                renderMatCodeMaster();
+                return;
+            }
+            if (mainPanel) mainPanel.style.display = '';
+            if (mcPanel) mcPanel.style.display = 'none';
             currentBomPage = 1;
             refreshBomItemFilter();
             renderBomTable();
