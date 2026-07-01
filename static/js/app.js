@@ -491,24 +491,12 @@ function initNavigation() {
         if(targetId === 'issue') renderIssueOptions();
         if(targetId === 'piping_bom') { initBomTabs(); if (_bomActiveTab === 'matcode') renderMatCodeMaster(); else renderBomTable(); }
         if(targetId === 'receiving') { initReceivingTabs(); renderActiveReceivingTab(); }
-        if(targetId === 'stock_ledger') { initStockFilters(); initStockTabs(); }
+        if(targetId === 'material_status') { initMaterialStatusTabs(); switchMaterialStatusTab(_msActiveTab); }
         if(targetId === 'shipping') initShipping();
 
-        // Material Shortage 탭: 진입 시 즉시 싱크 + 폴링 시작, 이탈 시 정리
-        if (targetId === 'material_shortage') {
-            syncShortageData();
-            if (!shortageRefreshTimer) {
-                shortageRefreshTimer = setInterval(syncShortageData, SHORTAGE_REFRESH_INTERVAL_MS);
-            }
-        } else {
-            if (shortageRefreshTimer) {
-                clearInterval(shortageRefreshTimer);
-                shortageRefreshTimer = null;
-            }
-        }
-
-        if (targetId === 'surplus_material') {
-            renderSurplusTable();
+        if (targetId !== 'material_status' && shortageRefreshTimer) {
+            clearInterval(shortageRefreshTimer);
+            shortageRefreshTimer = null;
         }
     };
 
@@ -1187,6 +1175,42 @@ function renderActiveStockTab() {
 }
 
 
+let _msActiveTab = 'stock'; // 'stock' | 'shortage' | 'surplus'
+let _msTabsInited = false;
+function initMaterialStatusTabs() {
+    if (_msTabsInited) return;
+    _msTabsInited = true;
+    document.querySelectorAll('.ms-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => switchMaterialStatusTab(btn.dataset.tab));
+    });
+}
+function switchMaterialStatusTab(tab) {
+    _msActiveTab = tab;
+    document.querySelectorAll('.ms-tab-btn').forEach(b => {
+        b.style.borderBottomColor = b.dataset.tab === tab ? '#0A2540' : 'transparent';
+        b.style.color = b.dataset.tab === tab ? '#0A2540' : '#888';
+    });
+    document.getElementById('msPanelStock').style.display    = tab === 'stock'    ? '' : 'none';
+    document.getElementById('msPanelShortage').style.display = tab === 'shortage' ? '' : 'none';
+    document.getElementById('msPanelSurplus').style.display  = tab === 'surplus'  ? '' : 'none';
+
+    if (tab === 'stock') {
+        initStockFilters();
+        initStockTabs();
+    } else if (tab === 'shortage') {
+        syncShortageData();
+        if (!shortageRefreshTimer) {
+            shortageRefreshTimer = setInterval(syncShortageData, SHORTAGE_REFRESH_INTERVAL_MS);
+        }
+    } else if (tab === 'surplus') {
+        renderSurplusTable();
+    }
+
+    if (tab !== 'shortage' && shortageRefreshTimer) {
+        clearInterval(shortageRefreshTimer);
+        shortageRefreshTimer = null;
+    }
+}
 function initStockTabs() {
     if (_stTabsInited) { renderActiveStockTab(); return; }
     _stTabsInited = true;
@@ -2806,7 +2830,7 @@ function attachEventListeners() {
                     if (bomInput) bomInput.value = term;
                     renderBomTable();
                 } else {
-                    showSection('stock_ledger');
+                    showSection('material_status');
                 }
             }
         });
@@ -4289,7 +4313,7 @@ async function savePlUpdates() {
             renderShippingKpi();   // Save 완료 후에만 KPI 갱신
             renderShippingTable(getShippingFiltered());
             // issue_date 변경이 Stock Ledger에 즉시 반영되도록 재렌더링
-            if (document.getElementById('stock_ledger')?.classList.contains('active')) {
+            if (document.getElementById('material_status')?.classList.contains('active') && _msActiveTab === 'stock') {
                 renderActiveStockTab();
             }
             // Status 변경이 Receiving 집계에 반영되도록 Dashboard 재계산
