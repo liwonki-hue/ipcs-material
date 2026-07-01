@@ -1006,11 +1006,7 @@ function initStockFilters() {
             const { recMap, docMap, pkgMap } = buildRecvMaps(r => isReceivingActive(r.plNo) && isKpiReceiving(r));
             const recDescMap = {};
             db.receiving.forEach(r => { if (r.matCode && !recDescMap[r.matCode]) recDescMap[r.matCode] = r.desc; });
-            const issMap = {};
-            db.issued.forEach(i => {
-                if (!i.matCode) return;
-                issMap[i.matCode] = (issMap[i.matCode] || 0) + i.qty;
-            });
+            const issMap = getIssuedQtyMap(() => true);
             const codes = [...new Set(Object.keys(recMap))].sort();
             const rows = codes.map(key => {
                 const { matCode, sizeOverride } = window.parseStockKey(key);
@@ -1091,16 +1087,13 @@ function renderStockTable(forcedCats, hideMatCode) {
         (!Array.isArray(forcedCats) || forcedCats.includes(r.category))
     );
 
-    // Aggregate Issued per MatCode — db.issued 실제 출고 기록 기준 (matCode 단위)
-    const issMap = {};
-    db.issued.forEach(i => {
-        if (!i.matCode) return;
-        const mData = masterMap[i.matCode] || {};
+    // Aggregate Issued per MatCode — PKG Issue Date 기준 (pl_updates.issue_date 존재 여부)
+    const issMap = getIssuedQtyMap(r => {
+        const mData = masterMap[r.matCode] || {};
         const cat = mData.category && mData.category !== '-'
             ? mData.category
-            : window.getCategory(mData.itemDesc, i.matCode);
-        if (Array.isArray(forcedCats) && !forcedCats.includes(cat)) return;
-        issMap[i.matCode] = (issMap[i.matCode] || 0) + i.qty;
+            : window.getCategory(mData.itemDesc, r.matCode);
+        return !Array.isArray(forcedCats) || forcedCats.includes(cat);
     });
 
     // activeCodes: recMap 기준 (issued만 있는 항목은 재고 0 → 표시 불필요)
