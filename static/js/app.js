@@ -3482,11 +3482,9 @@ function attachEventListeners() {
                 return;
             }
 
-            // Pre-build receiving/issued maps for quick lookup (On-Site 도착 패키지만)
-            const recMap = {};
-            db.receiving.filter(r => isReceivingActive(r.plNo)).forEach(r => { if(r.matCode) recMap[r.matCode] = (recMap[r.matCode] || 0) + r.qty; });
-            const issMap = {};
-            db.issued.forEach(i => { if(i.matCode) issMap[i.matCode] = (issMap[i.matCode] || 0) + i.qty; });
+            // PKG 단위 원자료(matCode → {pkgNo: qty}) — Received/Stock/Packing List 컬럼 공통 소스
+            const pkgBreakdown = buildPkgBreakdown(r => isReceivingActive(r.plNo));
+            const issMap = getIssuedQtyMap(r => isReceivingActive(r.plNo));
 
             // Category color map
             const catColors = {
@@ -3503,7 +3501,6 @@ function attachEventListeners() {
             });
 
             let htmlString = '';
-            let displayCount = 0;
             bomRows.forEach(b => {
                 let mat = (b.mat_code || '').trim().toUpperCase();
                 if (!mat || mat === 'NONE') return;
@@ -3526,11 +3523,11 @@ function attachEventListeners() {
                     if (size !== sizeFilter) return;
                 }
 
-                let totalRec = recMap[mat] || 0;
+                const pkgMap = pkgBreakdown[mat] || {};
+                let totalRec = Object.values(pkgMap).reduce((a, b2) => a + b2, 0);
                 let totalIss = issMap[mat] || 0;
                 let stockQty = Math.max(0, totalRec - totalIss);
                 let qty = parseFloat(b.qty) || 0;
-                let defaultReq = Math.min(qty, stockQty);
                 let safeDesc = (b.full_description || '-').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
                 let catColor = catColors[category] || '#546e7a';
 
@@ -3546,12 +3543,8 @@ function attachEventListeners() {
                     <td style="text-align:center;">${qty.toFixed(2)}</td>
                     <td style="text-align:center;">${totalRec.toFixed(2)}</td>
                     <td style="text-align:center;"><strong style="color:${stockQty >= qty ? '#2e7d32' : (stockQty > 0 ? '#e65100' : '#c62828')};">${stockQty.toFixed(2)}</strong></td>
-                    <td style="text-align:center;">
-                        <input type="number" class="form-control" style="width:80px;" min="0" max="${stockQty}" value="${Math.max(0, defaultReq)}"
-                        data-matcode="${mat}" data-iso="${b.iso_dwg_no||'-'}" data-size="${window.extractSizeFromMatCode(mat).replace(/"/g, '&quot;')}" data-unit="${b.uom||'EA'}" data-desc="${safeDesc}" data-category="${category}">
-                    </td>
+                    <td style="text-align:left;font-size:11px;line-height:1.6;">${renderPkgListCell(pkgMap)}</td>
                 </tr>`;
-                displayCount++;
             });
 
             tbody.innerHTML = htmlString || `<tr><td colspan="9" style="text-align:center;color:#888;">No BOM materials found for the selected ISO Drawing.</td></tr>`;
@@ -3561,51 +3554,71 @@ function attachEventListeners() {
                     <i class="fas fa-info-circle"></i> Specify an ISO Drawing to view all materials for that drawing.</td></tr>`;
             }
 
-            // Step 2: Support Material List 렌더링
+            // Support Tag List 렌더링 (Task 6과 공유하는 헬퍼 재사용)
             const suppTbody = document.getElementById('suppMatTbody');
-            const suppCount = document.getElementById('suppMatCount');
             if (suppTbody) {
                 if (iso && iso !== 'All') {
-                    suppTbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#aaa;padding:12px;">Loading...</td></tr>';
-                    const { data: suppRows } = await supabaseClient.from('support_bom')
-                        .select('iso_dwg_no, support_tag, item, matl, size_or_type, qty')
-                        .eq('iso_dwg_no', iso)
-                        .order('support_tag').order('part_no');
-
-                    if (suppRows && suppRows.length > 0) {
-                        if (suppCount) suppCount.textContent = `${suppRows.length} items`;
-                        suppTbody.innerHTML = suppRows.map(s => {
-                            const bomQty = s.qty ?? 0;
-                            const safeTag  = (s.support_tag || '-').replace(/"/g, '&quot;');
-                            const safeItem = (s.item || '-').replace(/"/g, '&quot;');
-                            const safeSize = (s.size_or_type || '-').replace(/"/g, '&quot;');
-                            const safeIso  = (s.iso_dwg_no || '-').replace(/"/g, '&quot;');
-                            return `<tr>
-                            <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${safeIso}">${s.iso_dwg_no || '-'}</td>
-                            <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;" title="${safeTag}">${s.support_tag || '-'}</td>
-                            <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${safeItem}">${s.item || '-'}</td>
-                            <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${s.matl || '-'}</td>
-                            <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${safeSize}">${s.size_or_type || '-'}</td>
-                            <td style="text-align:center;">EA</td>
-                            <td style="text-align:center;">${bomQty}</td>
-                            <td style="text-align:center;color:#aaa;">-</td>
-                            <td style="text-align:center;color:#aaa;">-</td>
-                            <td style="text-align:center;">
-                                <input type="number" class="form-control supp-req-qty" style="width:80px;" min="0" value="${bomQty}"
-                                    data-iso="${safeIso}" data-tag="${safeTag}" data-item="${safeItem}" data-size="${safeSize}">
-                            </td>
-                        </tr>`;
-                        }).join('');
-                    } else {
-                        if (suppCount) suppCount.textContent = '';
-                        suppTbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#aaa;padding:12px;">No support materials for this ISO.</td></tr>';
-                    }
+                    await fetchAndRenderSupportRows({
+                        filterField: 'iso_dwg_no', filterValue: iso, tbodyEl: suppTbody,
+                        emptyMsg: 'No support materials for this ISO.'
+                    });
                 } else {
-                    if (suppCount) suppCount.textContent = '';
-                    suppTbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#888;">Select an ISO Drawing and click Search BOM.</td></tr>';
+                    suppTbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#888;">Select an ISO Drawing and click Search.</td></tr>';
                 }
             }
         });
+    }
+
+    // ISO/Support Tag 공용: support_bom + support_receiving을 조합해 BOM/Received/Stock/PKG 렌더링
+    // filterField: 'iso_dwg_no' | 'support_tag'
+    async function fetchAndRenderSupportRows({ filterField, filterValue, tbodyEl, emptyMsg }) {
+        tbodyEl.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#aaa;padding:12px;">Loading...</td></tr>';
+        const { data: suppRows, error } = await supabaseClient.from('support_bom')
+            .select('iso_dwg_no, support_tag, item, matl, size_or_type, qty, part_no')
+            .eq(filterField, filterValue)
+            .order('support_tag').order('part_no');
+
+        if (error || !suppRows || suppRows.length === 0) {
+            tbodyEl.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#aaa;padding:12px;">${emptyMsg}</td></tr>`;
+            return;
+        }
+
+        const tags = [...new Set(suppRows.map(s => s.support_tag).filter(Boolean))];
+        const { data: recRows } = await supabaseClient.from('support_receiving')
+            .select('support_tag, part_no, package_no, qty')
+            .in('support_tag', tags);
+
+        // key = support_tag::part_no → { package_no: qty }
+        const pkgByRow = {};
+        (recRows || []).forEach(r => {
+            const key = `${r.support_tag}::${r.part_no}`;
+            if (!pkgByRow[key]) pkgByRow[key] = {};
+            pkgByRow[key][r.package_no] = (pkgByRow[key][r.package_no] || 0) + (r.qty || 0);
+        });
+
+        const safe = v => (v || '-').toString().replace(/"/g, '&quot;');
+        tbodyEl.innerHTML = suppRows.map(s => {
+            const key = `${s.support_tag}::${s.part_no}`;
+            const pkgMap = pkgByRow[key] || {};
+            const received = Object.values(pkgMap).reduce((a, b) => a + b, 0);
+            const issued = Object.entries(pkgMap)
+                .filter(([pkg]) => isPkgIssued(pkg))
+                .reduce((a, [, qty]) => a + qty, 0);
+            const stock = Math.max(0, received - issued);
+            const bomQty = s.qty ?? 0;
+            return `<tr>
+                <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${safe(s.iso_dwg_no)}">${s.iso_dwg_no || '-'}</td>
+                <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;" title="${safe(s.support_tag)}">${s.support_tag || '-'}</td>
+                <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${safe(s.item)}">${s.item || '-'}</td>
+                <td style="text-align:center;">${s.matl || '-'}</td>
+                <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${safe(s.size_or_type)}">${s.size_or_type || '-'}</td>
+                <td style="text-align:center;">EA</td>
+                <td style="text-align:center;">${bomQty}</td>
+                <td style="text-align:center;">${received}</td>
+                <td style="text-align:center;"><strong style="color:${stock >= bomQty ? '#2e7d32' : (stock > 0 ? '#e65100' : '#c62828')};">${stock}</strong></td>
+                <td style="text-align:left;font-size:11px;line-height:1.6;">${renderPkgListCell(pkgMap)}</td>
+            </tr>`;
+        }).join('');
     }
 
     // Material Finding 모드 전환 (ISO Drawing / Support Tag No / Item)
@@ -3736,6 +3749,7 @@ window.showIsoDetail = function(isoDwgNo) {
     if (typeof showSection === 'function') showSection('issue');
     // Wait for section switch and renderIssueOptions() to complete before searching
     setTimeout(() => {
+        document.querySelector('.mf-mode-btn[data-mode="iso"]')?.click();
         const searchInput = document.getElementById('issueIsoSearch');
         if (searchInput) searchInput.value = isoDwgNo;
         // Reset category filter then search all
