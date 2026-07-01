@@ -1536,6 +1536,9 @@ function renderMatCodeMaster() {
     const item = document.getElementById('masterItemFilter')?.value || 'All';
     const size = document.getElementById('masterSizeFilter')?.value || 'All';
 
+    const _mcCatOrd = ['Pipe', 'Fitting', 'Others'];
+    const _mcDCode  = mc => { const m = mc.match(/D(\d+)/); return m ? parseInt(m[1]) : 0; };
+
     const data = db.matCodeMaster.filter(m => {
         if (q && !m.matCode.includes(q) && !m.itemDesc.toUpperCase().includes(q) &&
             !m.matlDesc.toUpperCase().includes(q) && !m.category.toUpperCase().includes(q)) return false;
@@ -1543,6 +1546,11 @@ function renderMatCodeMaster() {
         if (item !== 'All' && window.extractItemFromMatCode(m.matCode) !== item) return false;
         if (size !== 'All' && window.extractSizeFromMatCode(m.matCode) !== size) return false;
         return true;
+    }).sort((a, b) => {
+        const ca = _mcCatOrd.indexOf(a.category), cb = _mcCatOrd.indexOf(b.category);
+        if (ca !== cb) return (ca < 0 ? 99 : ca) - (cb < 0 ? 99 : cb);
+        if (a.itemDesc !== b.itemDesc) return a.itemDesc.localeCompare(b.itemDesc);
+        return _mcDCode(b.matCode) - _mcDCode(a.matCode);
     });
 
     const mcTotalPages = Math.max(1, Math.ceil(data.length / PAGE_SIZE));
@@ -1768,7 +1776,9 @@ function initFilterOptions() {
     const mItem = document.getElementById('masterItemFilter');
     const mSize = document.getElementById('masterSizeFilter');
     if (mCat && db.matCodeMaster.length > 0) {
-        const cats  = [...new Set(db.matCodeMaster.map(m => m.category).filter(Boolean))].sort();
+        const CAT_ORDER = ['Pipe', 'Fitting', 'Others'];
+        const cats  = [...new Set(db.matCodeMaster.map(m => m.category).filter(Boolean))]
+            .sort((a, b) => { const ia = CAT_ORDER.indexOf(a), ib = CAT_ORDER.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
         mCat.innerHTML  = '<option value="All">All Categories</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
 
         setupCatItemSize(mCat, mItem, mSize, getMasterItemsForCat, getMasterSizesForCatItem, 'All');
