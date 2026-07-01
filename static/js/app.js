@@ -20,12 +20,8 @@ let db = {
     bomTagMap: {},     // bom_detail: tag → {matCode, fullDescription, lineNo} (NULL matCode 입고 레코드 매칭용)
     specialityItems: [], // Speciality category distinct items (mat_code NULL → desc 기반)
     receiving: [],
-    mrTable: [],
     issued: []
 };
-
-// Session MR number - reused until MR Table is cleared after slip generation
-let sessionMrNo = null;
 
 // Cached ISO stage data for client-side re-filtering (donut chart clicks)
 let cachedIsoData = [];
@@ -2768,6 +2764,8 @@ async function savePLReview() {
     }
 }
 
+async function loadSupportTagDatalist() { /* Task 6에서 구현 */ }
+
 // The action of clicking Search ISO BOM
 function attachEventListeners() {
     // Global Search
@@ -3610,221 +3608,24 @@ function attachEventListeners() {
         });
     }
 
-    // "Add To MR" logic
-    const btnAddToMr = document.getElementById('btnAddToMr');
-    if (btnAddToMr) {
-        btnAddToMr.addEventListener('click', () => {
-            const inputs = document.querySelectorAll('#issueTable input[type="number"]');
-            let addedCount = 0;
-            // Session MR number: generate only on the first Add To MR click
-            if (!sessionMrNo) {
-                sessionMrNo = "MR-" + new Date().getFullYear() + "-" + (Math.floor(Math.random() * 9000) + 1000);
-            }
-            let currentMr = sessionMrNo;
-
-            inputs.forEach(inp => {
-                let reqQty = parseFloat(inp.value) || 0;
-                let maxLimit = parseFloat(inp.getAttribute('max')) || 0; 
-                
-                if (reqQty > maxLimit) {
-                    alert(`Requested quantity cannot exceed receiving limit! Fixing MatCode: ${inp.getAttribute('data-matcode')}`);
-                    reqQty = maxLimit;
-                    inp.value = maxLimit;
-                }
-
-                if(reqQty > 0) {
-                    let matCode = inp.getAttribute('data-matcode');
-                    let iso = inp.getAttribute('data-iso');
-                    let size = inp.getAttribute('data-size');
-                    let unit = inp.getAttribute('data-unit');
-                    let desc = inp.getAttribute('data-desc');
-                    
-                    db.mrTable.push({ 
-                        mrNo: currentMr, 
-                        iso: iso, 
-                        matCode: matCode, 
-                        desc: desc, 
-                        size: size, 
-                        unit: unit, 
-                        reqQty: reqQty 
-                    });
-                    addedCount++;
-                }
+    // Material Finding 모드 전환 (ISO Drawing / Support Tag No / Item)
+    document.querySelectorAll('.mf-mode-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.mf-mode-btn').forEach(b => {
+                b.classList.remove('active');
+                b.style.borderBottomColor = 'transparent';
+                b.style.color = '#888';
             });
-
-            if(addedCount > 0) {
-                alert(`Successfully saved ${addedCount} items to MR Table (MR Table No: ${currentMr}).`);
-                renderMrTable(); // newly defined to update the MR section
-            } else {
-                alert("No valid quantities were selected to add to MR.");
-            }
+            btn.classList.add('active');
+            btn.style.borderBottomColor = '#0A2540';
+            btn.style.color = '#0A2540';
+            const mode = btn.dataset.mode;
+            document.getElementById('mfModeIso').style.display     = mode === 'iso'     ? '' : 'none';
+            document.getElementById('mfModeSupport').style.display = mode === 'support' ? '' : 'none';
+            document.getElementById('mfModeItem').style.display    = mode === 'item'    ? '' : 'none';
+            if (mode === 'support') loadSupportTagDatalist();
         });
-    }
-
-    // Step 2: Support Material "Add To MR" 버튼
-    const btnSuppAddToMr = document.getElementById('btnSuppAddToMr');
-    if (btnSuppAddToMr) {
-        btnSuppAddToMr.addEventListener('click', () => {
-            const inputs = document.querySelectorAll('#suppMatTbody .supp-req-qty');
-            let addedCount = 0;
-            if (!sessionMrNo) {
-                sessionMrNo = "MR-" + new Date().getFullYear() + "-" + (Math.floor(Math.random() * 9000) + 1000);
-            }
-            inputs.forEach(inp => {
-                const reqQty = parseFloat(inp.value) || 0;
-                if (reqQty <= 0) return;
-                db.mrTable.push({
-                    mrNo:    sessionMrNo,
-                    iso:     inp.getAttribute('data-iso'),
-                    matCode: '[SUP] ' + inp.getAttribute('data-tag'),
-                    desc:    inp.getAttribute('data-item'),
-                    size:    inp.getAttribute('data-size'),
-                    unit:    'EA',
-                    reqQty:  reqQty,
-                    isSupport: true,
-                });
-                addedCount++;
-            });
-            if (addedCount > 0) {
-                alert(`Successfully saved ${addedCount} support item(s) to MR Table (${sessionMrNo}).`);
-                renderMrTable();
-            } else {
-                alert("No valid quantities selected.");
-            }
-        });
-    }
-
-    // "Generate Issue Slip" logic (Shows Print Preview Modal)
-    const btnGenerateIssueSlip = document.getElementById('btnGenerateIssueSlip');
-    if (btnGenerateIssueSlip) {
-        btnGenerateIssueSlip.addEventListener('click', () => {
-             if (db.mrTable.length === 0) {
-                 alert("MR Table is empty! Please Search ISO BOM and [Add to MR] first.");
-                 return;
-             }
-             
-             // Populate Print Modal
-             let firstMr = db.mrTable[0].mrNo;
-             document.getElementById('printMrNo').innerText = firstMr;
-             document.getElementById('printDate').innerText = new Date().toISOString().split('T')[0];
-             
-             const printTbody = document.getElementById('printTbody');
-             const printRows = [];
-
-             // Build matCode → [{plNo, qty}] sorted by PKG NO ascending (On-Site만)
-             const pkgRecords = {};
-             db.receiving.filter(r => isReceivingActive(r.plNo)).forEach(r => {
-                 if (!r.matCode || r.plNo === '-') return;
-                 if (!pkgRecords[r.matCode]) pkgRecords[r.matCode] = {};
-                 pkgRecords[r.matCode][r.plNo] = (pkgRecords[r.matCode][r.plNo] || 0) + (r.qty || 0);
-             });
-             // Convert to arrays sorted by PKG NO ascending
-             const pkgSorted = {};
-             Object.keys(pkgRecords).forEach(mat => {
-                 pkgSorted[mat] = Object.entries(pkgRecords[mat])
-                     .sort((a, b) => a[0].localeCompare(b[0]))
-                     .map(([plNo, qty]) => ({ plNo, qty }));
-             });
-
-             db.mrTable.forEach(mrItem => {
-                 const records = pkgSorted[mrItem.matCode] || [];
-                 let remaining = mrItem.reqQty;
-                 const allocated = [];
-
-                 for (const rec of records) {
-                     if (remaining <= 0) break;
-                     const take = Math.min(remaining, rec.qty);
-                     // Show PKG NO only if single package covers the request; show qty if multiple needed
-                     allocated.push({ plNo: rec.plNo, take });
-                     remaining -= take;
-                 }
-
-                 let pkgDisplay;
-                 if (allocated.length === 0) {
-                     pkgDisplay = '-';
-                 } else if (allocated.length === 1) {
-                     pkgDisplay = allocated[0].plNo;
-                 } else {
-                     pkgDisplay = allocated.map(a => `${a.plNo}<br><span style="font-size:10px;color:#555;">(${a.take % 1 === 0 ? a.take : a.take.toFixed(2)})</span>`).join('<br>');
-                 }
-
-                 printRows.push(`<tr>
-                     <td style="border:1px solid #000; padding:8px;">${mrItem.iso}</td>
-                     <td style="border:1px solid #000; padding:8px; font-weight:600; color:#0d47a1; line-height:1.6;">${pkgDisplay}</td>
-                     <td style="border:1px solid #000; padding:8px;">${mrItem.matCode}</td>
-                     <td style="border:1px solid #000; padding:8px;">${mrItem.desc}</td>
-                     <td style="border:1px solid #000; padding:8px;">${mrItem.size}</td>
-                     <td style="border:1px solid #000; padding:8px;">${mrItem.unit}</td>
-                     <td style="border:1px solid #000; padding:8px; font-weight:bold;">${mrItem.reqQty.toFixed(2)}</td>
-                 </tr>`);
-             });
-             printTbody.innerHTML = printRows.join('');
-
-             document.getElementById('printModal').style.display = 'flex';
-        });
-    }
-
-    // Modal buttons
-    const btnClosePrintModal = document.getElementById('btnClosePrintModal');
-    const btnCancelPrint = document.getElementById('btnCancelPrint');
-    const btnConfirmPrint = document.getElementById('btnConfirmPrint');
-
-    if(btnClosePrintModal) btnClosePrintModal.addEventListener('click', () => { document.getElementById('printModal').style.display = 'none'; });
-    if(btnCancelPrint) btnCancelPrint.addEventListener('click', () => { document.getElementById('printModal').style.display = 'none'; });
-    
-    if(btnConfirmPrint) {
-        btnConfirmPrint.addEventListener('click', () => {
-             // 1. Invoke browser print
-             window.print();
-
-             // 2. Confirm Issue: translate MR contents into Issued tracker and persist to Supabase
-             const issuedToInsert = db.mrTable.map(mrItem => ({
-                 iso: mrItem.iso,
-                 mat_code: mrItem.matCode,
-                 qty: mrItem.reqQty,
-                 mr_no: mrItem.mrNo,
-                 issue_date: new Date().toISOString()
-             }));
-
-             if (supabaseClient) {
-                supabaseClient.from('issued').insert(issuedToInsert).then(({ error }) => {
-                    if (error) console.error("❌ Supabase Persist Error:", error);
-                    else {
-                        issuedToInsert.forEach(item => {
-                            db.issued.push({
-                                matCode: item.mat_code,
-                                qty: item.qty,
-                                iso: item.iso
-                            });
-                        });
-                        updateDashboard();
-                    }
-                });
-             } else {
-                 // Fallback to local only if no client
-                 db.mrTable.forEach(mrItem => {
-                     db.issued.push({
-                         id: Date.now() + Math.random(),
-                         iso: mrItem.iso,
-                         matCode: mrItem.matCode,
-                         qty: mrItem.reqQty,
-                         date: new Date().toISOString()
-                     });
-                 });
-             }
-
-             // 3. Cleanup & Success feedback
-             alert("Material Issue Slip Printed and Stock updated successfully!");
-             document.getElementById('printModal').style.display = 'none';
-             db.mrTable = [];
-             sessionMrNo = null; // Reset session MR number after slip is issued
-             renderMrTable();
-             
-             const filterBtn = document.getElementById('btnFilterIssue');
-             if(filterBtn) filterBtn.click();
-             updateDashboard();
-        });
-    }
+    });
 
     const btnAddBomItem = document.getElementById('btnAddBomItem');
     if(btnAddBomItem) {
@@ -3925,78 +3726,6 @@ function attachEventListeners() {
         });
     }
 
-}
-
-// Function to render the MR Table
-function renderMrTable() {
-    let tbody = document.querySelector('#mrTableOutput tbody');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-
-    // Show MR number and item count in the panel header
-    const mrHeader = document.querySelector('#mrTableOutput').closest('.panel')?.querySelector('h3');
-    if (mrHeader) {
-        if (sessionMrNo && db.mrTable.length > 0) {
-            mrHeader.innerHTML = `<i class="fas fa-clipboard-list"></i> Pending MR Table &nbsp;<span style="font-size:12px;font-weight:400;background:rgba(255,255,255,0.2);padding:2px 10px;border-radius:10px;letter-spacing:0.5px;">${sessionMrNo}</span> &nbsp;<span style="font-size:12px;font-weight:400;opacity:0.8;">${db.mrTable.length} item(s)</span>`;
-        } else {
-            mrHeader.innerHTML = `<i class="fas fa-clipboard-list"></i> Pending MR Table (For Issue Slip)`;
-        }
-    }
-
-    if (db.mrTable.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color: #888;">MR Table is empty.</td></tr>';
-        return;
-    }
-
-    // Build pkgRecords: matCode → sorted [{plNo, qty}] (On-Site만)
-    const pkgRecords = {};
-    db.receiving.filter(r => isReceivingActive(r.plNo)).forEach(r => {
-        if (!r.matCode || r.plNo === '-') return;
-        if (!pkgRecords[r.matCode]) pkgRecords[r.matCode] = {};
-        pkgRecords[r.matCode][r.plNo] = (pkgRecords[r.matCode][r.plNo] || 0) + (r.qty || 0);
-    });
-    const pkgSorted = {};
-    Object.keys(pkgRecords).forEach(mat => {
-        pkgSorted[mat] = Object.entries(pkgRecords[mat])
-            .sort((a, b) => a[0].localeCompare(b[0]))
-            .map(([plNo, qty]) => ({ plNo, qty }));
-    });
-
-    tbody.innerHTML = db.mrTable.map(m => {
-        // Support 항목은 PKG NO 할당 없이 표시
-        let pkgDisplay;
-        if (m.isSupport) {
-            pkgDisplay = '<span style="font-size:11px;color:#3949ab;background:#e8eaf6;padding:2px 7px;border-radius:10px;">Support</span>';
-        } else {
-            const records = pkgSorted[m.matCode] || [];
-            let remaining = m.reqQty;
-            const allocated = [];
-            for (const rec of records) {
-                if (remaining <= 0) break;
-                allocated.push({ plNo: rec.plNo, take: Math.min(remaining, rec.qty) });
-                remaining -= allocated[allocated.length - 1].take;
-            }
-            if (allocated.length === 0) {
-                pkgDisplay = '<span style="color:#999;">-</span>';
-            } else if (allocated.length === 1) {
-                pkgDisplay = `<span style="font-weight:600;color:#0d47a1;">${allocated[0].plNo}</span>`;
-            } else {
-                pkgDisplay = allocated.map(a =>
-                    `<span style="font-weight:600;color:#0d47a1;">${a.plNo}</span><span style="font-size:10px;color:#555;"> (${a.take % 1 === 0 ? a.take : a.take.toFixed(2)})</span>`
-                ).join('<br>');
-            }
-        }
-        const rowStyle = m.isSupport ? 'background:#f5f5ff;' : '';
-        return `<tr style="${rowStyle}">
-            <td><strong>${m.mrNo}</strong></td>
-            <td>${m.iso}</td>
-            <td style="line-height:1.8;">${pkgDisplay}</td>
-            <td><span class="status-badge ok">${m.matCode}</span></td>
-            <td title="${m.desc}">${m.desc.substring(0,20)}...</td>
-            <td>${m.size}</td><td>${m.unit}</td>
-            <td><strong>${(m.reqQty || 0).toFixed(2)}</strong></td>
-        </tr>`;
-    }).join('');
 }
 
 /**
