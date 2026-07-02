@@ -234,16 +234,11 @@ ul { list-style: none; }
 #splTable th, #splTable td { text-align: center !important; }
 
 /* MatCode Master 탭 글자 크기 1단계 축소 */
-#matcode_master .page-header h1          { font-size: 22px; }
-#matcode_master .subtitle                { font-size: 12px; }
-#matcode_master .form-group label        { font-size: 10px; }
-#matcode_master .form-control            { font-size: 11px; height: 34px; padding: 4px 10px; }
-#matcode_master .btn                     { font-size: 11px; height: 34px; padding: 4px 12px; }
-#matcode_master .panel-header h3         { font-size: 14px; }
-#matcode_master .data-table td           { font-size: 12px; padding: 7px 10px; }
-#matcode_master .data-table th           { font-size: 10px; }
-#matcode_master .status-badge            { font-size: 10px; }
-#matcode_master #masterInfo              { font-size: 12px; }
+#bomMatCodeMasterPanel .panel-header h3   { font-size: 14px; }
+#bomMatCodeMasterPanel .data-table td     { font-size: 12px; padding: 7px 10px; }
+#bomMatCodeMasterPanel .data-table th     { font-size: 10px; }
+#bomMatCodeMasterPanel .status-badge      { font-size: 10px; }
+#bomMatCodeMasterPanel #masterInfo        { font-size: 12px; }
 
 /* Piping 탭 고정 레이아웃 셀 넘침 처리 */
 #plTable td, #plTable th { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
