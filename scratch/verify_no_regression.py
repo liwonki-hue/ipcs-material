@@ -18,15 +18,10 @@ async def main():
         kpi_text = await page.locator('.kpi-grid').first.inner_text()
         assert kpi_text.strip(), "Dashboard KPI 카드가 비어있음"
 
-        await page.click('[data-target="material_shortage"]')
+        await page.click('[data-target="material_status"]')
         await page.wait_for_timeout(1500)
-        short_rows = await page.locator('#shortageTable tbody tr').count()
-        print("shortage rows:", short_rows)
-
-        await page.click('[data-target="surplus_material"]')
-        await page.wait_for_timeout(1500)
-        surplus_rows = await page.locator('#surplusTable tbody tr').count()
-        print("surplus rows:", surplus_rows)
+        status_rows = await page.locator('#materialStatusTable tbody tr').count()
+        print("material status rows:", status_rows)
 
         assert not page_errors, f"page errors: {page_errors}"
         print("PASS")

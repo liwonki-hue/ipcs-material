@@ -12,7 +12,7 @@ async def main():
         page.on("pageerror", lambda e: page_errors.append(str(e)))
         await page.goto(BASE, wait_until="networkidle", timeout=30000)
         await page.wait_for_timeout(3000)
-        await page.click('[data-target="stock_ledger"]')
+        await page.click('[data-target="material_status"]')
         await page.wait_for_timeout(2000)
         rows = await page.locator('#stockTable tbody tr').count()
         print(f"stock rows rendered: {rows}")

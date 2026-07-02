@@ -4,10 +4,10 @@ from playwright.async_api import async_playwright
 
 BASE = "http://127.0.0.1:5200"
 TARGETS = [
-    "dashboard", "matcode_master", "piping_bom",
+    "dashboard", "issue", "piping_bom",
     "rec_bulk_piping", "rec_bulk_fitting", "rec_bulk_others",
     "rec_tag_support", "rec_tag_spool", "rec_tag_valve", "rec_tag_speciality",
-    "issue", "stock_ledger", "material_shortage", "surplus_material", "shipping",
+    "material_status", "shipping",
 ]
 
 async def main():
