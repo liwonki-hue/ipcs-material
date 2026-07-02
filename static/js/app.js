@@ -2053,7 +2053,8 @@ function refreshBomItemFilter() {
                     + vals1.map(v => `<option value="${v.replace(/"/g, '&quot;')}">${v}</option>`).join('');
                 if (mat2El) mat2El.innerHTML = '<option value="All">All Mat 2</option>'
                     + vals2.map(v => `<option value="${v.replace(/"/g, '&quot;')}">${v}</option>`).join('');
-            });
+            })
+            .catch(err => console.error('refreshBomItemFilter mat1/mat2 로드 실패:', err));
     }
 
     const sizeEl = document.getElementById('bomSizeFilter');
@@ -2702,7 +2703,7 @@ window.searchExistingMatCode = function(query) {
     }
 
     tbody.innerHTML = matches.map(m => `
-        <tr style="cursor:pointer;" onclick="selectExistingForPL('${m.matCode}', '${m.category}')">
+        <tr style="cursor:pointer;" onclick="selectExistingForPL('${m.matCode.replace(/'/g, "\\'")}', '${m.category.replace(/'/g, "\\'")}')">
             <td style="font-size:11px;"><span class="status-badge ok">${m.matCode}</span></td>
             <td style="font-size:11px;">${m.itemDesc}</td>
             <td style="font-size:11px;">${m.size1} / ${m.size2}</td>
@@ -3095,7 +3096,6 @@ function attachEventListeners() {
             try {
                 const search = (document.getElementById('bomIsoSearch')?.value || '').trim();
                 const sys = document.getElementById('bomSystemFilter')?.value || 'All';
-                const cat = document.getElementById('bomCategoryFilter')?.value || 'All';
 
                 let query = supabaseClient.from('bom_detail')
                     .select('system, iso_dwg_no, category, mat_code, full_description, uom, qty')
@@ -3103,7 +3103,6 @@ function attachEventListeners() {
                     .limit(100000);
                 if (sys !== 'All') query = query.eq('system', sys);
                 if (search) query = query.or(`iso_dwg_no.ilike.%${search}%,mat_code.ilike.%${search}%,category.ilike.%${search}%,full_description.ilike.%${search}%`);
-                if (cat !== 'All') query = query.ilike('category', `%${cat}%`);
 
                 const { data, error } = await query;
                 if (error) throw error;
@@ -3243,109 +3242,45 @@ function attachEventListeners() {
         });
     }
 
-    // Receiving Export Excel
-    const btnExportPl = document.getElementById('btnExportPl');
-    if (btnExportPl) {
-        btnExportPl.addEventListener('click', () => {
-            const item  = (document.getElementById('plItemSearch')?.value || '').trim().toUpperCase();
-            const doc   = document.getElementById('plDocFilter')?.value || 'All';
-            const pkg   = document.getElementById('plPkgFilter')?.value || 'All';
-            const itemF = document.getElementById('plItemFilter')?.value || 'All';
-            const sizeF = document.getElementById('plSizeFilter')?.value || 'All';
+    // Receiving Export Excel (Pipe/Fitting/Others 공통)
+    function _exportBulkReceiving({ prefix, category, filenamePrefix }) {
+        const item  = (document.getElementById(`${prefix}ItemSearch`)?.value || '').trim().toUpperCase();
+        const doc   = document.getElementById(`${prefix}DocFilter`)?.value  || 'All';
+        const pkg   = document.getElementById(`${prefix}PkgFilter`)?.value  || 'All';
+        const itemF = document.getElementById(`${prefix}ItemFilter`)?.value || 'All';
+        const sizeF = document.getElementById(`${prefix}SizeFilter`)?.value || 'All';
 
-            let data = db.receiving.filter(r => isReceivingActive(r.plNo) && r.category === 'Pipe');
-            if (doc   !== 'All') data = data.filter(r => r.docNo === doc);
-            if (pkg   !== 'All') data = data.filter(r => r.plNo  === pkg);
-            if (itemF !== 'All') data = data.filter(r => window.extractItemFromMatCode(r.matCode) === itemF);
-            if (sizeF !== 'All') data = data.filter(r => window.extractSizeFromMatCode(r.matCode) === sizeF);
-            if (item)            data = data.filter(r => r.desc.toUpperCase().includes(item));
+        let data = db.receiving.filter(r => isReceivingActive(r.plNo) && r.category === category);
+        if (doc   !== 'All') data = data.filter(r => r.docNo === doc);
+        if (pkg   !== 'All') data = data.filter(r => r.plNo  === pkg);
+        if (itemF !== 'All') data = data.filter(r => window.extractItemFromMatCode(r.matCode) === itemF);
+        if (sizeF !== 'All') data = data.filter(r => window.extractSizeFromMatCode(r.matCode) === sizeF);
+        if (item)            data = data.filter(r => r.desc.toUpperCase().includes(item));
 
-            const rows = data.map(r => ({
-                'DOC NO':           r.docNo    || '-',
-                'PKG NO':           r.plNo     || '-',
-                'Mat Code':         r.matCode  || '-',
-                'Category':         r.category || '-',
-                'Full Description': r.desc     || '-',
-                'Unit':             r.unit     || 'EA',
-                'Qty':              r.qty      || 0,
-            }));
+        const rows = data.map(r => ({
+            'DOC NO':           r.docNo    || '-',
+            'PKG NO':           r.plNo     || '-',
+            'Mat Code':         r.matCode  || '-',
+            'Category':         r.category || '-',
+            'Full Description': r.desc     || '-',
+            'Unit':             r.unit     || 'EA',
+            'Qty':              r.qty      || 0,
+        }));
 
-            const ws = XLSX.utils.json_to_sheet(rows);
-            ws['!cols'] = [16, 26, 24, 14, 55, 8, 10].map(w => ({ wch: w }));
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Receiving');
-            const today = new Date().toISOString().split('T')[0];
-            XLSX.writeFile(wb, `Receiving_Export_${today}.xlsx`);
-        });
+        const ws = XLSX.utils.json_to_sheet(rows);
+        ws['!cols'] = [16, 26, 24, 14, 55, 8, 10].map(w => ({ wch: w }));
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Receiving');
+        const today = new Date().toISOString().split('T')[0];
+        XLSX.writeFile(wb, `${filenamePrefix}_${today}.xlsx`);
     }
 
-    const btnExportFit = document.getElementById('btnExportFit');
-    if (btnExportFit) {
-        btnExportFit.addEventListener('click', () => {
-            const item  = (document.getElementById('fitItemSearch')?.value || '').trim().toUpperCase();
-            const doc   = document.getElementById('fitDocFilter')?.value || 'All';
-            const pkg   = document.getElementById('fitPkgFilter')?.value || 'All';
-            const itemF = document.getElementById('fitItemFilter')?.value || 'All';
-            const sizeF = document.getElementById('fitSizeFilter')?.value || 'All';
-
-            let data = db.receiving.filter(r => isReceivingActive(r.plNo) && r.category === 'Fitting');
-            if (doc   !== 'All') data = data.filter(r => r.docNo === doc);
-            if (pkg   !== 'All') data = data.filter(r => r.plNo  === pkg);
-            if (itemF !== 'All') data = data.filter(r => window.extractItemFromMatCode(r.matCode) === itemF);
-            if (sizeF !== 'All') data = data.filter(r => window.extractSizeFromMatCode(r.matCode) === sizeF);
-            if (item)            data = data.filter(r => r.desc.toUpperCase().includes(item));
-
-            const rows = data.map(r => ({
-                'DOC NO':           r.docNo    || '-',
-                'PKG NO':           r.plNo     || '-',
-                'Mat Code':         r.matCode  || '-',
-                'Category':         r.category || '-',
-                'Full Description': r.desc     || '-',
-                'Unit':             r.unit     || 'EA',
-                'Qty':              r.qty      || 0,
-            }));
-            const ws = XLSX.utils.json_to_sheet(rows);
-            ws['!cols'] = [16, 26, 24, 14, 55, 8, 10].map(w => ({ wch: w }));
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Receiving');
-            const today = new Date().toISOString().split('T')[0];
-            XLSX.writeFile(wb, `Fitting_Receiving_Export_${today}.xlsx`);
-        });
-    }
-
-    const btnExportOth = document.getElementById('btnExportOth');
-    if (btnExportOth) {
-        btnExportOth.addEventListener('click', () => {
-            const item  = (document.getElementById('othItemSearch')?.value || '').trim().toUpperCase();
-            const doc   = document.getElementById('othDocFilter')?.value || 'All';
-            const pkg   = document.getElementById('othPkgFilter')?.value || 'All';
-            const itemF = document.getElementById('othItemFilter')?.value || 'All';
-            const sizeF = document.getElementById('othSizeFilter')?.value || 'All';
-
-            let data = db.receiving.filter(r => isReceivingActive(r.plNo) && r.category === 'Others');
-            if (doc   !== 'All') data = data.filter(r => r.docNo === doc);
-            if (pkg   !== 'All') data = data.filter(r => r.plNo  === pkg);
-            if (itemF !== 'All') data = data.filter(r => window.extractItemFromMatCode(r.matCode) === itemF);
-            if (sizeF !== 'All') data = data.filter(r => window.extractSizeFromMatCode(r.matCode) === sizeF);
-            if (item)            data = data.filter(r => r.desc.toUpperCase().includes(item));
-
-            const rows = data.map(r => ({
-                'DOC NO':           r.docNo    || '-',
-                'PKG NO':           r.plNo     || '-',
-                'Mat Code':         r.matCode  || '-',
-                'Category':         r.category || '-',
-                'Full Description': r.desc     || '-',
-                'Unit':             r.unit     || 'EA',
-                'Qty':              r.qty      || 0,
-            }));
-            const ws = XLSX.utils.json_to_sheet(rows);
-            ws['!cols'] = [16, 26, 24, 14, 55, 8, 10].map(w => ({ wch: w }));
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Receiving');
-            const today = new Date().toISOString().split('T')[0];
-            XLSX.writeFile(wb, `Others_Receiving_Export_${today}.xlsx`);
-        });
-    }
+    document.getElementById('btnExportPl')?.addEventListener('click', () =>
+        _exportBulkReceiving({ prefix: 'pl', category: 'Pipe', filenamePrefix: 'Receiving_Export' }));
+    document.getElementById('btnExportFit')?.addEventListener('click', () =>
+        _exportBulkReceiving({ prefix: 'fit', category: 'Fitting', filenamePrefix: 'Fitting_Receiving_Export' }));
+    document.getElementById('btnExportOth')?.addEventListener('click', () =>
+        _exportBulkReceiving({ prefix: 'oth', category: 'Others', filenamePrefix: 'Others_Receiving_Export' }));
 
     // Tag Item (Valve / Speciality) Export: BOM tag 매핑을 통해 item/matl/size/rating을 산출
     function _buildTagRecvExportRows({ searchId, docId, pkgId, itemId, sizeId, statusId, forcedCat }) {

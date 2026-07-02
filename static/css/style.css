@@ -270,5 +270,4 @@ ul { list-style: none; }
 #shipping .status-badge       { font-size: 10px; }
 
 /* Material Stock 테이블 전체 가운데 정렬 */
-#stockTable th, #stockTable td,
-#stSpoolTable th, #stSpoolTable td { text-align: center !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#stockTable th, #stockTable td { text-align: center !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

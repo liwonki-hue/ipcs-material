@@ -1,9 +1,11 @@
 from flask import Flask, render_template, make_response
+from flask_compress import Compress
 import os
 
 app = Flask(__name__)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # 정적 파일 캐시 비활성화 (항상 최신 로드)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
+Compress(app)  # 정적 파일(app.js 등) gzip 압축으로 전송량 축소
 
 @app.route('/')
 def index():
