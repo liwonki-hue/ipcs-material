@@ -1704,7 +1704,7 @@ function initFilterOptions() {
         const rebuildTagFilter = (rows) => {
             const tags = [...new Set(rows.map(r => stripType(r.support_tag)).filter(Boolean))].sort();
             if (el('srecTagFilter'))
-                el('srecTagFilter').innerHTML = '<option value="All">All Support No</option>' + tags.map(v => `<option value="${v}">${v}</option>`).join('');
+                el('srecTagFilter').innerHTML = '<option value="All">All Support No</option>' + tags.map(v => `<option value="${v.replace(/"/g, '&quot;')}">${v}</option>`).join('');
         };
 
         // System 변경 → ISO 필터 갱신 → Support No 필터 갱신
