@@ -20,8 +20,19 @@ async def main():
 
         await page.click('[data-target="material_status"]')
         await page.wait_for_timeout(1500)
-        status_rows = await page.locator('#materialStatusTable tbody tr').count()
-        print("material status rows:", status_rows)
+        stock_rows = await page.locator('#stockTable tbody tr').count()
+        print("stock rows:", stock_rows)
+        assert stock_rows > 0, "Stock 서브탭 테이블이 비어있음"
+
+        await page.click('.ms-tab-btn[data-tab="shortage"]')
+        await page.wait_for_timeout(1500)
+        shortage_rows = await page.locator('#shortageTable tbody tr').count()
+        print("shortage rows:", shortage_rows)
+
+        await page.click('.ms-tab-btn[data-tab="surplus"]')
+        await page.wait_for_timeout(1500)
+        surplus_rows = await page.locator('#surplusTable tbody tr').count()
+        print("surplus rows:", surplus_rows)
 
         assert not page_errors, f"page errors: {page_errors}"
         print("PASS")
