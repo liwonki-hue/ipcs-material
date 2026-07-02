@@ -2793,7 +2793,7 @@ async function loadSupportTagDatalist() {
     if (!dl || !supabaseClient) return;
     const { data } = await supabaseClient.from('support_bom').select('support_tag').limit(20000);
     const tags = [...new Set((data || []).map(r => r.support_tag).filter(Boolean))].sort();
-    dl.innerHTML = tags.map(t => `<option value="${t}">`).join('');
+    dl.innerHTML = tags.map(t => `<option value="${t.replace(/"/g, '&quot;')}">`).join('');
     _supportTagDatalistLoaded = true;
 }
 
