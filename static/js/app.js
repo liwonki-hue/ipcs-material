@@ -17,7 +17,7 @@ let db = {
     bom: [],           // bom_agg: aggregated by matCode+category+system
     bomIsoList: [],    // bom_iso_list: distinct system+iso_dwg_no pairs for dropdowns
     bomDesc: {},       // bom_desc view: matCode → full_description (BOM 설계 원문)
-    bomTagMap: {},     // bom_detail: tag → {matCode, fullDescription, lineNo} (NULL matCode 입고 레코드 매칭용)
+    bomTagMap: {},     // bom_detail: tag → {matCode, fullDescription, lineNo, iso_dwg_no} (NULL matCode 입고 레코드 매칭용)
     specialityItems: [], // Speciality category distinct items (mat_code NULL → desc 기반)
     receiving: []
 };
@@ -345,7 +345,7 @@ async function syncFromSupabase() {
             fetchAllRows('receiving'),
             supabaseClient.from('bom_desc').select('mat_code,full_description').limit(10000).then(r => r.data || []),
             supabaseClient.from('bom_detail').select('full_description').eq('category', 'Speciality').not('full_description', 'is', null).limit(1000).then(r => r.data || []),
-            supabaseClient.from('bom_detail').select('tag,mat_code,full_description,line_no').not('tag', 'is', null).limit(10000).then(r => r.data || [])
+            supabaseClient.from('bom_detail').select('tag,mat_code,full_description,line_no,iso_dwg_no').not('tag', 'is', null).limit(10000).then(r => r.data || [])
         ]);
 
         if (matMasterRaw.length > 0) {
@@ -383,7 +383,8 @@ async function syncFromSupabase() {
                 db.bomTagMap[key] = {
                     matCode: b.mat_code ? b.mat_code.trim().toUpperCase() : '',
                     fullDescription: b.full_description || '',
-                    lineNo: b.line_no || ''
+                    lineNo: b.line_no || '',
+                    iso_dwg_no: b.iso_dwg_no || ''
                 };
             }
         });
@@ -3686,6 +3687,125 @@ function attachEventListeners() {
             });
         });
     }
+
+    let _tagOverrides = {}; // tag(upper) → { iso_dwg_no, line_no }
+    let _tagOverridesLoaded = false;
+    async function loadTagOverrides() {
+        if (_tagOverridesLoaded || !supabaseClient) return;
+        const { data } = await supabaseClient.from('tag_overrides').select('tag, iso_dwg_no, line_no');
+        (data || []).forEach(r => { _tagOverrides[(r.tag || '').toUpperCase()] = r; });
+        _tagOverridesLoaded = true;
+    }
+
+    async function saveTagOverride(tag, isoDwgNo, lineNo) {
+        const key = tag.toUpperCase();
+        const row = { tag: key, iso_dwg_no: isoDwgNo || null, line_no: lineNo || null, updated_at: new Date().toISOString() };
+        const { error } = await supabaseClient.from('tag_overrides').upsert(row);
+        if (error) { alert('저장 실패: ' + error.message); return false; }
+        _tagOverrides[key] = row;
+        return true;
+    }
+
+    const btnFilterItem = document.getElementById('btnFilterItem');
+    if (btnFilterItem) {
+        btnFilterItem.addEventListener('click', async () => {
+            const cat  = document.getElementById('mfItemCategoryFilter')?.value || 'Valve';
+            const item = document.getElementById('mfItemItemFilter')?.value || 'All';
+            const sys  = document.getElementById('mfItemSystemFilter')?.value || 'All';
+            const size = document.getElementById('mfItemSizeFilter')?.value || 'All';
+            const tbody = document.getElementById('mfItemTbody');
+            if (!tbody) return;
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:16px;color:#888;">Loading...</td></tr>';
+
+            await loadTagOverrides();
+
+            // Tag별로 db.receiving 그룹핑 (BOM 매칭 여부 무관 — 입고 기록이 있는 모든 Tag를 대상으로 함)
+            const byTag = {};
+            db.receiving.filter(r => isReceivingActive(r.plNo) && r.category === cat && r.tag).forEach(r => {
+                const key = r.tag.toUpperCase();
+                if (!byTag[key]) byTag[key] = { tag: r.tag, records: [], pkgMap: {} };
+                byTag[key].records.push(r);
+                byTag[key].pkgMap[r.plNo] = (byTag[key].pkgMap[r.plNo] || 0) + (r.qty || 0);
+            });
+
+            const rows = Object.values(byTag).filter(g => {
+                const sample = g.records[0];
+                const bomInfo = db.bomTagMap[g.tag.toUpperCase()];
+                const desc = bomInfo ? bomInfo.fullDescription : sample.desc;
+                const mcItem = bomInfo ? window.extractItemFromMatCode(bomInfo.matCode) : null;
+                const rowItem = (mcItem && mcItem !== '-') ? mcItem : window.extractItemFromDesc(desc || '');
+                if (item !== 'All' && rowItem !== item) return false;
+                if (size !== 'All') {
+                    const sz = bomInfo ? window.extractSizeFromMatCode(bomInfo.matCode) : '-';
+                    if (sz !== size) return false;
+                }
+                if (sys !== 'All' && sample.system && sample.system !== sys) return false;
+                return true;
+            });
+
+            if (rows.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#888;">No matching items found.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = rows.map(g => {
+                const sample = g.records[0];
+                const bomInfo = db.bomTagMap[g.tag.toUpperCase()];
+                const override = _tagOverrides[g.tag.toUpperCase()];
+                const iso = bomInfo ? (bomInfo.iso_dwg_no || '') : (override ? override.iso_dwg_no : '');
+                const lineNo = override ? (override.line_no || '') : '';
+                const desc = (bomInfo ? bomInfo.fullDescription : sample.desc) || '-';
+                const safeDesc = desc.replace(/"/g, '&quot;');
+                const received = Object.values(g.pkgMap).reduce((a, b) => a + b, 0);
+                const issued = Object.entries(g.pkgMap).filter(([pkg]) => isPkgIssued(pkg)).reduce((a, [, qty]) => a + qty, 0);
+                const stock = Math.max(0, received - issued);
+
+                const isoCell = iso
+                    ? `${iso}${!bomInfo ? ' <span style="font-size:10px;color:#1565c0;">(수동)</span>' : ''}`
+                    : `<button class="btn btn-outline btn-small mf-assign-iso" data-tag="${g.tag}" style="font-size:11px;padding:2px 8px;">ISO 지정</button>`;
+
+                return `<tr data-tag-row="${g.tag}">
+                    <td style="text-align:center;font-weight:600;">${g.tag}</td>
+                    <td style="text-align:center;" class="mf-iso-cell">${isoCell}</td>
+                    <td style="text-align:center;" class="mf-lineno-cell">${lineNo || '-'}</td>
+                    <td style="text-align:center;">${cat}</td>
+                    <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${safeDesc}">${safeDesc}</td>
+                    <td style="text-align:center;">${sample.unit || 'EA'}</td>
+                    <td style="text-align:center;">${received.toFixed(2)}</td>
+                    <td style="text-align:center;"><strong style="color:${stock > 0 ? '#2e7d32' : '#c62828'};">${stock.toFixed(2)}</strong></td>
+                    <td style="text-align:left;font-size:11px;line-height:1.6;">${renderPkgListCell(g.pkgMap)}</td>
+                </tr>`;
+            }).join('');
+        });
+    }
+
+    // ISO 지정 버튼 클릭 → 인라인 입력 폼으로 교체
+    document.getElementById('mfItemTbody')?.addEventListener('click', (e) => {
+        const btn = e.target.closest('.mf-assign-iso');
+        if (!btn) return;
+        const tag = btn.dataset.tag;
+        const cell = btn.closest('.mf-iso-cell');
+        cell.innerHTML = `
+            <input type="text" class="form-control mf-assign-iso-input" style="width:140px;display:inline-block;font-size:11px;" placeholder="ISO Drawing" list="isoDatalist">
+            <button class="btn btn-primary btn-small mf-assign-iso-save" data-tag="${tag}" style="font-size:11px;padding:2px 8px;">저장</button>
+        `;
+    });
+
+    document.getElementById('mfItemTbody')?.addEventListener('click', async (e) => {
+        const saveBtn = e.target.closest('.mf-assign-iso-save');
+        if (!saveBtn) return;
+        const tag = saveBtn.dataset.tag;
+        const row = saveBtn.closest('tr');
+        const isoInput = row.querySelector('.mf-assign-iso-input');
+        const isoVal = (isoInput?.value || '').trim();
+        if (!isoVal) { alert('ISO Drawing을 입력하세요.'); return; }
+        const lineNoCell = row.querySelector('.mf-lineno-cell');
+        const lineNoVal = (lineNoCell?.textContent || '').trim();
+        const ok = await saveTagOverride(tag, isoVal, lineNoVal === '-' ? '' : lineNoVal);
+        if (ok) {
+            document.getElementById('btnFilterItem')?.click();
+        }
+    });
 
     const btnAddBomItem = document.getElementById('btnAddBomItem');
     if(btnAddBomItem) {
