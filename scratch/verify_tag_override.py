@@ -2,7 +2,10 @@
 # 그리고 tag_overrides 테이블이 아직 없어도 ISO 지정 시도 시 페이지가 죽지 않고
 # 알림으로 실패 처리되는지 확인 (테이블은 사람이 SQL Editor에서 수동 생성 예정)
 import asyncio
+import sys
 from playwright.async_api import async_playwright
+
+sys.stdout.reconfigure(encoding="utf-8")
 
 BASE = "http://127.0.0.1:5200"
 
