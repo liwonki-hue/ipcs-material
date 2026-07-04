@@ -16,6 +16,7 @@ let db = {
     matCodeMaster: [],
     bom: [],           // bom_agg: aggregated by matCode+category+system
     bomIsoList: [],    // bom_iso_list: distinct system+iso_dwg_no pairs for dropdowns
+    isoBoreMap: {},    // iso_dwg_no → Set('Small'|'Large') — line_no 기반 Bore 필터/드롭다운 연동용
     bomDesc: {},       // bom_desc view: matCode → full_description (BOM 설계 원문)
     bomTagMap: {},     // bom_detail: tag → {matCode, fullDescription, lineNo, iso_dwg_no} (NULL matCode 입고 레코드 매칭용)
     specialityItems: [], // Speciality category distinct items (mat_code NULL → desc 기반)
@@ -277,6 +278,14 @@ window.extractSizeFromLineNo = function(lineNo) {
     return m ? m[1] + '"' : '-';
 };
 
+// Line No 앞자리 사이즈로 Bore 판정: 2" 이하 Small, 그 외(2.5" 이상) Large
+window.getBoreFromLineNo = function(lineNo) {
+    const sizeStr = window.extractSizeFromLineNo(lineNo);
+    if (!sizeStr || sizeStr === '-') return null;
+    const inch = parseFloat(sizeStr);
+    return isNaN(inch) ? null : (inch <= 2 ? 'Small' : 'Large');
+};
+
 // TAG 정보로부터 사이즈 추출: lineNo → description → item 기본값 순으로 폴백
 // buildRecvMaps, issMap, stockGetSizesForCatItem 에서 공통 사용
 window.getSizeFromTagInfo = function(tagInfo) {
@@ -333,6 +342,34 @@ async function fetchAllRows(tableName) {
     return allData;
 }
 
+// bom 테이블 전체를 iso_dwg_no/line_no만 가볍게 스캔해 ISO → Bore(Small/Large) 매핑 구성
+// (ISO Drawing 검색창의 Bore 연동 드롭다운용 — bom_iso_list 뷰에는 line_no가 없어 별도 조회)
+// 병렬 요청은 Supabase 커넥션이 몰려 500 에러 및 일부 페이지 누락(불완전한 매핑)을 유발함을 확인했음.
+// 순차 조회 + 페이지별 재시도로 느리더라도 완전하고 정확한 매핑을 보장 (Material Finding 탭 진입 시 1회만 실행)
+async function fetchIsoBoreMap() {
+    const map = {};
+    let from = 0, step = 5000, hasMore = true;
+    while (hasMore) {
+        let data = null, error = null;
+        for (let attempt = 0; attempt < 3 && !data; attempt++) {
+            const res = await supabaseClient.from('bom').select('iso_dwg_no,line_no').range(from, from + step - 1);
+            data = res.data; error = res.error;
+            if (error) console.warn(`fetchIsoBoreMap retry (attempt ${attempt + 1}) at offset ${from}:`, error.message);
+        }
+        if (error && !data) { console.error('fetchIsoBoreMap gave up at offset', from, error); break; }
+        if (!data || data.length === 0) { hasMore = false; break; }
+        data.forEach(r => {
+            const bore = window.getBoreFromLineNo(r.line_no);
+            if (!bore || !r.iso_dwg_no) return;
+            if (!map[r.iso_dwg_no]) map[r.iso_dwg_no] = new Set();
+            map[r.iso_dwg_no].add(bore);
+        });
+        from += step;
+        if (data.length < step) hasMore = false;
+    }
+    return map;
+}
+
 async function syncFromSupabase() {
     if (!supabaseClient) return;
     
@@ -347,6 +384,7 @@ async function syncFromSupabase() {
             supabaseClient.from('bom_detail').select('full_description').eq('category', 'Speciality').not('full_description', 'is', null).limit(1000).then(r => r.data || []),
             supabaseClient.from('bom_detail').select('tag,mat_code,full_description,line_no,iso_dwg_no').not('tag', 'is', null).limit(10000).then(r => r.data || [])
         ]);
+        // isoBoreMap은 bom 테이블 전체 스캔이 필요해 무거움 — Material Finding 탭 진입 시 지연 로딩(loadIsoBoreMapOnce)
 
         if (matMasterRaw.length > 0) {
             db.matCodeMaster = matMasterRaw.map(m => ({
@@ -1745,7 +1783,7 @@ function initFilterOptions() {
             const systems    = [...new Set(data.map(r => r.system).filter(Boolean))].sort();
 
             if (el('srecPkgFilter'))
-                el('srecPkgFilter').innerHTML = '<option value="All">All PKGs</option>' + pkgs.map(v => `<option value="${v}">${v}</option>`).join('') + '<option value="NULL">(미배정 PKG)</option>';
+                el('srecPkgFilter').innerHTML = '<option value="All">All PKGs</option>' + pkgs.map(v => `<option value="${v}">${v}</option>`).join('') + '<option value="NULL">(Unassigned PKG)</option>';
             if (el('srecPackageNoFilter'))
                 el('srecPackageNoFilter').innerHTML = '<option value="All">All Package No</option>' + packageNos.map(v => `<option value="${v}">${v}</option>`).join('');
             srecSys.innerHTML = '<option value="All">All Systems</option>' + systems.map(s => `<option value="${s}">${s}</option>`).join('');
@@ -2456,6 +2494,14 @@ async function renderSupportReceivingTable() {
 window._srecGoPage = function(p) { currentSrecPage = p; renderSupportReceivingTable(); };
 
 // --- 5. Material Issue (ISO/MR Table) ---
+let _isoBoreMapPromise = null; // Material Finding 탭 최초 진입 시에만 1회 지연 로딩(무거운 bom 전체 스캔)
+function loadIsoBoreMapOnce() {
+    if (!_isoBoreMapPromise) {
+        _isoBoreMapPromise = fetchIsoBoreMap().then(map => { db.isoBoreMap = map; return map; });
+    }
+    return _isoBoreMapPromise;
+}
+
 function renderIssueOptions() {
     const sysSelect = document.getElementById('issueSystemFilter');
 
@@ -2465,26 +2511,31 @@ function renderIssueOptions() {
         let sys = b.system ? b.system.trim() : null;
         if (sys && sys !== 'Unassigned') systemsMap[sys] = true;
     });
-    
+
     const systems = Object.keys(systemsMap).sort();
     let sysHtml = '<option value="All">All Systems</option>';
     systems.forEach(s => sysHtml += `<option value="${s.replace(/"/g, '&quot;')}">${s}</option>`);
     sysSelect.innerHTML = sysHtml;
 
     updateIsoDropdown();
+    // Bore 매핑은 비동기로 채워지므로, 로딩 완료 후 System/Bore 연동 드롭다운을 다시 갱신
+    loadIsoBoreMapOnce().then(() => updateIsoDropdown());
 }
 
 window.updateIsoDropdown = function() {
     const sysSelect = document.getElementById('issueSystemFilter');
+    const boreSelect = document.getElementById('issueBoreFilter');
     const isoDatalist = document.getElementById('isoDatalist');
     if (!isoDatalist) return;
 
     let sys = sysSelect ? sysSelect.value : 'All';
+    let bore = boreSelect ? boreSelect.value : 'All';
 
     const isosMap = {};
     db.bomIsoList.forEach(r => {
         let matchSys = (sys === 'All' || (r.system || '').trim() === sys);
-        if (matchSys && r.iso && r.iso !== 'Unassigned') isosMap[r.iso] = true;
+        let matchBore = (bore === 'All' || (db.isoBoreMap[r.iso] && db.isoBoreMap[r.iso].has(bore)));
+        if (matchSys && matchBore && r.iso && r.iso !== 'Unassigned') isosMap[r.iso] = true;
     });
 
     const isos = Object.keys(isosMap).sort();
@@ -2493,6 +2544,16 @@ window.updateIsoDropdown = function() {
         datalistHtml += `<option value="${iso.replace(/"/g, '&quot;')}">`;
     });
     isoDatalist.innerHTML = datalistHtml;
+
+    const isoDropdown = document.getElementById('issueIsoDropdownFilter');
+    if (isoDropdown) {
+        let dropdownHtml = '<option value="All">All ISOs</option>';
+        isos.forEach(iso => {
+            const safeIso = iso.replace(/"/g, '&quot;');
+            dropdownHtml += `<option value="${safeIso}">${safeIso}</option>`;
+        });
+        isoDropdown.innerHTML = dropdownHtml;
+    }
 }
 
 // ==========================================
@@ -3234,7 +3295,7 @@ function attachEventListeners() {
                 .eq('id', recvId);
             sel.disabled = false;
             if (error) {
-                alert('저장 실패: ' + error.message);
+                alert('Save failed: ' + error.message);
             } else {
                 const rec = db.receiving.find(r => String(r.id) === String(recvId));
                 if (rec) rec.purpose = purpose;
@@ -3377,7 +3438,20 @@ function attachEventListeners() {
     if (sysSelect) {
         sysSelect.addEventListener('change', updateIsoDropdown);
     }
-    
+    const boreSelect = document.getElementById('issueBoreFilter');
+    if (boreSelect) {
+        boreSelect.addEventListener('change', updateIsoDropdown);
+    }
+    const isoDropdownFilter = document.getElementById('issueIsoDropdownFilter');
+    if (isoDropdownFilter) {
+        // System/Bore로 좁혀진 목록에서 ISO를 정확히 선택 → 검색창에 반영하고 바로 조회
+        isoDropdownFilter.addEventListener('change', function() {
+            const isoSearch = document.getElementById('issueIsoSearch');
+            if (isoSearch) isoSearch.value = this.value === 'All' ? '' : this.value;
+            document.getElementById('btnFilterIssue')?.click();
+        });
+    }
+
     const isoSearchInput = document.getElementById('issueIsoSearch');
     if (isoSearchInput) {
         isoSearchInput.addEventListener('focus', function() {
@@ -3417,17 +3491,18 @@ function attachEventListeners() {
         btnFilterIssue.addEventListener('click', async () => {
             let sys = document.getElementById('issueSystemFilter')?.value || 'All';
             let iso = (document.getElementById('issueIsoSearch')?.value || '').trim();
+            let boreFilter = document.getElementById('issueBoreFilter')?.value || 'All';
             let categoryFilter = document.getElementById('issueCategoryFilter')?.value || 'All';
             let itemFilter = document.getElementById('issueItemFilter')?.value || 'All';
             let sizeFilter = document.getElementById('issueSizeFilter')?.value || 'All';
 
             let tbody = document.querySelector('#issueTable tbody');
-            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:16px;color:#888;">Loading...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:16px;color:#888;">Loading...</td></tr>';
 
             // When ISO is specified: load all materials (no limit)
             // Without ISO: limit to 200 items
             let query = supabaseClient.from('bom')
-                .select('mat_code, iso_dwg_no, full_description, uom, qty, system')
+                .select('mat_code, iso_dwg_no, full_description, uom, qty, system, line_no')
                 .order('iso_dwg_no');
 
             if (sys !== 'All') query = query.eq('system', sys);
@@ -3439,18 +3514,63 @@ function attachEventListeners() {
 
             const { data: bomRows, error } = await query;
             if (error) {
-                tbody.innerHTML = `<tr><td colspan="9" style="color:red;text-align:center;">Error: ${error.message}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="10" style="color:red;text-align:center;">Error: ${error.message}</td></tr>`;
                 return;
             }
 
             if (!bomRows || bomRows.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;">No BOM materials found for the selected ISO Drawing.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;">No BOM materials found for the selected ISO Drawing.</td></tr>';
                 return;
             }
 
-            // PKG 단위 원자료(matCode → {pkgNo: qty}) — Received/Stock/Packing List 컬럼 공통 소스
+            // PKG 단위 원자료(matCode → {pkgNo: qty}) — Received/Issued/Stock/Packing List 컬럼 공통 소스
             const pkgBreakdown = buildPkgBreakdown(r => isReceivingActive(r.plNo));
-            const issMap = getIssuedQtyMap(r => isReceivingActive(r.plNo));
+
+            // FIFO 배분은 ISO Drawing 한 장을 특정했을 때만 의미가 있고 계산 비용도 저렴함(해당 ISO의
+            // 소수 MatCode만 조회). ISO 미지정(전체 브라우징) 상태에서는 최대 200건에 걸친 모든 MatCode를
+            // 대상으로 전체 수요를 조회해야 해서 매우 비싸므로, 이 경우는 FIFO 없이 전체 재고 기준으로만 표시
+            const useFifo = !!(iso && iso !== 'All');
+
+            // FIFO 배분: 같은 MatCode를 쓰는 다른 ISO들이 시공 순서(System 우선순위)대로 먼저 PKG를 선점한다고
+            // 가정하고, 이 라인이 실제로 받게 될 PKG 구간(우선순위 오프셋)을 계산하기 위해 전체 수요를 조회
+            const fifoMatCodes = useFifo
+                ? [...new Set(bomRows.map(b => (b.mat_code || '').trim().toUpperCase()).filter(m => m && m !== 'NONE'))]
+                : [];
+            const demandByMat = {}; // matCode → { "system::iso": { system, iso, qty } }
+            if (fifoMatCodes.length) {
+                const { data: demandRows } = await supabaseClient.from('bom')
+                    .select('mat_code, iso_dwg_no, qty, system')
+                    .in('mat_code', fifoMatCodes);
+                (demandRows || []).forEach(d => {
+                    const m = (d.mat_code || '').trim().toUpperCase();
+                    if (!demandByMat[m]) demandByMat[m] = {};
+                    const key = `${d.system || ''}::${d.iso_dwg_no}`;
+                    if (!demandByMat[m][key]) demandByMat[m][key] = { system: d.system || '', iso: d.iso_dwg_no, qty: 0 };
+                    demandByMat[m][key].qty += (parseFloat(d.qty) || 0);
+                });
+            }
+            // 시공 우선순위: CCW → RW → SW → FG → HW → AS → FO 순으로 먼저 배분, 그 외 System은 전부 그 다음(동순위)
+            const SYSTEM_PRIORITY = ['CCW', 'RW', 'SW', 'FG', 'HW', 'AS', 'FO'];
+            const systemRank = (sys) => {
+                const idx = SYSTEM_PRIORITY.indexOf((sys || '').trim().toUpperCase());
+                return idx === -1 ? SYSTEM_PRIORITY.length : idx;
+            };
+            // 같은 System 순위 내에서는 ISO Drawing 이름 오름차순으로 비교
+            const isBeforeTarget = (system, isoName, targetSystem, targetIso) => {
+                const r1 = systemRank(system), r2 = systemRank(targetSystem);
+                if (r1 !== r2) return r1 < r2;
+                return isoName < targetIso;
+            };
+            const priorDemandFor = (mat, targetIso, targetSystem) => {
+                const demandMap = demandByMat[mat];
+                if (!demandMap) return 0;
+                let prior = 0;
+                Object.values(demandMap).forEach(entry => {
+                    if (entry.iso && isBeforeTarget(entry.system, entry.iso, targetSystem, targetIso)) prior += entry.qty;
+                });
+                return prior;
+            };
+            const matRunningConsumed = {}; // 같은 ISO 내 동일 MatCode 라인이 여러 개일 때 순차 소진 추적
 
             // Category color map
             const catColors = {
@@ -3472,6 +3592,20 @@ function attachEventListeners() {
                 if (!mat || mat === 'NONE') return;
 
                 let category = window.getCategory(b.full_description, mat);
+                let qty = parseFloat(b.qty) || 0;
+
+                // FIFO 슬라이스 계산 — 필터 적용 여부와 무관하게 항상 선점 순서를 진행시켜야 함
+                // (All 모드에서는 한 번의 조회에 여러 ISO가 섞이므로, 같은 ISO 내 누적만 반영하도록 mat+iso로 키 분리)
+                let fifoPkgMap;
+                if (useFifo) {
+                    const consumeKey = `${mat}::${b.iso_dwg_no}`;
+                    const priorQty = priorDemandFor(mat, b.iso_dwg_no, b.system) + (matRunningConsumed[consumeKey] || 0);
+                    fifoPkgMap = computeFifoPkgSlice(pkgBreakdown[mat] || {}, priorQty, qty);
+                    matRunningConsumed[consumeKey] = (matRunningConsumed[consumeKey] || 0) + qty;
+                } else {
+                    // ISO 미지정 브라우징 모드: FIFO 없이 MatCode 전체 재고를 그대로 보여줌(참고용)
+                    fifoPkgMap = pkgBreakdown[mat] || {};
+                }
 
                 // Apply category filter
                 if (categoryFilter !== 'All' && category !== categoryFilter) return;
@@ -3489,16 +3623,24 @@ function attachEventListeners() {
                     if (size !== sizeFilter) return;
                 }
 
-                const pkgMap = pkgBreakdown[mat] || {};
-                let totalRec = Object.values(pkgMap).reduce((a, b2) => a + b2, 0);
-                let totalIss = issMap[mat] || 0;
-                let stockQty = Math.max(0, totalRec - totalIss);
-                let qty = parseFloat(b.qty) || 0;
+                // Apply bore filter (Line No 앞자리 사이즈 기준: 2" 이하 Small, 그 외 Large)
+                if (boreFilter !== 'All' && window.getBoreFromLineNo(b.line_no) !== boreFilter) return;
+
+                // RECEIVED/ISSUED/STOCK QTY: 전체 MatCode 합계가 아니라 이 라인에 FIFO로 배분된 양 기준
+                // (배분된 PKG 중 이미 Issued된 몫 = Issued Qty, 아직 안 쓴 몫 = Stock Qty, 합계 = Received Qty)
+                const totalRecAllProject = Object.values(pkgBreakdown[mat] || {}).reduce((a, b2) => a + b2, 0);
+                let receivedQty = 0, issuedQty = 0;
+                Object.entries(fifoPkgMap).forEach(([pkgNo, q]) => {
+                    receivedQty += q;
+                    if (isPkgIssued(pkgNo)) issuedQty += q;
+                });
+                const stockQty = Math.max(0, receivedQty - issuedQty);
                 let safeDesc = (b.full_description || '-').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
                 let catColor = catColors[category] || '#546e7a';
 
-                // Row highlight based on stock availability
-                let stockStyle = stockQty >= qty ? 'background:#f1f8e9;' : (stockQty > 0 ? 'background:#fff8e1;' : '');
+                // Row highlight based on FIFO 배분량(Received) 대비 BOM 수요 (부동소수점 오차 보정용 미세 허용치)
+                const isFullyCovered = receivedQty >= qty - 0.001;
+                let stockStyle = isFullyCovered ? 'background:#f1f8e9;' : (receivedQty > 0 ? 'background:#fff8e1;' : '');
 
                 htmlString += `<tr style="${stockStyle}">
                     <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${b.iso_dwg_no||''}">${b.iso_dwg_no || '-'}</td>
@@ -3507,29 +3649,34 @@ function attachEventListeners() {
                     <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${safeDesc}">${safeDesc.length > 40 ? safeDesc.substring(0,40)+'...' : safeDesc}</td>
                     <td style="text-align:center;">${b.uom || 'EA'}</td>
                     <td style="text-align:center;">${qty.toFixed(2)}</td>
-                    <td style="text-align:center;">${totalRec.toFixed(2)}</td>
-                    <td style="text-align:center;"><strong style="color:${stockQty >= qty ? '#2e7d32' : (stockQty > 0 ? '#e65100' : '#c62828')};">${stockQty.toFixed(2)}</strong></td>
-                    <td style="text-align:left;font-size:11px;line-height:1.6;">${renderPkgListCell(pkgMap)}</td>
+                    <td style="text-align:center;" title="프로젝트 전체 입고량: ${totalRecAllProject.toFixed(2)}">${receivedQty.toFixed(2)}</td>
+                    <td style="text-align:center;color:${issuedQty > 0 ? '#e65100' : '#999'};">${issuedQty.toFixed(2)}</td>
+                    <td style="text-align:center;"><strong style="color:${isFullyCovered ? '#2e7d32' : (stockQty > 0 ? '#e65100' : '#c62828')};">${stockQty.toFixed(2)}</strong></td>
+                    <td style="text-align:left;font-size:11px;line-height:1.6;">${renderPkgListCell(fifoPkgMap)}</td>
                 </tr>`;
             });
 
-            tbody.innerHTML = htmlString || `<tr><td colspan="9" style="text-align:center;color:#888;">No BOM materials found for the selected ISO Drawing.</td></tr>`;
+            tbody.innerHTML = htmlString || `<tr><td colspan="10" style="text-align:center;color:#888;">No BOM materials found for the selected ISO Drawing.</td></tr>`;
 
             if (!iso || iso === 'All') {
-                tbody.innerHTML += `<tr><td colspan="9" style="text-align:center;color:var(--color-warning);font-size:11px;padding:8px;">
+                tbody.innerHTML += `<tr><td colspan="10" style="text-align:center;color:var(--color-warning);font-size:11px;padding:8px;">
                     <i class="fas fa-info-circle"></i> Specify an ISO Drawing to view all materials for that drawing.</td></tr>`;
             }
 
             // Support Tag List 렌더링 (Task 6과 공유하는 헬퍼 재사용)
+            // Category 필터가 특정 카테고리(Pipe/Fitting/Valve/Speciality/Others)로 좁혀져 있으면
+            // Support는 그 목록에 속하지 않으므로 함께 표시하지 않음 (All일 때만 전체 그림 표시)
             const suppTbody = document.getElementById('suppMatTbody');
             if (suppTbody) {
-                if (iso && iso !== 'All') {
+                if (iso && iso !== 'All' && categoryFilter === 'All') {
                     await fetchAndRenderSupportRows({
                         filterField: 'iso_dwg_no', filterValue: iso, tbodyEl: suppTbody,
                         emptyMsg: 'No support materials for this ISO.'
                     });
+                } else if (iso && iso !== 'All') {
+                    suppTbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#888;">Category filter is active — set Category to "All" to view Support items.</td></tr>';
                 } else {
-                    suppTbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#888;">Select an ISO Drawing and click Search.</td></tr>';
+                    suppTbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#888;">Select an ISO Drawing and click Search.</td></tr>';
                 }
             }
         });
@@ -3538,14 +3685,24 @@ function attachEventListeners() {
     // ISO/Support Tag 공용: support_bom + support_receiving을 조합해 BOM/Received/Stock/PKG 렌더링
     // filterField: 'iso_dwg_no' | 'support_tag'
     async function fetchAndRenderSupportRows({ filterField, filterValue, tbodyEl, emptyMsg }) {
-        tbodyEl.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#aaa;padding:12px;">Loading...</td></tr>';
-        const { data: suppRows, error } = await supabaseClient.from('support_bom')
-            .select('iso_dwg_no, support_tag, item, matl, size_or_type, qty, part_no')
-            .eq(filterField, filterValue)
-            .order('support_tag').order('part_no');
+        tbodyEl.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#aaa;padding:12px;">Loading...</td></tr>';
+
+        let query = supabaseClient.from('support_bom')
+            .select('iso_dwg_no, support_tag, item, matl, size_or_type, qty, part_no');
+
+        if (filterField === 'iso_dwg_no') {
+            // ISO Drawing은 "베이스도면번호-시트번호" 구조라 Support가 세트 내 다른 시트에만 등록된 경우가 흔함
+            // (예: CCP-W-B028-PI-140-AS-002-2 검색해도 -002-5에 있는 Support까지 같은 세트로 간주해 조회)
+            const m = filterValue.match(/^(.*)-(\d+)$/);
+            query = m ? query.ilike('iso_dwg_no', `${m[1]}-%`) : query.eq('iso_dwg_no', filterValue);
+        } else {
+            query = query.eq(filterField, filterValue);
+        }
+
+        const { data: suppRows, error } = await query.order('support_tag').order('part_no');
 
         if (error || !suppRows || suppRows.length === 0) {
-            tbodyEl.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#aaa;padding:12px;">${emptyMsg}</td></tr>`;
+            tbodyEl.innerHTML = `<tr><td colspan="11" style="text-align:center;color:#aaa;padding:12px;">${emptyMsg}</td></tr>`;
             return;
         }
 
@@ -3573,14 +3730,15 @@ function attachEventListeners() {
             const stock = Math.max(0, received - issued);
             const bomQty = s.qty ?? 0;
             return `<tr>
-                <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${safe(s.iso_dwg_no)}">${s.iso_dwg_no || '-'}</td>
-                <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;" title="${safe(s.support_tag)}">${s.support_tag || '-'}</td>
+                <td style="text-align:center;white-space:normal;word-break:break-all;" title="${safe(s.iso_dwg_no)}">${s.iso_dwg_no || '-'}</td>
+                <td style="text-align:center;white-space:normal;word-break:break-all;font-weight:600;" title="${safe(s.support_tag)}">${s.support_tag || '-'}</td>
                 <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${safe(s.item)}">${s.item || '-'}</td>
                 <td style="text-align:center;">${s.matl || '-'}</td>
                 <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${safe(s.size_or_type)}">${s.size_or_type || '-'}</td>
                 <td style="text-align:center;">EA</td>
                 <td style="text-align:center;">${bomQty}</td>
                 <td style="text-align:center;">${received}</td>
+                <td style="text-align:center;color:${issued > 0 ? '#e65100' : '#999'};">${issued}</td>
                 <td style="text-align:center;"><strong style="color:${stock >= bomQty ? '#2e7d32' : (stock > 0 ? '#e65100' : '#c62828')};">${stock}</strong></td>
                 <td style="text-align:left;font-size:11px;line-height:1.6;">${renderPkgListCell(pkgMap)}</td>
             </tr>`;
@@ -3613,7 +3771,7 @@ function attachEventListeners() {
             const tbody = document.getElementById('mfSupportTagTbody');
             if (!tbody) return;
             if (!tag) {
-                tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#888;">Enter a Support Tag No.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#888;">Enter a Support Tag No.</td></tr>';
                 return;
             }
             await fetchAndRenderSupportRows({
@@ -3636,7 +3794,7 @@ function attachEventListeners() {
         const key = tag.toUpperCase();
         const row = { tag: key, iso_dwg_no: isoDwgNo || null, line_no: lineNo || null, updated_at: new Date().toISOString() };
         const { error } = await supabaseClient.from('tag_overrides').upsert(row);
-        if (error) { alert('저장 실패: ' + error.message); return false; }
+        if (error) { alert('Save failed: ' + error.message); return false; }
         _tagOverrides[key] = row;
         return true;
     }
@@ -3696,8 +3854,8 @@ function attachEventListeners() {
                 const stock = Math.max(0, received - issued);
 
                 const isoCell = iso
-                    ? `${iso}${!bomInfo ? ' <span style="font-size:10px;color:#1565c0;">(수동)</span>' : ''}`
-                    : `<button class="btn btn-outline btn-small mf-assign-iso" data-tag="${g.tag}" style="font-size:11px;padding:2px 8px;">ISO 지정</button>`;
+                    ? `${iso}${!bomInfo ? ' <span style="font-size:10px;color:#1565c0;">(Manual)</span>' : ''}`
+                    : `<button class="btn btn-outline btn-small mf-assign-iso" data-tag="${g.tag}" style="font-size:11px;padding:2px 8px;">Assign ISO</button>`;
 
                 return `<tr data-tag-row="${g.tag}">
                     <td style="text-align:center;font-weight:600;">${g.tag}</td>
@@ -3722,7 +3880,7 @@ function attachEventListeners() {
         const cell = btn.closest('.mf-iso-cell');
         cell.innerHTML = `
             <input type="text" class="form-control mf-assign-iso-input" style="width:140px;display:inline-block;font-size:11px;" placeholder="ISO Drawing" list="isoDatalist">
-            <button class="btn btn-primary btn-small mf-assign-iso-save" data-tag="${tag}" style="font-size:11px;padding:2px 8px;">저장</button>
+            <button class="btn btn-primary btn-small mf-assign-iso-save" data-tag="${tag}" style="font-size:11px;padding:2px 8px;">Save</button>
         `;
     });
 
@@ -3733,7 +3891,7 @@ function attachEventListeners() {
         const row = saveBtn.closest('tr');
         const isoInput = row.querySelector('.mf-assign-iso-input');
         const isoVal = (isoInput?.value || '').trim();
-        if (!isoVal) { alert('ISO Drawing을 입력하세요.'); return; }
+        if (!isoVal) { alert('Please enter an ISO Drawing.'); return; }
         const lineNoCell = row.querySelector('.mf-lineno-cell');
         const lineNoVal = (lineNoCell?.textContent || '').trim();
         const ok = await saveTagOverride(tag, isoVal, lineNoVal === '-' ? '' : lineNoVal);
@@ -3925,13 +4083,41 @@ function buildPkgBreakdown(filterFn) {
     return map;
 }
 
+// FIFO 배분: pkgMap에서 [priorQty, priorQty+qty) 구간에 해당하는 PKG만 추출
+// On-Site Date 오름차순(먼저 도착한 PKG 우선), 날짜 없는 PKG는 뒤로. Issued 여부와 무관하게 도착 순서
+// 그대로 큐를 구성해야 앞 순위 라인이 이미 불출받은 몫이 큐에서 자연스럽게 소진된 것으로 반영됨
+// (Issued/Not Issued 구분은 이후 호출부에서 결과 pkgMap을 다시 나눠서 사용)
+function computeFifoPkgSlice(pkgMap, priorQty, qty) {
+    if (!pkgMap || qty <= 0) return {};
+    const entries = Object.entries(pkgMap)
+        .map(([pkgNo, q]) => ({ pkgNo, qty: q, onSite: (_plUpdatesCache[pkgNo] || {}).on_site || '' }))
+        .sort((a, b) => {
+            if (a.onSite && b.onSite) return a.onSite.localeCompare(b.onSite);
+            if (a.onSite) return -1;
+            if (b.onSite) return 1;
+            return a.pkgNo.localeCompare(b.pkgNo);
+        });
+
+    const start = priorQty, end = priorQty + qty;
+    const result = {};
+    let cursor = 0;
+    for (const e of entries) {
+        const segStart = cursor, segEnd = cursor + e.qty;
+        const overlap = Math.min(segEnd, end) - Math.max(segStart, start);
+        if (overlap > 0) result[e.pkgNo] = (result[e.pkgNo] || 0) + overlap;
+        cursor = segEnd;
+        if (cursor >= end) break;
+    }
+    return result;
+}
+
 // { pkgNo: qty } → "Packing List (PKG No)" 컬럼 HTML (불출 여부 표시 포함)
 function renderPkgListCell(pkgMap) {
     if (!pkgMap || Object.keys(pkgMap).length === 0) return '-';
     return Object.entries(pkgMap).sort((a, b) => a[0].localeCompare(b[0])).map(([pkgNo, qty]) => {
         const done = isPkgIssued(pkgNo);
         const qtyStr = qty % 1 === 0 ? qty : qty.toFixed(2);
-        const label = done ? `불출 ${(_plUpdatesCache[pkgNo] || {}).issue_date || ''}` : '미불출';
+        const label = done ? `Issued ${(_plUpdatesCache[pkgNo] || {}).issue_date || ''}` : 'Not Issued';
         return `<div>${pkgNo} (${qtyStr} EA) — <span style="color:${done ? '#2e7d32' : '#999'};">${label}</span></div>`;
     }).join('');
 }

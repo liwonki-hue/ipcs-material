@@ -979,7 +979,7 @@
                 <div class="page-header">
                      <div>
                          <h1>Material Finding</h1>
-                         <p class="subtitle">ISO Drawing / Support Tag No / Item(Valve·Speciality)으로 자재를 조회합니다.</p>
+                         <p class="subtitle">Search materials by ISO Drawing / Support Tag No / Item (Valve·Speciality).</p>
                      </div>
                  </div>
 
@@ -993,7 +993,7 @@
                  <!-- Mode A: ISO Drawing -->
                  <div id="mfModeIso" class="mf-mode-panel">
                      <div class="panel filter-panel" style="margin-bottom: 20px;">
-                         <div style="display: flex; align-items: flex-end; gap: 15px; width: 100%;">
+                         <div style="display: flex; align-items: flex-end; gap: 15px; width: 100%; flex-wrap: wrap;">
                              <div class="form-group" style="flex: 2;">
                                  <label>ISO Drawing (Search & Select)</label>
                                  <input type="text" id="issueIsoSearch" class="form-control" style="width: 100%;" placeholder="Type to search ISO Drawing..." list="isoDatalist">
@@ -1002,6 +1002,18 @@
                              <div class="form-group" style="flex: 1;">
                                  <label>System</label>
                                  <select id="issueSystemFilter" class="form-control" style="width: 100%;"><option>All</option></select>
+                             </div>
+                             <div class="form-group" style="flex: 1;">
+                                 <label>Bore</label>
+                                 <select id="issueBoreFilter" class="form-control" style="width: 100%;">
+                                     <option value="All">All Bores</option>
+                                     <option value="Small">Small (≤2")</option>
+                                     <option value="Large">Large (≥2.5")</option>
+                                 </select>
+                             </div>
+                             <div class="form-group" style="flex: 1.5;">
+                                 <label>ISO Drawing (Filter)</label>
+                                 <select id="issueIsoDropdownFilter" class="form-control" style="width: 100%;"><option value="All">All ISOs</option></select>
                              </div>
                              <div class="form-group" style="flex: 1;">
                                  <label>Category</label>
@@ -1037,7 +1049,7 @@
                                  <colgroup>
                                      <col style="width:300px;"><col style="width:110px;"><col style="width:260px;">
                                      <col style="width:auto;"><col style="width:70px;"><col style="width:100px;">
-                                     <col style="width:100px;"><col style="width:100px;"><col style="width:220px;">
+                                     <col style="width:100px;"><col style="width:100px;"><col style="width:100px;"><col style="width:220px;">
                                  </colgroup>
                                  <thead>
                                      <tr>
@@ -1048,12 +1060,13 @@
                                          <th style="text-align:center;">Unit</th>
                                          <th style="text-align:center;">BOM Qty</th>
                                          <th style="text-align:center;">Received Qty</th>
+                                         <th style="text-align:center;">Issued Qty</th>
                                          <th style="text-align:center;">Stock Qty</th>
                                          <th style="text-align:center;">Packing List (PKG No)</th>
                                      </tr>
                                  </thead>
                                  <tbody>
-                                     <tr><td colspan="9" style="text-align:center;">Enter an ISO Drawing and click Search.</td></tr>
+                                     <tr><td colspan="10" style="text-align:center;">Enter an ISO Drawing and click Search.</td></tr>
                                  </tbody>
                              </table>
                          </div>
@@ -1066,9 +1079,9 @@
                          <div class="table-responsive">
                              <table class="data-table" id="suppMatTable" style="text-align:center;table-layout:fixed;width:100%;">
                                  <colgroup>
-                                     <col style="width:260px;"><col style="width:200px;"><col style="width:150px;">
-                                     <col style="width:110px;"><col style="width:auto;"><col style="width:70px;">
-                                     <col style="width:100px;"><col style="width:100px;"><col style="width:100px;"><col style="width:220px;">
+                                     <col style="width:240px;"><col style="width:280px;"><col style="width:150px;">
+                                     <col style="width:110px;"><col style="width:auto;"><col style="width:75px;">
+                                     <col style="width:105px;"><col style="width:105px;"><col style="width:105px;"><col style="width:105px;"><col style="width:220px;">
                                  </colgroup>
                                  <thead>
                                      <tr>
@@ -1080,12 +1093,13 @@
                                          <th style="text-align:center;">Unit</th>
                                          <th style="text-align:center;">BOM Qty</th>
                                          <th style="text-align:center;">Received Qty</th>
+                                         <th style="text-align:center;">Issued Qty</th>
                                          <th style="text-align:center;">Stock Qty</th>
                                          <th style="text-align:center;">Packing List (PKG No)</th>
                                      </tr>
                                  </thead>
                                  <tbody id="suppMatTbody">
-                                     <tr><td colspan="10" style="text-align:center;color:#888;">Select an ISO Drawing and click Search.</td></tr>
+                                     <tr><td colspan="11" style="text-align:center;color:#888;">Select an ISO Drawing and click Search.</td></tr>
                                  </tbody>
                              </table>
                          </div>
@@ -1113,9 +1127,9 @@
                          <div class="table-responsive">
                              <table class="data-table" id="mfSupportTagTable" style="text-align:center;table-layout:fixed;width:100%;">
                                  <colgroup>
-                                     <col style="width:260px;"><col style="width:200px;"><col style="width:150px;">
-                                     <col style="width:110px;"><col style="width:auto;"><col style="width:70px;">
-                                     <col style="width:100px;"><col style="width:100px;"><col style="width:100px;"><col style="width:220px;">
+                                     <col style="width:240px;"><col style="width:280px;"><col style="width:150px;">
+                                     <col style="width:110px;"><col style="width:auto;"><col style="width:75px;">
+                                     <col style="width:105px;"><col style="width:105px;"><col style="width:105px;"><col style="width:105px;"><col style="width:220px;">
                                  </colgroup>
                                  <thead>
                                      <tr>
@@ -1127,12 +1141,13 @@
                                          <th style="text-align:center;">Unit</th>
                                          <th style="text-align:center;">BOM Qty</th>
                                          <th style="text-align:center;">Received Qty</th>
+                                         <th style="text-align:center;">Issued Qty</th>
                                          <th style="text-align:center;">Stock Qty</th>
                                          <th style="text-align:center;">Packing List (PKG No)</th>
                                      </tr>
                                  </thead>
                                  <tbody id="mfSupportTagTbody">
-                                     <tr><td colspan="10" style="text-align:center;color:#888;">Search a Support Tag No.</td></tr>
+                                     <tr><td colspan="11" style="text-align:center;color:#888;">Search a Support Tag No.</td></tr>
                                  </tbody>
                              </table>
                          </div>
@@ -1205,7 +1220,7 @@
                 <div class="page-header">
                      <div>
                          <h1>Material Status</h1>
-                         <p class="subtitle">BOM 대비 입고/불출/Stock, 부족 자재, 잉여 자재 현황.</p>
+                         <p class="subtitle">BOM vs Received/Issued/Stock status, shortage and surplus materials.</p>
                      </div>
                  </div>
 
