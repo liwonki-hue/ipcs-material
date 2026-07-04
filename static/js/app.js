@@ -467,6 +467,7 @@ async function syncFromSupabase() {
             setTimeout(() => {
                 if(id === 'piping_bom') { initBomTabs(); if (_bomActiveTab === 'matcode') renderMatCodeMaster(); else renderBomTable(); }
                 if(id === 'receiving') { initReceivingTabs(); renderActiveReceivingTab(); }
+                if(id === 'vendor_items') { initVendorFilters(); renderVendorTable(); }
             }, 200);
         }
 
@@ -529,6 +530,7 @@ function initNavigation() {
         if(targetId === 'dashboard') updateDashboard();
         if(targetId === 'issue') renderIssueOptions();
         if(targetId === 'piping_bom') { initBomTabs(); if (_bomActiveTab === 'matcode') renderMatCodeMaster(); else renderBomTable(); }
+        if(targetId === 'vendor_items') { initVendorFilters(); renderVendorTable(); }
         if(targetId === 'receiving') { initReceivingTabs(); renderActiveReceivingTab(); }
         if(targetId === 'material_status') { initMaterialStatusTabs(); switchMaterialStatusTab(_msActiveTab); }
         if(targetId === 'shipping') initShipping();
@@ -1647,6 +1649,7 @@ window._matCodeGoPage = function(p) { _matCodePage = p; renderMatCodeMaster(); }
 
 // --- 3. BOM & Receiving Paginations ---
 let currentBomPage = 1;
+let currentVendorPage = 1;
 let _bomActiveTab = 'piping'; // 'piping' | 'fitting' | 'others'
 let currentPlPage = 1;
 let currentSrecPage = 1;
@@ -2127,6 +2130,153 @@ function initBomTabs() {
         });
     });
 }
+
+// --- Vendor Supply (타사공급, Not-MTO — 참고용, 입고/재고 계산 제외) ---
+const VENDOR_ITEM_PREFIX_MAP = { 'GASKET': ['GSKT'], 'STUD BOLT': ['STB'] };
+
+function extractSizeFromVendorMatCode(matCode) {
+    const m = (matCode || '').match(/-([\d\/\-]+)"/);
+    return m ? m[1] + '"' : '-';
+}
+
+let _vendorFiltersInited = false;
+async function initVendorFilters() {
+    if (_vendorFiltersInited) return;
+    _vendorFiltersInited = true;
+
+    const { data } = await supabaseClient.from('vendor').select('system, mat_code, mat1').limit(10000);
+    if (data) {
+        const systems = [...new Set(data.map(r => r.system).filter(Boolean))].sort();
+        const mat1s = [...new Set(data.map(r => r.mat1).filter(Boolean))].sort();
+        const items = [...new Set(data.map(r => window.extractItemFromMatCode(r.mat_code)).filter(v => v && v !== '-'))].sort();
+        const sizes = [...new Set(data.map(r => extractSizeFromVendorMatCode(r.mat_code)).filter(v => v && v !== '-'))]
+            .sort((a, b) => parseFloat(a) - parseFloat(b));
+
+        const sysEl = document.getElementById('vendorSystemFilter');
+        if (sysEl) sysEl.innerHTML = '<option value="All">All Systems</option>' + systems.map(s => `<option value="${s}">${s}</option>`).join('');
+        const itemEl = document.getElementById('vendorItemFilter');
+        if (itemEl) itemEl.innerHTML = '<option value="All">All Items</option>' + items.map(i => `<option value="${i}">${i}</option>`).join('');
+        const mat1El = document.getElementById('vendorMat1Filter');
+        if (mat1El) mat1El.innerHTML = '<option value="All">All Mat 1</option>' + mat1s.map(m => `<option value="${m.replace(/"/g, '&quot;')}">${m}</option>`).join('');
+        const sizeEl = document.getElementById('vendorSizeFilter');
+        if (sizeEl) sizeEl.innerHTML = '<option value="All">All Sizes</option>' + sizes.map(s => `<option value="${s.replace(/"/g, '&quot;')}">${s}</option>`).join('');
+    }
+
+    document.getElementById('btnFilterVendor')?.addEventListener('click', () => { currentVendorPage = 1; renderVendorTable(); });
+    document.getElementById('btnClearVendorFilters')?.addEventListener('click', () => {
+        const isoEl = document.getElementById('vendorIsoSearch'); if (isoEl) isoEl.value = '';
+        ['vendorSystemFilter', 'vendorItemFilter', 'vendorMat1Filter', 'vendorSizeFilter'].forEach(id => {
+            const el = document.getElementById(id); if (el) el.value = 'All';
+        });
+        currentVendorPage = 1;
+        renderVendorTable();
+    });
+
+    const btnExportVendor = document.getElementById('btnExportVendor');
+    if (btnExportVendor) {
+        btnExportVendor.addEventListener('click', async () => {
+            btnExportVendor.disabled = true;
+            btnExportVendor.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exporting...';
+            try {
+                const sys = document.getElementById('vendorSystemFilter')?.value || 'All';
+                const search = (document.getElementById('vendorIsoSearch')?.value || '').trim();
+                let query = supabaseClient.from('vendor')
+                    .select('system, iso_dwg_no, line_no, mat_code, full_description, uom, qty')
+                    .order('iso_dwg_no').limit(100000);
+                if (sys !== 'All') query = query.eq('system', sys);
+                if (search) query = query.or(`iso_dwg_no.ilike.%${search}%,mat_code.ilike.%${search}%,full_description.ilike.%${search}%`);
+                const { data, error } = await query;
+                if (error) throw error;
+
+                const rows = (data || []).map(b => ({
+                    'System Area': b.system || '-',
+                    'ISO Drawing': b.iso_dwg_no || '-',
+                    'Line No':     b.line_no || '-',
+                    'Mat Code':    b.mat_code || '-',
+                    'Description': b.full_description || '-',
+                    'Unit':        b.uom || 'EA',
+                    'Design Qty':  parseFloat(b.qty || 0)
+                }));
+                const ws = XLSX.utils.json_to_sheet(rows);
+                ws['!cols'] = [12, 30, 24, 24, 50, 8, 12].map(w => ({ wch: w }));
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Vendor');
+                const today = new Date().toISOString().split('T')[0];
+                XLSX.writeFile(wb, `Vendor_Export_${today}${sys !== 'All' ? '_' + sys : ''}.xlsx`);
+            } catch (e) {
+                alert('Export failed: ' + e.message);
+            } finally {
+                btnExportVendor.disabled = false;
+                btnExportVendor.innerHTML = '<i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export';
+            }
+        });
+    }
+}
+
+async function renderVendorTable() {
+    let tbody = document.querySelector('#vendorTable tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
+
+    const search = (document.getElementById('vendorIsoSearch')?.value || '').trim();
+    const sys    = document.getElementById('vendorSystemFilter')?.value || 'All';
+    const item   = document.getElementById('vendorItemFilter')?.value || 'All';
+    const mat1   = document.getElementById('vendorMat1Filter')?.value || 'All';
+    const size   = document.getElementById('vendorSizeFilter')?.value || 'All';
+
+    const applyFilters = (q) => {
+        if (sys !== 'All') q = q.eq('system', sys);
+        if (search) q = q.or(`iso_dwg_no.ilike.%${search}%,mat_code.ilike.%${search}%,full_description.ilike.%${search}%`);
+        if (mat1 !== 'All') q = q.eq('mat1', mat1);
+        if (item !== 'All') {
+            const prefixes = VENDOR_ITEM_PREFIX_MAP[item];
+            if (prefixes && prefixes.length) q = q.or(prefixes.map(p => `mat_code.ilike.${p}-*`).join(','));
+        }
+        if (size !== 'All') q = q.ilike('mat_code', `%-${size.replace(/"/g, '')}"%`);
+        return q;
+    };
+
+    const dataQ = applyFilters(
+        supabaseClient.from('vendor')
+            .select('mat_code, system, iso_dwg_no, line_no, full_description, uom, qty, mat1, mat2')
+            .range((currentVendorPage - 1) * PAGE_SIZE, currentVendorPage * PAGE_SIZE - 1)
+            .order('system', { ascending: true, nullsFirst: false })
+            .order('iso_dwg_no', { ascending: true, nullsFirst: false })
+    );
+    const countQ = applyFilters(supabaseClient.from('vendor').select('*', { count: 'exact', head: true }));
+
+    const [dataRes, countRes] = await Promise.all([dataQ, countQ]);
+    if (dataRes.error) {
+        tbody.innerHTML = `<tr><td colspan="11" style="color:red;text-align:center;">Error: ${dataRes.error.message}</td></tr>`;
+        return;
+    }
+
+    const data = dataRes.data || [];
+    const count = countRes.count || 0;
+
+    tbody.innerHTML = data.map(b => {
+        const desc = b.full_description || '-';
+        const rowSize = extractSizeFromVendorMatCode(b.mat_code);
+        const rowItem = window.extractItemFromMatCode(b.mat_code);
+        return `<tr>
+            <td style="text-align:center;white-space:nowrap;"><span class="status-badge ok">${b.mat_code || '-'}</span></td>
+            <td style="text-align:center;white-space:nowrap;">${b.system || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${b.iso_dwg_no || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${b.line_no || '-'}</td>
+            <td style="text-align:center;font-weight:600;white-space:nowrap;">${rowItem !== '-' ? rowItem : '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${b.mat1 || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${b.mat2 || '-'}</td>
+            <td style="text-align:center;font-weight:600;white-space:nowrap;">${rowSize}</td>
+            <td title="${desc}">${desc}</td>
+            <td style="text-align:center;white-space:nowrap;">${b.uom || 'EA'}</td>
+            <td style="text-align:center;white-space:nowrap;">${parseFloat(b.qty || 0).toFixed(2)}</td>
+        </tr>`;
+    }).join('') || '<tr><td colspan="11" style="text-align:center;color:#888;">No vendor items found.</td></tr>';
+
+    const totalPages = Math.max(1, Math.ceil(count / PAGE_SIZE));
+    renderPagination('vendorPagination', currentVendorPage, totalPages, '_vendorGoPage');
+}
+window._vendorGoPage = function(p) { currentVendorPage = p; renderVendorTable(); };
 
 function _renderRecvCore(cfg) {
     let tbody = document.querySelector(`#${cfg.tableId} tbody`);
