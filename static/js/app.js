@@ -501,6 +501,14 @@ async function syncFromSupabase() {
         _shippingData         = null;
         _spoolShippingCache   = null;
         _supportShippingCache = null;
+        // Material Summary / Bulk Receiving Mat1/Mat2/Rating 캐시·필터 옵션 무효화
+        _mssItemAggCache = null;
+        ['plMat1Filter','plMat2Filter','plRatingFilter',
+         'fitMat1Filter','fitMat2Filter','fitRatingFilter',
+         'othMat1Filter','othMat2Filter','othRatingFilter'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) delete el.dataset.filled;
+        });
         renderAllViews();
         initFilterOptions();
 
@@ -1348,12 +1356,13 @@ async function loadMssItemAgg() {
     let all = [];
     let from = 0;
     const step = 5000;
+    let hadError = false;
     while (true) {
         const { data, error } = await supabaseClient.from('bom_detail')
             .select('mat_code, category, mat1, mat2, uom, qty')
             .in('category', ['Pipe', 'Fitting', 'Others'])
             .range(from, from + step - 1);
-        if (error) { console.error('loadMssItemAgg 조회 실패:', error); break; }
+        if (error) { console.error('loadMssItemAgg 조회 실패:', error); hadError = true; break; }
         if (!data || data.length === 0) break;
         all = all.concat(data);
         if (data.length < step) break;
@@ -1366,8 +1375,10 @@ async function loadMssItemAgg() {
         if (!agg[mat]) agg[mat] = { matCode: mat, category: r.category, mat1: r.mat1, mat2: r.mat2, unit: r.uom || 'EA', bomQty: 0 };
         agg[mat].bomQty += parseFloat(r.qty) || 0;
     });
-    _mssItemAggCache = Object.values(agg);
-    return _mssItemAggCache;
+    const result = Object.values(agg);
+    // 조회 중 오류가 있었으면 캐시하지 않음 — 다음 호출에서 재시도되도록(비어있는 결과가 영구 고정되는 것 방지)
+    if (!hadError) _mssItemAggCache = result;
+    return result;
 }
 
 // 현재 서브탭+필터를 적용한 Item 단위 현황 리스트 (renderMssTable/Export 공용)
