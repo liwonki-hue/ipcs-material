@@ -1052,6 +1052,7 @@ function initStockFilters() {
                 const iss = issMap[matCode] || 0;
                 const fullDesc = db.bomDesc[matCode] || recDescMap[matCode] || '-';
                 const size = sizeOverride || window.getEffectiveSize(matCode, fullDesc, m.size1);
+                const rating = m.classDesc || matCode.split('-')[3] || '-';
                 return {
                     'PKG':             docMap[key] ? [...docMap[key]].sort().join(', ') : '-',
                     'PKG NO':          pkgMap[key] ? [...pkgMap[key]].sort().join(', ') : '-',
@@ -1060,6 +1061,7 @@ function initStockFilters() {
                     'Full Description': fullDesc,
                     'Item':            m.itemDesc || '-',
                     'Size':            size,
+                    'Rating':          rating,
                     'Unit':            'EA',
                     'Total Received':  rec,
                     'Total Issued':    iss,
@@ -1068,7 +1070,7 @@ function initStockFilters() {
                 };
             });
             const ws = XLSX.utils.json_to_sheet(rows);
-            ws['!cols'] = [18, 28, 26, 12, 40, 14, 8, 6, 14, 12, 14, 12].map(w => ({ wch: w }));
+            ws['!cols'] = [18, 28, 26, 12, 40, 14, 8, 10, 6, 14, 12, 14, 12].map(w => ({ wch: w }));
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, 'Stock');
             const today = new Date().toISOString().split('T')[0];
@@ -1741,13 +1743,14 @@ function _exportDiffList(list, sheetName, filenamePrefix) {
         'Item':          r.item,
         'Material':      r.matl,
         'Size (Inch)':   r.size,
+        'Rating':        r.rating,
         'Unit':          r.unit,
         'BOM QTY':       Math.round(r.bomQty),
         'Receiving QTY': Math.round(r.recQty),
         [`${filenamePrefix} QTY`]: Math.round(r.diffQty),
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
-    ws['!cols'] = [12, 22, 18, 12, 10, 8, 12, 14, 14].map(w => ({ wch: w }));
+    ws['!cols'] = [12, 22, 18, 12, 10, 10, 8, 12, 14, 14].map(w => ({ wch: w }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
     const today = new Date().toISOString().split('T')[0];
@@ -2485,17 +2488,23 @@ async function initVendorFilters() {
                 const { data, error } = await query;
                 if (error) throw error;
 
-                const rows = (data || []).map(b => ({
-                    'System Area': b.system || '-',
-                    'ISO Drawing': b.iso_dwg_no || '-',
-                    'Line No':     b.line_no || '-',
-                    'Mat Code':    b.mat_code || '-',
-                    'Description': b.full_description || '-',
-                    'Unit':        b.uom || 'EA',
-                    'Design Qty':  parseFloat(b.qty || 0)
-                }));
+                const masterMap = _buildMasterMap();
+                const rows = (data || []).map(b => {
+                    const mData = masterMap[b.mat_code] || {};
+                    const rating = mData.classDesc || (b.mat_code || '').split('-')[3] || '-';
+                    return {
+                        'System Area': b.system || '-',
+                        'ISO Drawing': b.iso_dwg_no || '-',
+                        'Line No':     b.line_no || '-',
+                        'Mat Code':    b.mat_code || '-',
+                        'Rating':      rating,
+                        'Description': b.full_description || '-',
+                        'Unit':        b.uom || 'EA',
+                        'Design Qty':  parseFloat(b.qty || 0)
+                    };
+                });
                 const ws = XLSX.utils.json_to_sheet(rows);
-                ws['!cols'] = [12, 30, 24, 24, 50, 8, 12].map(w => ({ wch: w }));
+                ws['!cols'] = [12, 30, 24, 24, 10, 50, 8, 12].map(w => ({ wch: w }));
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, 'Vendor');
                 const today = new Date().toISOString().split('T')[0];
@@ -3623,23 +3632,29 @@ function attachEventListeners() {
                 const { data, error } = await query;
                 if (error) throw error;
 
-                const rows = (data || []).map(b => ({
-                    'System Area': b.system || '-',
-                    'ISO Drawing': b.iso_dwg_no || '-',
-                    'Category':    b.category || '-',
-                    'Mat Code':    b.mat_code || '-',
-                    'Description': b.full_description || '-',
-                    'Unit':        b.uom || 'EA',
-                    'Design Qty':  parseFloat(b.qty || 0)
-                }));
+                const masterMap = _buildMasterMap();
+                const rows = (data || []).map(b => {
+                    const mData = masterMap[b.mat_code] || {};
+                    const rating = mData.classDesc || (b.mat_code || '').split('-')[3] || '-';
+                    return {
+                        'System Area': b.system || '-',
+                        'ISO Drawing': b.iso_dwg_no || '-',
+                        'Category':    b.category || '-',
+                        'Mat Code':    b.mat_code || '-',
+                        'Rating':      rating,
+                        'Description': b.full_description || '-',
+                        'Unit':        b.uom || 'EA',
+                        'Design Qty':  parseFloat(b.qty || 0)
+                    };
+                });
 
                 const ws = XLSX.utils.json_to_sheet(rows);
-                ws['!cols'] = [18,30,14,24,50,8,12].map(w => ({ wch: w }));
+                ws['!cols'] = [18,30,14,24,10,50,8,12].map(w => ({ wch: w }));
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, 'BOM');
 
                 const today = new Date().toISOString().split('T')[0];
-                const fileName = `BOM_Export_${today}${sys !== 'All' ? '_' + sys : ''}${cat !== 'All' ? '_' + cat : ''}.xlsx`;
+                const fileName = `BOM_Export_${today}${sys !== 'All' ? '_' + sys : ''}.xlsx`;
                 XLSX.writeFile(wb, fileName);
             } catch(e) {
                 alert('Export failed: ' + e.message);
