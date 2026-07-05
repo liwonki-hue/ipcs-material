@@ -246,7 +246,8 @@ window.extractItemFromMatCode = function(matCode) {
         'CAP':'CAP',
         'CPF':'COUPLING-FULL', 'CPH':'COUPLING-HALF', 'CPU':'COUPLING',
         'SWC':'SWAGE-CON', 'SWE':'SWAGE-ECC', 'SCN':'SWAGE-CON',
-        'WOL':'WELDOLET', 'SOL':'SOCKOLET', 'TOL':'THREADOLET',
+        'WOL':'WELDOLET', 'SOL':'SOCKOLET', 'TOL':'THREADOLET', 'LAT':'LATROLET',
+        'TR':'TRANSITION PIECE',
         'NOZ':'NOZZLE', 'FNO':'FLOW ELEMENT', 'STP':'STEAM TRAP (HIGH)', 'ATP':'AIR TRAP',
         'VLV':'VALVE', 'VBL':'BALL VALVE', 'VGA':'GATE VALVE', 'VGL':'GLOBE VALVE',
         'VCH':'CHECK VALVE', 'CHV':'CHECK VALVE', 'VBF':'BUTTERFLY VALVE',
@@ -261,6 +262,7 @@ window.extractItemFromMatCode = function(matCode) {
         'STD':'STUD', 'NUT':'NUT', 'BOL':'BOLT',
         'UNI':'UNION', 'PLG':'PLUG', 'BUS':'BUSHING',
         'INS':'INSTRUMENT', 'SPT':'SUPPORT',
+        'INSULATION KIT':'INSULATION KIT', // 정식 MatCode 형식이 아니라 "Insulation Kit" 문자열 그대로 저장된 항목
     };
     return MAP[prefix] || '-';
 };
