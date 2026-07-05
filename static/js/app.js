@@ -1512,6 +1512,103 @@ function initMssFilters() {
         renderMssTable();
     });
 
+    const btnExportMss = document.getElementById('btnExportMss');
+    if (btnExportMss) {
+        btnExportMss.addEventListener('click', async () => {
+            btnExportMss.disabled = true;
+            btnExportMss.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exporting...';
+            try {
+                const TAB_CAT = { piping: 'Pipe', fitting: 'Fitting', others: 'Others' };
+                const cat    = TAB_CAT[_mssActiveTab] || 'Pipe';
+                const search = (document.getElementById('mssSearch')?.value || '').trim();
+                const sys    = document.getElementById('mssSystemFilter')?.value || 'All';
+                const item   = document.getElementById('mssItemFilter')?.value || 'All';
+                const mat1   = document.getElementById('mssMat1Filter')?.value || 'All';
+                const mat2   = document.getElementById('mssMat2Filter')?.value || 'All';
+                const size   = document.getElementById('mssSizeFilter')?.value || 'All';
+
+                let query = supabaseClient.from('bom_detail')
+                    .select('mat_code, system, iso_dwg_no, line_no, full_description, uom, qty, mat1, mat2')
+                    .eq('category', cat)
+                    .order('iso_dwg_no')
+                    .limit(100000);
+                if (sys !== 'All') query = query.eq('system', sys);
+                if (search) query = query.or(`iso_dwg_no.ilike.%${search}%,line_no.ilike.%${search}%,full_description.ilike.%${search}%`);
+                if (mat1 !== 'All') query = query.eq('mat1', mat1);
+                if (mat2 !== 'All') query = query.eq('mat2', mat2);
+                if (item !== 'All') {
+                    const prefixes = ITEM_PREFIX_MAP[item];
+                    query = (prefixes && prefixes.length > 0)
+                        ? query.or(prefixes.map(p => `mat_code.ilike.${p}-*`).join(','))
+                        : query.ilike('full_description', `%${item}%`);
+                }
+                if (size !== 'All') {
+                    if (cat === 'Others') {
+                        const m = size.match(/^([\d\/\-]+)"(?:x(\d+)mm)?$/);
+                        if (m) query = query.ilike('mat_code', m[2] ? `%-${m[1]}"x${m[2]}%` : `%-${m[1]}"%`);
+                    } else {
+                        const toD = v => 'D' + Math.round(parseFloat(v) * 10).toString().padStart(3, '0');
+                        const dualMatch = size.match(/([\d.]+)"×([\d.]+)"/);
+                        if (dualMatch) {
+                            query = query.ilike('mat_code', `%${toD(dualMatch[1])}${toD(dualMatch[2])}%`);
+                        } else {
+                            const single = size.match(/([\d.]+)"/);
+                            if (single) query = query.ilike('mat_code', `%-${toD(single[1])}-%`);
+                        }
+                    }
+                }
+
+                const { data, error } = await query;
+                if (error) throw error;
+
+                const { recMap } = buildRecvMaps(r =>
+                    isReceivingActive(r.plNo) && isKpiReceiving(r) &&
+                    ['Pipe', 'Fitting', 'Others'].includes(r.category)
+                );
+                const issMap = getIssuedQtyMap(r => ['Pipe', 'Fitting', 'Others'].includes(r.category));
+
+                const rows = (data || []).map(b => {
+                    const matUpper = (b.mat_code || '').toUpperCase();
+                    let sz = (matUpper.startsWith('GSKT') || matUpper.startsWith('STB'))
+                        ? window.extractSizeLengthFromMatCode(b.mat_code)
+                        : window.extractSizeFromMatCode(b.mat_code);
+                    if (sz === '-' && b.line_no) sz = window.extractSizeFromLineNo(b.line_no);
+                    const desc = (b.full_description || '-').replace(/_/g, '-');
+                    const itemName = window.extractItemFromDesc(desc);
+                    const recQty = recMap[matUpper] || 0;
+                    const issQty = issMap[matUpper] || 0;
+
+                    return {
+                        'System':      b.system || '-',
+                        'ISO Drawing': b.iso_dwg_no || '-',
+                        'Line No':     b.line_no || '-',
+                        'Item':        itemName,
+                        'Mat 1':       b.mat1 || '-',
+                        'Mat 2':       b.mat2 || '-',
+                        'Size':        sz,
+                        'Unit':        b.uom || 'EA',
+                        'BOM Qty':     parseFloat(b.qty || 0),
+                        'Received':    recQty,
+                        'Issued':      issQty,
+                        'Stock':       Math.max(0, recQty - issQty),
+                    };
+                });
+
+                const ws = XLSX.utils.json_to_sheet(rows);
+                ws['!cols'] = [8, 20, 18, 14, 10, 12, 8, 6, 10, 10, 10, 10].map(w => ({ wch: w }));
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Material Summary');
+                const today = new Date().toISOString().split('T')[0];
+                XLSX.writeFile(wb, `Material_Summary_Export_${today}_${cat}.xlsx`);
+            } catch (e) {
+                alert('Export failed: ' + e.message);
+            } finally {
+                btnExportMss.disabled = false;
+                btnExportMss.innerHTML = '<i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export Excel';
+            }
+        });
+    }
+
     refreshMssItemFilter();
 }
 
