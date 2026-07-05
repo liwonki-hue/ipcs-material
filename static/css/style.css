@@ -120,6 +120,7 @@ ul { list-style: none; }
 .data-table tbody tr:hover { background-color: rgba(10, 37, 64, 0.02); }
 #srecTable td { font-size: 13px; padding: 7px 10px; }
 #bomTable td  { font-size: 13px; padding: 7px 10px; }
+#vendorTable td { font-size: 13px; padding: 7px 10px; }
 #piping_bom .form-group label { font-size: 12px; }
 #piping_bom .form-control     { font-size: 13px; height: 34px; padding: 4px 10px; }
 #piping_bom .btn              { font-size: 13px; height: 34px; padding: 4px 12px; }

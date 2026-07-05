@@ -252,6 +252,14 @@ window.extractSizeFromMatCode = function(matCode) {
     return '-';
 };
 
+// GSKT/STB MatCode에 직접 박힌 사이즈(볼트는 Size+길이mm)를 그대로 추출
+// 예: GSKT-SW304-8"-CL150 → 8" | STB-A193-B7-HDG-3/4"x120 → 3/4"x120mm
+window.extractSizeLengthFromMatCode = function(matCode) {
+    const m = (matCode || '').match(/-([\d\/\-]+)"(?:x(\d+))?/);
+    if (!m) return '-';
+    return m[2] ? `${m[1]}"x${m[2]}mm` : `${m[1]}"`;
+};
+
 // D-code가 없는 Speciality 품목 등을 위해 description에서 인치 사이즈 파싱
 window.extractSizeFromDesc = function(desc) {
     if (!desc || desc === '-') return '-';
@@ -465,9 +473,8 @@ async function syncFromSupabase() {
             const id = activeView.id;
             // Use setTimeout to ensure UI is ready for rendering large tables
             setTimeout(() => {
-                if(id === 'piping_bom') { initBomTabs(); if (_bomActiveTab === 'matcode') renderMatCodeMaster(); else renderBomTable(); }
+                if(id === 'piping_bom') { initBomTabs(); renderActiveBomTab(); }
                 if(id === 'receiving') { initReceivingTabs(); renderActiveReceivingTab(); }
-                if(id === 'vendor_items') { initVendorFilters(); renderVendorTable(); }
             }, 200);
         }
 
@@ -529,8 +536,7 @@ function initNavigation() {
 
         if(targetId === 'dashboard') updateDashboard();
         if(targetId === 'issue') renderIssueOptions();
-        if(targetId === 'piping_bom') { initBomTabs(); if (_bomActiveTab === 'matcode') renderMatCodeMaster(); else renderBomTable(); }
-        if(targetId === 'vendor_items') { initVendorFilters(); renderVendorTable(); }
+        if(targetId === 'piping_bom') { initBomTabs(); renderActiveBomTab(); }
         if(targetId === 'receiving') { initReceivingTabs(); renderActiveReceivingTab(); }
         if(targetId === 'material_status') { initMaterialStatusTabs(); switchMaterialStatusTab(_msActiveTab); }
         if(targetId === 'shipping') initShipping();
@@ -1986,13 +1992,19 @@ async function renderBomTable() {
             }
         }
         if (size !== 'All') {
-            const toD = v => 'D' + Math.round(parseFloat(v) * 10).toString().padStart(3, '0');
-            const dualMatch = size.match(/([\d.]+)"×([\d.]+)"/);
-            if (dualMatch) {
-                q = q.ilike('mat_code', `%${toD(dualMatch[1])}${toD(dualMatch[2])}%`);
+            if (cat === 'Others') {
+                // GSKT/STB는 D-code가 없고 MatCode에 사이즈(볼트는 Size+길이)가 그대로 박혀있음
+                const m = size.match(/^([\d\/\-]+)"(?:x(\d+)mm)?$/);
+                if (m) q = q.ilike('mat_code', m[2] ? `%-${m[1]}"x${m[2]}%` : `%-${m[1]}"%`);
             } else {
-                const single = size.match(/([\d.]+)"/);
-                if (single) q = q.ilike('mat_code', `%-${toD(single[1])}-%`);
+                const toD = v => 'D' + Math.round(parseFloat(v) * 10).toString().padStart(3, '0');
+                const dualMatch = size.match(/([\d.]+)"×([\d.]+)"/);
+                if (dualMatch) {
+                    q = q.ilike('mat_code', `%${toD(dualMatch[1])}${toD(dualMatch[2])}%`);
+                } else {
+                    const single = size.match(/([\d.]+)"/);
+                    if (single) q = q.ilike('mat_code', `%-${toD(single[1])}-%`);
+                }
             }
         }
         return q;
@@ -2031,7 +2043,12 @@ async function renderBomTable() {
         const isAuto = (b.mat_code || '').includes('NEW-MAT');
         const badgeClass = isAuto ? 'warn' : 'ok';
         const desc = (b.full_description || '-').replace(/_/g, '-');
-        let size = window.extractSizeFromMatCode(b.mat_code);
+        // GSKT/STB는 D-code가 없고 Line No(배관 사이즈)도 실제 자재 사이즈와 다르므로
+        // MatCode에 박힌 사이즈(볼트는 Size+길이)를 직접 사용 — 그래야 품목을 정확히 구분 가능
+        const matUpper = (b.mat_code || '').toUpperCase();
+        let size = (matUpper.startsWith('GSKT') || matUpper.startsWith('STB'))
+            ? window.extractSizeLengthFromMatCode(b.mat_code)
+            : window.extractSizeFromMatCode(b.mat_code);
         if (size === '-' && b.line_no) {
             size = window.extractSizeFromLineNo(b.line_no);
         }
@@ -2080,10 +2097,13 @@ function refreshBomItemFilter() {
     const mat2El = document.getElementById('bomMat2Filter');
     if (mat1El) mat1El.innerHTML = '<option value="All">All Mat 1</option>';
     if (mat2El) mat2El.innerHTML = '<option value="All">All Mat 2</option>';
-    if (cat === 'Others' && (mat1El || mat2El)) {
+    const sizeEl = document.getElementById('bomSizeFilter');
+    if (sizeEl) sizeEl.innerHTML = '<option value="All">All Sizes</option>';
+
+    if (mat1El || mat2El || sizeEl) {
         supabaseClient.from('bom_detail')
-            .select('mat1, mat2')
-            .eq('category', 'Others')
+            .select('mat1, mat2, mat_code')
+            .eq('category', cat)
             .not('mat1', 'is', null)
             .limit(10000)
             .then(({ data }) => {
@@ -2094,12 +2114,32 @@ function refreshBomItemFilter() {
                     + vals1.map(v => `<option value="${v.replace(/"/g, '&quot;')}">${v}</option>`).join('');
                 if (mat2El) mat2El.innerHTML = '<option value="All">All Mat 2</option>'
                     + vals2.map(v => `<option value="${v.replace(/"/g, '&quot;')}">${v}</option>`).join('');
+                if (sizeEl && cat === 'Others') {
+                    // GSKT/STB는 MatCode에 박힌 사이즈(볼트는 Size+길이) 기준으로 필터 옵션 구성
+                    const sizes = [...new Set(data.map(r => window.extractSizeLengthFromMatCode(r.mat_code)).filter(v => v && v !== '-'))]
+                        .sort((a, b) => parseSizeSortKey(a) - parseSizeSortKey(b));
+                    sizeEl.innerHTML = '<option value="All">All Sizes</option>'
+                        + sizes.map(s => `<option value="${s.replace(/"/g, '&quot;')}">${s}</option>`).join('');
+                }
             })
-            .catch(err => console.error('refreshBomItemFilter mat1/mat2 로드 실패:', err));
+            .catch(err => console.error('refreshBomItemFilter mat1/mat2/size 로드 실패:', err));
     }
+}
 
-    const sizeEl = document.getElementById('bomSizeFilter');
-    if (sizeEl) sizeEl.innerHTML = '<option value="All">All Sizes</option>';
+// BOM 탭(Piping/Fitting/Others/Vendor/MatCode Master) 중 현재 활성 탭에 맞는 패널만 보이고 해당 렌더 함수 호출
+function renderActiveBomTab() {
+    const mainPanel   = document.getElementById('bomMainPanel');
+    const mcPanel     = document.getElementById('bomMatCodeMasterPanel');
+    const vendorPanel = document.getElementById('bomVendorPanel');
+    if (mainPanel)   mainPanel.style.display   = _bomActiveTab === 'piping' || _bomActiveTab === 'fitting' || _bomActiveTab === 'others' ? '' : 'none';
+    if (mcPanel)     mcPanel.style.display     = _bomActiveTab === 'matcode' ? '' : 'none';
+    if (vendorPanel) vendorPanel.style.display = _bomActiveTab === 'vendor' ? '' : 'none';
+
+    if (_bomActiveTab === 'matcode') { renderMatCodeMaster(); return; }
+    if (_bomActiveTab === 'vendor') { initVendorFilters(); renderVendorTable(); return; }
+    currentBomPage = 1;
+    refreshBomItemFilter();
+    renderBomTable();
 }
 
 let _bomTabsInited = false;
@@ -2113,20 +2153,7 @@ function initBomTabs() {
                 b.style.borderBottomColor = b === btn ? '#0A2540' : 'transparent';
                 b.style.color = b === btn ? '#0A2540' : '#888';
             });
-
-            const mainPanel = document.getElementById('bomMainPanel');
-            const mcPanel = document.getElementById('bomMatCodeMasterPanel');
-            if (_bomActiveTab === 'matcode') {
-                if (mainPanel) mainPanel.style.display = 'none';
-                if (mcPanel) mcPanel.style.display = '';
-                renderMatCodeMaster();
-                return;
-            }
-            if (mainPanel) mainPanel.style.display = '';
-            if (mcPanel) mcPanel.style.display = 'none';
-            currentBomPage = 1;
-            refreshBomItemFilter();
-            renderBomTable();
+            renderActiveBomTab();
         });
     });
 }
@@ -2134,9 +2161,19 @@ function initBomTabs() {
 // --- Vendor Supply (타사공급, Not-MTO — 참고용, 입고/재고 계산 제외) ---
 const VENDOR_ITEM_PREFIX_MAP = { 'GASKET': ['GSKT'], 'STUD BOLT': ['STB'] };
 
-function extractSizeFromVendorMatCode(matCode) {
-    const m = (matCode || '').match(/-([\d\/\-]+)"/);
-    return m ? m[1] + '"' : '-';
+// 사이즈 문자열(예: "3/4"x120mm", "1-1/4"", "8"")을 정렬용 숫자로 환산
+function parseSizeSortKey(sizeStr) {
+    const lenMatch = (sizeStr || '').match(/x(\d+)mm$/i);
+    const length = lenMatch ? parseInt(lenMatch[1], 10) : 0;
+    const base = (sizeStr || '').replace(/x\d+mm$/i, '').replace(/"/g, '').trim();
+    let diameter;
+    const mixed = base.match(/^(\d+)-(\d+)\/(\d+)$/);
+    const frac = base.match(/^(\d+)\/(\d+)$/);
+    if (mixed) diameter = parseInt(mixed[1], 10) + parseInt(mixed[2], 10) / parseInt(mixed[3], 10);
+    else if (frac) diameter = parseInt(frac[1], 10) / parseInt(frac[2], 10);
+    else diameter = parseFloat(base) || 0;
+    // 지름 우선 정렬, 같은 지름이면 길이(mm) 순으로 2차 정렬
+    return diameter * 100000 + length;
 }
 
 let _vendorFiltersInited = false;
@@ -2149,8 +2186,8 @@ async function initVendorFilters() {
         const systems = [...new Set(data.map(r => r.system).filter(Boolean))].sort();
         const mat1s = [...new Set(data.map(r => r.mat1).filter(Boolean))].sort();
         const items = [...new Set(data.map(r => window.extractItemFromMatCode(r.mat_code)).filter(v => v && v !== '-'))].sort();
-        const sizes = [...new Set(data.map(r => extractSizeFromVendorMatCode(r.mat_code)).filter(v => v && v !== '-'))]
-            .sort((a, b) => parseFloat(a) - parseFloat(b));
+        const sizes = [...new Set(data.map(r => window.extractSizeLengthFromMatCode(r.mat_code)).filter(v => v && v !== '-'))]
+            .sort((a, b) => parseSizeSortKey(a) - parseSizeSortKey(b));
 
         const sysEl = document.getElementById('vendorSystemFilter');
         if (sysEl) sysEl.innerHTML = '<option value="All">All Systems</option>' + systems.map(s => `<option value="${s}">${s}</option>`).join('');
@@ -2232,7 +2269,11 @@ async function renderVendorTable() {
             const prefixes = VENDOR_ITEM_PREFIX_MAP[item];
             if (prefixes && prefixes.length) q = q.or(prefixes.map(p => `mat_code.ilike.${p}-*`).join(','));
         }
-        if (size !== 'All') q = q.ilike('mat_code', `%-${size.replace(/"/g, '')}"%`);
+        if (size !== 'All') {
+            // size 표시값(예: '3/4"x120mm', '8"')을 MatCode에 박힌 그대로의 부분 문자열로 역변환
+            const m = size.match(/^([\d\/\-]+)"(?:x(\d+)mm)?$/);
+            if (m) q = q.ilike('mat_code', m[2] ? `%-${m[1]}"x${m[2]}%` : `%-${m[1]}"%`);
+        }
         return q;
     };
 
@@ -2256,7 +2297,7 @@ async function renderVendorTable() {
 
     tbody.innerHTML = data.map(b => {
         const desc = b.full_description || '-';
-        const rowSize = extractSizeFromVendorMatCode(b.mat_code);
+        const rowSize = window.extractSizeLengthFromMatCode(b.mat_code);
         const rowItem = window.extractItemFromMatCode(b.mat_code);
         return `<tr>
             <td style="text-align:center;white-space:nowrap;"><span class="status-badge ok">${b.mat_code || '-'}</span></td>

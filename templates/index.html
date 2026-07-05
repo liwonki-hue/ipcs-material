@@ -43,7 +43,6 @@
 
                  <div class="section-title">BOM</div>
                  <div class="nav-item" data-target="piping_bom"><i class="fas fa-layer-group"></i> BOM</div>
-                 <div class="nav-item" data-target="vendor_items"><i class="fas fa-truck"></i> Vendor</div>
 
                  <div class="section-title">Bulk Item (Receiving)</div>
                  <div class="nav-item" data-target="rec_bulk_piping"><i class="fas fa-stream"></i> Piping</div>
@@ -275,6 +274,7 @@
                      <button class="bom-tab-btn" data-tab="piping" style="padding:8px 24px;border:none;border-bottom:3px solid #0A2540;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#0A2540;margin-bottom:-2px;letter-spacing:0.5px;">PIPING</button>
                      <button class="bom-tab-btn" data-tab="fitting" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">FITTING</button>
                      <button class="bom-tab-btn" data-tab="others" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">OTHERS</button>
+                     <button class="bom-tab-btn" data-tab="vendor" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">VENDOR</button>
                     <button class="bom-tab-btn" data-tab="matcode" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">MATCODE MASTER</button>
                  </div>
 
@@ -321,19 +321,25 @@
 
                  <div class="panel data-panel">
                      <div class="table-responsive">
-                         <table class="data-table" id="bomTable" style="font-size:0.82em;">
+                         <table class="data-table" id="bomTable" style="font-size:0.82em;table-layout:fixed;width:100%;">
+                             <colgroup>
+                                 <col style="width:222px;"><col style="width:88px;"><col style="width:249px;">
+                                 <col style="width:208px;"><col style="width:156px;"><col style="width:83px;">
+                                 <col style="width:86px;"><col style="width:67px;"><col style="width:auto;">
+                                 <col style="width:51px;"><col style="width:127px;">
+                             </colgroup>
                              <thead>
                                  <tr>
                                      <th style="text-align:center;">Mat Code</th>
                                      <th style="text-align:center;">System</th>
                                      <th style="text-align:center;">ISO Drawing</th>
                                      <th style="text-align:center;">Line No.</th>
-                                     <th style="text-align:center;min-width:135px;">Item</th>
+                                     <th style="text-align:center;">Item</th>
                                      <th style="text-align:center;">Mat 1</th>
                                      <th style="text-align:center;">Mat 2</th>
                                      <th style="text-align:center;">Size</th>
-                                     <th style="text-align:center;min-width:160px;">Description</th>
-                                     <th style="text-align:center;width:40px;">Unit</th>
+                                     <th style="text-align:center;">Description</th>
+                                     <th style="text-align:center;">Unit</th>
                                      <th style="text-align:center;">Design Qty</th>
                                  </tr>
                              </thead>
@@ -414,17 +420,9 @@
                      <div id="matCodePagination"></div>
                  </div>
                  </div>
-            </section>
 
-            <!-- 3b. Vendor Tab (타사공급, Not-MTO — 참고용, 입고/재고 계산 제외) -->
-            <section id="vendor_items" class="view-section">
-                <div class="page-header">
-                     <div>
-                         <h1>Vendor Supply</h1>
-                         <p class="subtitle">Not to be reported / no-MTO (supplied by others) — reference only, excluded from receiving &amp; stock.</p>
-                     </div>
-                 </div>
-
+                 <!-- 3b. Vendor Panel (타사공급, Not-MTO — 참고용, 입고/재고 계산 제외) -->
+                 <div id="bomVendorPanel" style="display:none;">
                  <div class="panel filter-panel" style="margin-bottom: 20px;">
                       <div style="display: flex; align-items: flex-end; justify-content: space-between; width: 100%; gap: 10px; flex-wrap: nowrap;">
                           <div style="display: flex; align-items: flex-end; gap: 10px; flex: 1; min-width: 0;">
@@ -460,7 +458,7 @@
                   </div>
 
                  <div class="panel data-panel">
-                     <div class="panel-header"><h3><i class="fas fa-truck"></i> Vendor Supply Items (Gasket / Stub Bolt)</h3></div>
+                     <div class="panel-header"><h3><i class="fas fa-truck"></i> Vendor Supply Items (Gasket / Stub Bolt) — Not to be reported / no-MTO (supplied by others), reference only</h3></div>
                      <div class="table-responsive">
                          <table class="data-table" id="vendorTable" style="font-size:0.82em;">
                              <thead>
@@ -482,6 +480,7 @@
                          </table>
                      </div>
                      <div id="vendorPagination"></div>
+                 </div>
                  </div>
             </section>
 

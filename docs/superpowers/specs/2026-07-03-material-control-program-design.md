@@ -123,8 +123,19 @@ Piping&Fitting(배관재 자체)과 달리, **Bolt&Gasket(개스킷/볼트)은 S
 - `vendor` 테이블 신설(`scratch/create_vendor_table.sql`, RLS Public Select/Insert/Delete) 및 데이터 적재 완료.
 - **Vendor 탭 UI 구현 완료**: 사이드바 BOM 섹션에 "Vendor" 메뉴 추가(`vendor_items` 섹션), BOM > Others 탭과 동일한 포맷(Search/System/Item/Mat1/Size 필터 + MatCode/System/ISO/Line No/Item/Mat1/Mat2/Size/Description/Unit/Qty 테이블, Export 지원). `renderVendorTable()`/`initVendorFilters()` (app.js). 전 탭 스모크 테스트 통과, 콘솔 에러 없음.
 
+### 완료 (2026-07-05) — Pipe/Fitting BOM Mat1/Mat2 재구성
+BOM 화면에서 Material 정보가 MAT1(재질 등급)/MAT2(실제 규격)로 명확히 분리되도록 재구성.
+- **이전**: `mat1`에 `A106-B`처럼 실제 규격 스펙이 들어가 있어 "재질 등급"과 "규격"이 뒤섞여 있었음.
+- **이후**: `mat1`=재질 등급(`CS`/`SS`/`ALLOY (P91)`/`ALLOY (P22)`), `mat2`=실제 규격(`A106-B`, `A234-WPB` 등).
+- 분류 로직: MatCode의 MATL 세그먼트(2번째 하이픈 토큰) 기준 — `CS*`→CS, `SS*`→SS, `AS{n}`→`ALLOY (P{n})`, 예외로 `A53B`→CS/`S04L`→SS 고정 매핑. `mat2`는 `full_description`의 두 번째 콤마 구간에서 추출(예: `PIPE SMLS, A106-B, DN150, S-40, BE` → `A106-B`), 해당 구간이 없는 9건은 같은 MATL 세그먼트 내 최빈값으로 대체.
+- Pipe+Fitting 39,272행 전체를 백업→삭제→재적재 방식으로 마이그레이션(수량 합계 전후 정확히 일치 확인). `bom` 테이블에 `id` 컬럼이 없어 행 단위 PATCH가 불가능 — 카테고리 단위 삭제+재적재가 유일한 방법임을 재확인.
+- `refreshBomItemFilter()`(app.js)가 기존엔 `'Others'` 카테고리에서만 Mat1/Mat2 드롭다운을 채웠는데, 전 카테고리(`cat` 변수 기준)로 확장 — Pipe/Fitting 탭에서도 Mat1/Mat2 필터가 정상 작동하게 됨. Others 자체 Mat1 값(`S/S (304)`, `HDG` 등)과 Size 필터(길이 포함)는 회귀 없음(Playwright로 확인).
+- `#bomTable` 컬럼폭: `table-layout:fixed` + `<colgroup>` 명시 적용, System -10px / Mat1 +5px / Mat2 +5px.
+- 전 탭(Dashboard/BOM 5개 서브탭/Receiving 전체/Material Status/Shipping) 스모크 테스트 통과, 콘솔 에러 0건.
+
 ### 남은 일
 - [ ] 원본 Excel의 ISO Drawing No. 공란 471행 처리 방침 확인 (원본 재확인 필요한 건인지, 무시 가능한 건인지) — Piping&Fitting 쪽 이슈, 이번 GSKT/STB 작업과 별개
+- [ ] `Raw File/PMC_Class_Mapping_Request.xlsx` — FK1/GL1/FM1은 사용자 확답으로 이미 해소(FK1=CL300, FM1=CL150, GL1=GM1 오타로 CL150) — 파일 자체는 정리/삭제 검토 가능
 
 ### 관련 메모리
 - `project_bom_not_mto_cleanup.md` — 이전 Not-MTO 정리 이력 (이번 작업으로 대체 완료)
