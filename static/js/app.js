@@ -73,6 +73,25 @@ async function syncShortageData() {
 // 전체 테이블 공통 페이지 크기
 const PAGE_SIZE = 25;
 
+// Item명 → MatCode prefix 역매핑 (extractItemFromMatCode와 동일 기준) — BOM 탭과 Material Summary 탭이 공유
+const ITEM_PREFIX_MAP = {
+    'PIPE':['PIS','PIW'], 'NIPPLE':['PIN'],
+    'ELBOW 90D':['EL9L','EL9S'], 'ELBOW 45D':['EL4L','ELS','ELB'],
+    'FLANGE':['FLN','FLB','FLS','FLO','FLR'],
+    'TEE':['TEE'], 'TEE-RED':['TER'],
+    'RED-CON':['RDC'], 'RED-ECC':['RDE'],
+    'CAP':['CAP'],
+    'COUPLING-FULL':['CPF'], 'COUPLING-HALF':['CPH'], 'COUPLING':['CPU'],
+    'SWAGE-CON':['SWC','SCN'], 'SWAGE-ECC':['SWE'],
+    'WELDOLET':['WOL'], 'SOCKOLET':['SOL'], 'THREADOLET':['TOL'],
+    'NOZZLE':['NOZ'],
+    'GATE VALVE':['GTV'], 'GLOBE VALVE':['GLV'], 'CHECK VALVE':['CHV'],
+    'BUTTERFLY VALVE':['BFV'], 'BALL VALVE':['BAV'], 'PLUG VALVE':['PLV'],
+    'SAFETY VALVE':['PSV','PRV'], 'VALVE':['GTV','GLV','CHV','BFV','BAV','PLV','PSV','PRV'],
+    'GASKET':['GSKT','GSK'], 'STUD BOLT':['STB'], 'NUT':['NUT'], 'BOLT':['BOL'],
+    'UNION':['UNI'], 'PLUG':['PLG'], 'BUSHING':['BUS'],
+};
+
 // 공통 페이지네이터 렌더러 — Previous 1/2/3 ... Next 형식
 function renderPagination(containerId, page, totalPages, gotoFnName) {
     const container = document.getElementById(containerId);
@@ -1243,6 +1262,7 @@ function switchMaterialStatusTab(tab) {
     document.getElementById('msPanelSurplus').style.display  = tab === 'surplus'  ? '' : 'none';
 
     if (tab === 'summary') {
+        initMssFilters();
         initMssTabs();
     } else if (tab === 'stock') {
         initStockFilters();
@@ -1287,17 +1307,49 @@ async function renderMssTable() {
     tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
 
     const TAB_CAT = { piping: 'Pipe', fitting: 'Fitting', others: 'Others' };
-    const cat = TAB_CAT[_mssActiveTab] || 'Pipe';
+    const cat    = TAB_CAT[_mssActiveTab] || 'Pipe';
+    const search = (document.getElementById('mssSearch')?.value || '').trim();
+    const sys    = document.getElementById('mssSystemFilter')?.value || 'All';
+    const item   = document.getElementById('mssItemFilter')?.value || 'All';
+    const mat1   = document.getElementById('mssMat1Filter')?.value || 'All';
+    const mat2   = document.getElementById('mssMat2Filter')?.value || 'All';
+    const size   = document.getElementById('mssSizeFilter')?.value || 'All';
 
-    const dataQ  = supabaseClient.from('bom_detail')
-        .select('mat_code, system, iso_dwg_no, line_no, full_description, uom, qty, mat1, mat2')
-        .eq('category', cat)
-        .range((currentMssPage - 1) * PAGE_SIZE, currentMssPage * PAGE_SIZE - 1)
-        .order('system', { ascending: true, nullsFirst: false })
-        .order('iso_dwg_no', { ascending: true, nullsFirst: false });
-    const countQ = supabaseClient.from('bom_detail')
-        .select('*', { count: 'exact', head: true })
-        .eq('category', cat);
+    const applyFilters = (q) => {
+        q = q.eq('category', cat);
+        if (sys !== 'All') q = q.eq('system', sys);
+        if (search) q = q.or(`iso_dwg_no.ilike.%${search}%,line_no.ilike.%${search}%,full_description.ilike.%${search}%`);
+        if (mat1 !== 'All') q = q.eq('mat1', mat1);
+        if (mat2 !== 'All') q = q.eq('mat2', mat2);
+        if (item !== 'All') {
+            const prefixes = ITEM_PREFIX_MAP[item];
+            q = (prefixes && prefixes.length > 0)
+                ? q.or(prefixes.map(p => `mat_code.ilike.${p}-*`).join(','))
+                : q.ilike('full_description', `%${item}%`);
+        }
+        if (size !== 'All') {
+            if (cat === 'Others') {
+                const m = size.match(/^([\d\/\-]+)"(?:x(\d+)mm)?$/);
+                if (m) q = q.ilike('mat_code', m[2] ? `%-${m[1]}"x${m[2]}%` : `%-${m[1]}"%`);
+            } else {
+                const toD = v => 'D' + Math.round(parseFloat(v) * 10).toString().padStart(3, '0');
+                const single = size.match(/([\d.]+)"/);
+                if (single) q = q.ilike('mat_code', `%-${toD(single[1])}-%`);
+            }
+        }
+        return q;
+    };
+
+    const dataQ  = applyFilters(
+        supabaseClient.from('bom_detail')
+            .select('mat_code, system, iso_dwg_no, line_no, full_description, uom, qty, mat1, mat2')
+            .range((currentMssPage - 1) * PAGE_SIZE, currentMssPage * PAGE_SIZE - 1)
+            .order('system', { ascending: true, nullsFirst: false })
+            .order('iso_dwg_no', { ascending: true, nullsFirst: false })
+    );
+    const countQ = applyFilters(
+        supabaseClient.from('bom_detail').select('*', { count: 'exact', head: true })
+    );
 
     const [dataRes, countRes] = await Promise.all([dataQ, countQ]);
     if (dataRes.error) {
@@ -1347,6 +1399,7 @@ function renderActiveMssTab() {
     const TAB_LABEL = { piping: 'Piping', fitting: 'Fitting', others: 'Others' };
     if (title) title.innerHTML = `<i class="fas fa-list-check"></i> Material Summary — ${TAB_LABEL[_mssActiveTab] || 'Piping'}`;
     currentMssPage = 1;
+    refreshMssItemFilter();
     renderMssTable();
 }
 
@@ -1365,6 +1418,87 @@ function initMssTabs() {
         });
     });
     renderActiveMssTab();
+}
+
+function refreshMssItemFilter() {
+    const TAB_CAT = { piping: 'Pipe', fitting: 'Fitting', others: 'Others' };
+    const cat = TAB_CAT[_mssActiveTab] || 'Pipe';
+
+    const itemEl = document.getElementById('mssItemFilter');
+    if (itemEl) {
+        const items = getBomItemsForCat(cat);
+        itemEl.innerHTML = '<option value="All">All Items</option>'
+            + items.map(i => `<option value="${i.replace(/"/g, '&quot;')}">${i}</option>`).join('');
+    }
+
+    const mat1El = document.getElementById('mssMat1Filter');
+    const mat2El = document.getElementById('mssMat2Filter');
+    const sizeEl = document.getElementById('mssSizeFilter');
+    if (mat1El) mat1El.innerHTML = '<option value="All">All Mat 1</option>';
+    if (mat2El) mat2El.innerHTML = '<option value="All">All Mat 2</option>';
+    if (sizeEl) sizeEl.innerHTML = '<option value="All">All Sizes</option>';
+
+    supabaseClient.from('bom_detail')
+        .select('mat1, mat2, mat_code')
+        .eq('category', cat)
+        .not('mat1', 'is', null)
+        .limit(10000)
+        .then(({ data }) => {
+            if (!data) return;
+            const vals1 = [...new Set(data.map(r => r.mat1).filter(Boolean))].sort();
+            const vals2 = [...new Set(data.map(r => r.mat2).filter(Boolean))].sort();
+            if (mat1El) mat1El.innerHTML = '<option value="All">All Mat 1</option>'
+                + vals1.map(v => `<option value="${v.replace(/"/g, '&quot;')}">${v}</option>`).join('');
+            if (mat2El) mat2El.innerHTML = '<option value="All">All Mat 2</option>'
+                + vals2.map(v => `<option value="${v.replace(/"/g, '&quot;')}">${v}</option>`).join('');
+            if (sizeEl && cat === 'Others') {
+                const sizes = [...new Set(data.map(r => window.extractSizeLengthFromMatCode(r.mat_code)).filter(v => v && v !== '-'))]
+                    .sort((a, b) => parseSizeSortKey(a) - parseSizeSortKey(b));
+                sizeEl.innerHTML = '<option value="All">All Sizes</option>'
+                    + sizes.map(s => `<option value="${s.replace(/"/g, '&quot;')}">${s}</option>`).join('');
+            } else if (sizeEl) {
+                const sizes = getBomSizesForCatItem(cat, 'All');
+                sizeEl.innerHTML = '<option value="All">All Sizes</option>'
+                    + sizes.map(s => `<option value="${s.replace(/"/g, '&quot;')}">${s}</option>`).join('');
+            }
+        })
+        .catch(err => console.error('refreshMssItemFilter mat1/mat2/size 로드 실패:', err));
+}
+
+let _mssFiltersInited = false;
+function initMssFilters() {
+    if (_mssFiltersInited) return;
+    _mssFiltersInited = true;
+
+    const sysEl = document.getElementById('mssSystemFilter');
+    if (sysEl) {
+        const systems = [...new Set(db.bom.map(b => b.system).filter(Boolean))].sort();
+        sysEl.innerHTML = '<option value="All">All Systems</option>' + systems.map(s => `<option value="${s}">${s}</option>`).join('');
+    }
+
+    const itemEl = document.getElementById('mssItemFilter');
+    if (itemEl) {
+        itemEl.addEventListener('change', () => {
+            const TAB_CAT = { piping: 'Pipe', fitting: 'Fitting', others: 'Others' };
+            const cat = TAB_CAT[_mssActiveTab] || 'Pipe';
+            const sizes = getBomSizesForCatItem(cat, itemEl.value);
+            const sizeEl = document.getElementById('mssSizeFilter');
+            if (sizeEl) sizeEl.innerHTML = '<option value="All">All Sizes</option>'
+                + sizes.map(s => `<option value="${s.replace(/"/g, '&quot;')}">${s}</option>`).join('');
+        });
+    }
+
+    document.getElementById('btnFilterMss')?.addEventListener('click', () => { currentMssPage = 1; renderMssTable(); });
+    document.getElementById('btnClearMssFilters')?.addEventListener('click', () => {
+        const searchEl = document.getElementById('mssSearch'); if (searchEl) searchEl.value = '';
+        ['mssSystemFilter', 'mssItemFilter', 'mssMat1Filter', 'mssMat2Filter', 'mssSizeFilter'].forEach(id => {
+            const el = document.getElementById(id); if (el) el.value = 'All';
+        });
+        currentMssPage = 1;
+        renderMssTable();
+    });
+
+    refreshMssItemFilter();
 }
 
 // --- Material Shortage / Surplus 공용 ---
@@ -2043,25 +2177,6 @@ async function renderBomTable() {
     const mat1    = document.getElementById('bomMat1Filter')?.value || 'All';
     const mat2    = document.getElementById('bomMat2Filter')?.value || 'All';
     const size    = document.getElementById('bomSizeFilter')?.value || 'All';
-
-    // Item명 → MatCode prefix 역매핑 (extractItemFromMatCode와 동일 기준)
-    const ITEM_PREFIX_MAP = {
-        'PIPE':['PIS','PIW'], 'NIPPLE':['PIN'],
-        'ELBOW 90D':['EL9L','EL9S'], 'ELBOW 45D':['EL4L','ELS','ELB'],
-        'FLANGE':['FLN','FLB','FLS','FLO','FLR'],
-        'TEE':['TEE'], 'TEE-RED':['TER'],
-        'RED-CON':['RDC'], 'RED-ECC':['RDE'],
-        'CAP':['CAP'],
-        'COUPLING-FULL':['CPF'], 'COUPLING-HALF':['CPH'], 'COUPLING':['CPU'],
-        'SWAGE-CON':['SWC','SCN'], 'SWAGE-ECC':['SWE'],
-        'WELDOLET':['WOL'], 'SOCKOLET':['SOL'], 'THREADOLET':['TOL'],
-        'NOZZLE':['NOZ'],
-        'GATE VALVE':['GTV'], 'GLOBE VALVE':['GLV'], 'CHECK VALVE':['CHV'],
-        'BUTTERFLY VALVE':['BFV'], 'BALL VALVE':['BAV'], 'PLUG VALVE':['PLV'],
-        'SAFETY VALVE':['PSV','PRV'], 'VALVE':['GTV','GLV','CHV','BFV','BAV','PLV','PSV','PRV'],
-        'GASKET':['GSKT','GSK'], 'STUD BOLT':['STB'], 'NUT':['NUT'], 'BOLT':['BOL'],
-        'UNION':['UNI'], 'PLUG':['PLG'], 'BUSHING':['BUS'],
-    };
 
     // 필터를 두 쿼리(data + count)에 동일하게 적용하는 헬퍼
     const applyFilters = (q) => {
