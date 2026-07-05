@@ -1237,11 +1237,14 @@ function switchMaterialStatusTab(tab) {
         b.style.borderBottomColor = b.dataset.tab === tab ? '#0A2540' : 'transparent';
         b.style.color = b.dataset.tab === tab ? '#0A2540' : '#888';
     });
+    document.getElementById('msPanelSummary').style.display  = tab === 'summary'  ? '' : 'none';
     document.getElementById('msPanelStock').style.display    = tab === 'stock'    ? '' : 'none';
     document.getElementById('msPanelShortage').style.display = tab === 'shortage' ? '' : 'none';
     document.getElementById('msPanelSurplus').style.display  = tab === 'surplus'  ? '' : 'none';
 
-    if (tab === 'stock') {
+    if (tab === 'summary') {
+        initMssTabs();
+    } else if (tab === 'stock') {
         initStockFilters();
         initStockTabs();
     } else if (tab === 'shortage') {
@@ -1272,6 +1275,96 @@ function initStockTabs() {
         });
     });
     renderActiveStockTab();
+}
+
+// --- Material Summary (Material Status 섹션, Piping/Fitting/Others 전용) ---
+let currentMssPage = 1;
+let _mssActiveTab = 'piping'; // 'piping' | 'fitting' | 'others'
+
+async function renderMssTable() {
+    let tbody = document.querySelector('#mssTable tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
+
+    const TAB_CAT = { piping: 'Pipe', fitting: 'Fitting', others: 'Others' };
+    const cat = TAB_CAT[_mssActiveTab] || 'Pipe';
+
+    const dataQ  = supabaseClient.from('bom_detail')
+        .select('mat_code, system, iso_dwg_no, line_no, full_description, uom, qty, mat1, mat2')
+        .eq('category', cat)
+        .range((currentMssPage - 1) * PAGE_SIZE, currentMssPage * PAGE_SIZE - 1)
+        .order('system', { ascending: true, nullsFirst: false })
+        .order('iso_dwg_no', { ascending: true, nullsFirst: false });
+    const countQ = supabaseClient.from('bom_detail')
+        .select('*', { count: 'exact', head: true })
+        .eq('category', cat);
+
+    const [dataRes, countRes] = await Promise.all([dataQ, countQ]);
+    if (dataRes.error) {
+        tbody.innerHTML = `<tr><td colspan="12" style="color:red;text-align:center;">Error: ${dataRes.error.message}</td></tr>`;
+        return;
+    }
+
+    const data = dataRes.data || [];
+    const totalCount = countRes.count || 0;
+
+    const label = document.getElementById('mssCountLabel');
+    if (label) label.textContent = `(${totalCount.toLocaleString()} items)`;
+
+    tbody.innerHTML = data.map(b => {
+        const matUpper = (b.mat_code || '').toUpperCase();
+        let size = (matUpper.startsWith('GSKT') || matUpper.startsWith('STB'))
+            ? window.extractSizeLengthFromMatCode(b.mat_code)
+            : window.extractSizeFromMatCode(b.mat_code);
+        if (size === '-' && b.line_no) size = window.extractSizeFromLineNo(b.line_no);
+        const desc = (b.full_description || '-').replace(/_/g, '-');
+        const item = window.extractItemFromDesc(desc);
+        if (size === '-' && /STEAM TRAP/i.test(item)) size = '1"';
+
+        return `<tr>
+            <td style="text-align:center;white-space:nowrap;">${b.system || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${b.iso_dwg_no || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${b.line_no || '-'}</td>
+            <td style="text-align:center;font-weight:600;white-space:nowrap;">${item}</td>
+            <td style="text-align:center;white-space:nowrap;">${b.mat1 || '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${b.mat2 || '-'}</td>
+            <td style="text-align:center;font-weight:600;white-space:nowrap;">${size}</td>
+            <td style="text-align:center;white-space:nowrap;">${b.uom || 'EA'}</td>
+            <td style="text-align:center;white-space:nowrap;">${parseFloat(b.qty || 0).toFixed(2)}</td>
+            <td style="text-align:center;white-space:nowrap;">—</td>
+            <td style="text-align:center;white-space:nowrap;">—</td>
+            <td style="text-align:center;white-space:nowrap;font-weight:700;">—</td>
+        </tr>`;
+    }).join('');
+
+    const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+    renderPagination('mssPagination', currentMssPage, totalPages, '_mssGoPage');
+}
+window._mssGoPage = function(p) { currentMssPage = p; renderMssTable(); };
+
+function renderActiveMssTab() {
+    const title = document.getElementById('mssPanelTitle');
+    const TAB_LABEL = { piping: 'Piping', fitting: 'Fitting', others: 'Others' };
+    if (title) title.innerHTML = `<i class="fas fa-list-check"></i> Material Summary — ${TAB_LABEL[_mssActiveTab] || 'Piping'}`;
+    currentMssPage = 1;
+    renderMssTable();
+}
+
+let _mssTabsInited = false;
+function initMssTabs() {
+    if (_mssTabsInited) { renderActiveMssTab(); return; }
+    _mssTabsInited = true;
+    document.querySelectorAll('.mss-bulk-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            _mssActiveTab = btn.dataset.tab;
+            document.querySelectorAll('.mss-bulk-tab').forEach(b => {
+                b.style.color        = b === btn ? '#0A2540' : '#888';
+                b.style.borderBottom = b === btn ? '3px solid #0A2540' : '3px solid transparent';
+            });
+            renderActiveMssTab();
+        });
+    });
+    renderActiveMssTab();
 }
 
 // --- Material Shortage / Surplus 공용 ---
