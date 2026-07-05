@@ -2803,7 +2803,7 @@ async function _renderRecvCore(cfg) {
             `<option value="${v}"${r.purpose === v ? ' selected' : ''}>${v || '—'}</option>`
         ).join('');
         const purposeSel = `<select class="pl-purpose-sel" data-recv-id="${r.id}"
-            style="width:100%;border:1px solid #dde3ee;border-radius:4px;padding:3px 6px;font-size:13px;background:#fff;color:#0A2540;text-align:center;">
+            style="width:100%;border:1px solid #dde3ee;border-radius:4px;padding:3px 6px;font-size:12px;background:#fff;color:#0A2540;text-align:center;">
             ${purposeOpts}</select>`;
         return `<tr${isOnSite ? '' : ' style="color:#999;"'}>
             <td style="text-align:center;white-space:nowrap;">${r.docNo}</td>
@@ -2815,13 +2815,13 @@ async function _renderRecvCore(cfg) {
             <td style="text-align:center;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${item}">${item}</td>
             ${hideType ? '' : `<td style="text-align:center;font-weight:600;white-space:nowrap;color:${flangeType!=='-'?'#1565c0':'#aaa'};">${flangeType}</td>`}
             ${splitMat
-                ? `<td style="text-align:center;font-size:11px;">${mat1Val}</td><td style="text-align:center;font-size:11px;">${mat2Val}</td>`
-                : `<td style="text-align:center;font-size:11px;">${matl}</td>`}
+                ? `<td style="text-align:center;">${mat1Val}</td><td style="text-align:center;">${mat2Val}</td>`
+                : `<td style="text-align:center;">${matl}</td>`}
             <td style="text-align:center;font-weight:600;white-space:nowrap;">${size}</td>
-            <td style="text-align:center;font-size:11px;">${rating}</td>
+            <td style="text-align:center;">${rating}</td>
             <td style="white-space:nowrap;text-align:center;">${r.unit || 'EA'}</td>
             <td style="white-space:nowrap;text-align:center;">${Math.round(r.qty).toLocaleString()}</td>
-            <td style="text-align:center;white-space:nowrap;font-size:11px;font-weight:600;color:${statusColor};">${pkgStatus || '—'}</td>
+            <td style="text-align:center;white-space:nowrap;font-weight:600;color:${statusColor};">${pkgStatus || '—'}</td>
             <td style="text-align:center;padding:3px;">${purposeSel}</td>
         </tr>`;
     });
