@@ -558,6 +558,7 @@ function initNavigation() {
         if(targetId === 'piping_bom') { initBomTabs(); renderActiveBomTab(); }
         if(targetId === 'receiving') { initReceivingTabs(); renderActiveReceivingTab(); }
         if(targetId === 'material_status') { initMaterialStatusTabs(); switchMaterialStatusTab(_msActiveTab); }
+        if(targetId === 'material_summary') initMssTabs();
         if(targetId === 'shipping') initShipping();
 
         if (targetId !== 'material_status' && shortageRefreshTimer) {
@@ -1256,15 +1257,11 @@ function switchMaterialStatusTab(tab) {
         b.style.borderBottomColor = b.dataset.tab === tab ? '#0A2540' : 'transparent';
         b.style.color = b.dataset.tab === tab ? '#0A2540' : '#888';
     });
-    document.getElementById('msPanelSummary').style.display  = tab === 'summary'  ? '' : 'none';
     document.getElementById('msPanelStock').style.display    = tab === 'stock'    ? '' : 'none';
     document.getElementById('msPanelShortage').style.display = tab === 'shortage' ? '' : 'none';
     document.getElementById('msPanelSurplus').style.display  = tab === 'surplus'  ? '' : 'none';
 
-    if (tab === 'summary') {
-        initMssFilters();
-        initMssTabs();
-    } else if (tab === 'stock') {
+    if (tab === 'stock') {
         initStockFilters();
         initStockTabs();
     } else if (tab === 'shortage') {
@@ -1297,113 +1294,123 @@ function initStockTabs() {
     renderActiveStockTab();
 }
 
-// --- Material Summary (Material Status 섹션, Piping/Fitting/Others 전용) ---
+// --- Material Summary (독립 사이드바 섹션, Item 단위 현황: Piping/Fitting/Others) ---
 let currentMssPage = 1;
 let _mssActiveTab = 'piping'; // 'piping' | 'fitting' | 'others'
 
-async function renderMssTable() {
-    let tbody = document.querySelector('#mssTable tbody');
-    if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
-
-    const TAB_CAT = { piping: 'Pipe', fitting: 'Fitting', others: 'Others' };
-    const cat    = TAB_CAT[_mssActiveTab] || 'Pipe';
-    const search = (document.getElementById('mssSearch')?.value || '').trim();
-    const sys    = document.getElementById('mssSystemFilter')?.value || 'All';
-    const item   = document.getElementById('mssItemFilter')?.value || 'All';
-    const mat1   = document.getElementById('mssMat1Filter')?.value || 'All';
-    const mat2   = document.getElementById('mssMat2Filter')?.value || 'All';
-    const size   = document.getElementById('mssSizeFilter')?.value || 'All';
-
-    const applyFilters = (q) => {
-        q = q.eq('category', cat);
-        if (sys !== 'All') q = q.eq('system', sys);
-        if (search) q = q.or(`iso_dwg_no.ilike.%${search}%,line_no.ilike.%${search}%,full_description.ilike.%${search}%`);
-        if (mat1 !== 'All') q = q.eq('mat1', mat1);
-        if (mat2 !== 'All') q = q.eq('mat2', mat2);
-        if (item !== 'All') {
-            const prefixes = ITEM_PREFIX_MAP[item];
-            q = (prefixes && prefixes.length > 0)
-                ? q.or(prefixes.map(p => `mat_code.ilike.${p}-*`).join(','))
-                : q.ilike('full_description', `%${item}%`);
-        }
-        if (size !== 'All') {
-            if (cat === 'Others') {
-                const m = size.match(/^([\d\/\-]+)"(?:x(\d+)mm)?$/);
-                if (m) q = q.ilike('mat_code', m[2] ? `%-${m[1]}"x${m[2]}%` : `%-${m[1]}"%`);
-            } else {
-                const toD = v => 'D' + Math.round(parseFloat(v) * 10).toString().padStart(3, '0');
-                const dualMatch = size.match(/([\d.]+)"×([\d.]+)"/);
-                if (dualMatch) {
-                    q = q.ilike('mat_code', `%${toD(dualMatch[1])}${toD(dualMatch[2])}%`);
-                } else {
-                    const single = size.match(/([\d.]+)"/);
-                    if (single) q = q.ilike('mat_code', `%-${toD(single[1])}-%`);
-                }
-            }
-        }
-        return q;
-    };
-
-    const dataQ  = applyFilters(
-        supabaseClient.from('bom_detail')
-            .select('mat_code, system, iso_dwg_no, line_no, full_description, uom, qty, mat1, mat2')
-            .range((currentMssPage - 1) * PAGE_SIZE, currentMssPage * PAGE_SIZE - 1)
-            .order('system', { ascending: true, nullsFirst: false })
-            .order('iso_dwg_no', { ascending: true, nullsFirst: false })
-    );
-    const countQ = applyFilters(
-        supabaseClient.from('bom_detail').select('*', { count: 'exact', head: true })
-    );
-
-    const [dataRes, countRes] = await Promise.all([dataQ, countQ]);
-    if (dataRes.error) {
-        tbody.innerHTML = `<tr><td colspan="12" style="color:red;text-align:center;">Error: ${dataRes.error.message}</td></tr>`;
-        return;
+// bom_detail(Pipe/Fitting/Others)을 MatCode 단위로 집계(BOM Qty 합산)해 1회 캐싱.
+// System/ISO Drawing/Line No는 더 이상 표시 대상이 아니므로 MatCode가 곧 행의 고유 키.
+let _mssItemAggCache = null;
+async function loadMssItemAgg() {
+    if (_mssItemAggCache) return _mssItemAggCache;
+    let all = [];
+    let from = 0;
+    const step = 5000;
+    while (true) {
+        const { data, error } = await supabaseClient.from('bom_detail')
+            .select('mat_code, category, mat1, mat2, uom, qty')
+            .in('category', ['Pipe', 'Fitting', 'Others'])
+            .range(from, from + step - 1);
+        if (error) { console.error('loadMssItemAgg 조회 실패:', error); break; }
+        if (!data || data.length === 0) break;
+        all = all.concat(data);
+        if (data.length < step) break;
+        from += step;
     }
+    const agg = {};
+    all.forEach(r => {
+        const mat = (r.mat_code || '').trim().toUpperCase();
+        if (!mat) return;
+        if (!agg[mat]) agg[mat] = { matCode: mat, category: r.category, mat1: r.mat1, mat2: r.mat2, unit: r.uom || 'EA', bomQty: 0 };
+        agg[mat].bomQty += parseFloat(r.qty) || 0;
+    });
+    _mssItemAggCache = Object.values(agg);
+    return _mssItemAggCache;
+}
 
-    const data = dataRes.data || [];
+// 현재 서브탭+필터를 적용한 Item 단위 현황 리스트 (renderMssTable/Export 공용)
+async function getMssFilteredRows() {
+    const TAB_CAT = { piping: 'Pipe', fitting: 'Fitting', others: 'Others' };
+    const cat = TAB_CAT[_mssActiveTab] || 'Pipe';
+    const agg = await loadMssItemAgg();
+
+    const search = (document.getElementById('mssSearch')?.value || '').trim().toUpperCase();
+    const item    = document.getElementById('mssItemFilter')?.value || 'All';
+    const mat1    = document.getElementById('mssMat1Filter')?.value || 'All';
+    const mat2    = document.getElementById('mssMat2Filter')?.value || 'All';
+    const size    = document.getElementById('mssSizeFilter')?.value || 'All';
+
     const { recMap } = buildRecvMaps(r =>
         isReceivingActive(r.plNo) && isKpiReceiving(r) &&
         ['Pipe', 'Fitting', 'Others'].includes(r.category)
     );
     const issMap = getIssuedQtyMap(r => ['Pipe', 'Fitting', 'Others'].includes(r.category));
-    const totalCount = countRes.count || 0;
 
-    const label = document.getElementById('mssCountLabel');
-    if (label) label.textContent = `(${totalCount.toLocaleString()} items)`;
-
-    tbody.innerHTML = data.map(b => {
-        const matUpper = (b.mat_code || '').toUpperCase();
-        let size = (matUpper.startsWith('GSKT') || matUpper.startsWith('STB'))
-            ? window.extractSizeLengthFromMatCode(b.mat_code)
-            : window.extractSizeFromMatCode(b.mat_code);
-        if (size === '-' && b.line_no) size = window.extractSizeFromLineNo(b.line_no);
-        const desc = (b.full_description || '-').replace(/_/g, '-');
-        const item = window.extractItemFromDesc(desc);
-        if (size === '-' && /STEAM TRAP/i.test(item)) size = '1"';
-
+    const rows = agg.filter(r => r.category === cat).map(r => {
+        const matUpper = r.matCode;
+        const itemName = window.extractItemFromMatCode(matUpper) || '-';
+        const sz = (matUpper.startsWith('GSKT') || matUpper.startsWith('STB'))
+            ? window.extractSizeLengthFromMatCode(matUpper)
+            : window.extractSizeFromMatCode(matUpper);
         const recQty = recMap[matUpper] || 0;
         const issQty = issMap[matUpper] || 0;
-        const stockQty = Math.max(0, recQty - issQty);
+        return {
+            matCode: matUpper, item: itemName, mat1: r.mat1 || '-', mat2: r.mat2 || '-',
+            size: sz, unit: r.unit, bomQty: r.bomQty, recQty, issQty,
+            stockQty: Math.max(0, recQty - issQty),
+        };
+    }).filter(r => {
+        if (item !== 'All' && r.item !== item) return false;
+        if (mat1 !== 'All' && r.mat1 !== mat1) return false;
+        if (mat2 !== 'All' && r.mat2 !== mat2) return false;
+        if (size !== 'All' && r.size !== size) return false;
+        if (search && !(`${r.item} ${r.mat1} ${r.mat2} ${r.size}`).toUpperCase().includes(search)) return false;
+        return true;
+    });
 
-        return `<tr>
-            <td style="text-align:center;white-space:nowrap;">${b.system || '-'}</td>
-            <td style="text-align:center;white-space:nowrap;">${b.iso_dwg_no || '-'}</td>
-            <td style="text-align:center;white-space:nowrap;">${b.line_no || '-'}</td>
-            <td style="text-align:center;font-weight:600;white-space:nowrap;">${item}</td>
-            <td style="text-align:center;white-space:nowrap;">${b.mat1 || '-'}</td>
-            <td style="text-align:center;white-space:nowrap;">${b.mat2 || '-'}</td>
-            <td style="text-align:center;font-weight:600;">${size}</td>
-            <td style="text-align:center;white-space:nowrap;">${b.uom || 'EA'}</td>
-            <td style="text-align:center;white-space:nowrap;">${parseFloat(b.qty || 0).toFixed(2)}</td>
-            <td style="text-align:center;white-space:nowrap;">${recQty.toFixed(2)}</td>
-            <td style="text-align:center;white-space:nowrap;">${issQty.toFixed(2)}</td>
-            <td style="text-align:center;white-space:nowrap;font-weight:700;">${stockQty.toFixed(2)}</td>
-        </tr>`;
-    }).join('');
+    rows.sort((a, b) => {
+        const ia = a.item.toUpperCase(), ib = b.item.toUpperCase();
+        if (ia !== ib) return ia.localeCompare(ib);
+        return (parseFloat((a.size || '0').replace(/[^0-9.]/g, '')) || 0) -
+               (parseFloat((b.size || '0').replace(/[^0-9.]/g, '')) || 0);
+    });
 
-    const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+    return rows;
+}
+
+async function renderMssTable() {
+    let tbody = document.querySelector('#mssTable tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
+
+    const rows = await getMssFilteredRows();
+
+    const label = document.getElementById('mssCountLabel');
+    if (label) label.textContent = `(${rows.length.toLocaleString()} items)`;
+
+    if (rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#888;padding:20px;">No items found.</td></tr>';
+        const pg = document.getElementById('mssPagination'); if (pg) pg.innerHTML = '';
+        return;
+    }
+
+    const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+    if (currentMssPage > totalPages) currentMssPage = 1;
+    const start = (currentMssPage - 1) * PAGE_SIZE;
+    const display = rows.slice(start, start + PAGE_SIZE);
+
+    tbody.innerHTML = display.map(r => `<tr>
+        <td style="text-align:center;font-weight:600;white-space:nowrap;">${r.item}</td>
+        <td style="text-align:center;white-space:nowrap;">${r.mat1}</td>
+        <td style="text-align:center;white-space:nowrap;">${r.mat2}</td>
+        <td style="text-align:center;font-weight:600;">${r.size}</td>
+        <td style="text-align:center;white-space:nowrap;">${r.unit}</td>
+        <td style="text-align:center;white-space:nowrap;">${r.bomQty.toFixed(2)}</td>
+        <td style="text-align:center;white-space:nowrap;">${r.recQty.toFixed(2)}</td>
+        <td style="text-align:center;white-space:nowrap;">${r.issQty.toFixed(2)}</td>
+        <td style="text-align:center;white-space:nowrap;font-weight:700;">${r.stockQty.toFixed(2)}</td>
+    </tr>`).join('');
+
     renderPagination('mssPagination', currentMssPage, totalPages, '_mssGoPage');
 }
 window._mssGoPage = function(p) { currentMssPage = p; renderMssTable(); };
@@ -1421,6 +1428,7 @@ let _mssTabsInited = false;
 function initMssTabs() {
     if (_mssTabsInited) { renderActiveMssTab(); return; }
     _mssTabsInited = true;
+    initMssFilters();
     document.querySelectorAll('.mss-bulk-tab').forEach(btn => {
         btn.addEventListener('click', () => {
             _mssActiveTab = btn.dataset.tab;
@@ -1434,7 +1442,7 @@ function initMssTabs() {
     renderActiveMssTab();
 }
 
-function refreshMssItemFilter() {
+async function refreshMssItemFilter() {
     const TAB_CAT = { piping: 'Pipe', fitting: 'Fitting', others: 'Others' };
     const cat = TAB_CAT[_mssActiveTab] || 'Pipe';
 
@@ -1445,50 +1453,36 @@ function refreshMssItemFilter() {
             + items.map(i => `<option value="${i.replace(/"/g, '&quot;')}">${i}</option>`).join('');
     }
 
-    const mat1El = document.getElementById('mssMat1Filter');
-    const mat2El = document.getElementById('mssMat2Filter');
-    const sizeEl = document.getElementById('mssSizeFilter');
-    if (mat1El) mat1El.innerHTML = '<option value="All">All Mat 1</option>';
-    if (mat2El) mat2El.innerHTML = '<option value="All">All Mat 2</option>';
-    if (sizeEl) sizeEl.innerHTML = '<option value="All">All Sizes</option>';
+    const agg = await loadMssItemAgg();
+    const catRows = agg.filter(r => r.category === cat);
 
-    supabaseClient.from('bom_detail')
-        .select('mat1, mat2, mat_code')
-        .eq('category', cat)
-        .not('mat1', 'is', null)
-        .limit(10000)
-        .then(({ data }) => {
-            if (!data) return;
-            const vals1 = [...new Set(data.map(r => r.mat1).filter(Boolean))].sort();
-            const vals2 = [...new Set(data.map(r => r.mat2).filter(Boolean))].sort();
-            if (mat1El) mat1El.innerHTML = '<option value="All">All Mat 1</option>'
-                + vals1.map(v => `<option value="${v.replace(/"/g, '&quot;')}">${v}</option>`).join('');
-            if (mat2El) mat2El.innerHTML = '<option value="All">All Mat 2</option>'
-                + vals2.map(v => `<option value="${v.replace(/"/g, '&quot;')}">${v}</option>`).join('');
-            if (sizeEl && cat === 'Others') {
-                const sizes = [...new Set(data.map(r => window.extractSizeLengthFromMatCode(r.mat_code)).filter(v => v && v !== '-'))]
-                    .sort((a, b) => parseSizeSortKey(a) - parseSizeSortKey(b));
-                sizeEl.innerHTML = '<option value="All">All Sizes</option>'
-                    + sizes.map(s => `<option value="${s.replace(/"/g, '&quot;')}">${s}</option>`).join('');
-            } else if (sizeEl) {
-                const sizes = getBomSizesForCatItem(cat, 'All');
-                sizeEl.innerHTML = '<option value="All">All Sizes</option>'
-                    + sizes.map(s => `<option value="${s.replace(/"/g, '&quot;')}">${s}</option>`).join('');
-            }
-        })
-        .catch(err => console.error('refreshMssItemFilter mat1/mat2/size 로드 실패:', err));
+    const mat1El = document.getElementById('mssMat1Filter');
+    if (mat1El) {
+        const vals1 = [...new Set(catRows.map(r => r.mat1).filter(Boolean))].sort();
+        mat1El.innerHTML = '<option value="All">All Mat 1</option>'
+            + vals1.map(v => `<option value="${v.replace(/"/g, '&quot;')}">${v}</option>`).join('');
+    }
+    const mat2El = document.getElementById('mssMat2Filter');
+    if (mat2El) {
+        const vals2 = [...new Set(catRows.map(r => r.mat2).filter(Boolean))].sort();
+        mat2El.innerHTML = '<option value="All">All Mat 2</option>'
+            + vals2.map(v => `<option value="${v.replace(/"/g, '&quot;')}">${v}</option>`).join('');
+    }
+    const sizeEl = document.getElementById('mssSizeFilter');
+    if (sizeEl) {
+        const sizes = cat === 'Others'
+            ? [...new Set(catRows.map(r => window.extractSizeLengthFromMatCode(r.matCode)).filter(v => v && v !== '-'))]
+                .sort((a, b) => parseSizeSortKey(a) - parseSizeSortKey(b))
+            : getBomSizesForCatItem(cat, 'All');
+        sizeEl.innerHTML = '<option value="All">All Sizes</option>'
+            + sizes.map(s => `<option value="${s.replace(/"/g, '&quot;')}">${s}</option>`).join('');
+    }
 }
 
 let _mssFiltersInited = false;
 function initMssFilters() {
     if (_mssFiltersInited) return;
     _mssFiltersInited = true;
-
-    const sysEl = document.getElementById('mssSystemFilter');
-    if (sysEl) {
-        const systems = [...new Set(db.bom.map(b => b.system).filter(Boolean))].sort();
-        sysEl.innerHTML = '<option value="All">All Systems</option>' + systems.map(s => `<option value="${s}">${s}</option>`).join('');
-    }
 
     const itemEl = document.getElementById('mssItemFilter');
     if (itemEl) {
@@ -1505,7 +1499,7 @@ function initMssFilters() {
     document.getElementById('btnFilterMss')?.addEventListener('click', () => { currentMssPage = 1; renderMssTable(); });
     document.getElementById('btnClearMssFilters')?.addEventListener('click', () => {
         const searchEl = document.getElementById('mssSearch'); if (searchEl) searchEl.value = '';
-        ['mssSystemFilter', 'mssItemFilter', 'mssMat1Filter', 'mssMat2Filter', 'mssSizeFilter'].forEach(id => {
+        ['mssItemFilter', 'mssMat1Filter', 'mssMat2Filter', 'mssSizeFilter'].forEach(id => {
             const el = document.getElementById(id); if (el) el.value = 'All';
         });
         currentMssPage = 1;
@@ -1519,83 +1513,23 @@ function initMssFilters() {
             btnExportMss.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exporting...';
             try {
                 const TAB_CAT = { piping: 'Pipe', fitting: 'Fitting', others: 'Others' };
-                const cat    = TAB_CAT[_mssActiveTab] || 'Pipe';
-                const search = (document.getElementById('mssSearch')?.value || '').trim();
-                const sys    = document.getElementById('mssSystemFilter')?.value || 'All';
-                const item   = document.getElementById('mssItemFilter')?.value || 'All';
-                const mat1   = document.getElementById('mssMat1Filter')?.value || 'All';
-                const mat2   = document.getElementById('mssMat2Filter')?.value || 'All';
-                const size   = document.getElementById('mssSizeFilter')?.value || 'All';
+                const cat = TAB_CAT[_mssActiveTab] || 'Pipe';
+                const rows = await getMssFilteredRows();
 
-                let query = supabaseClient.from('bom_detail')
-                    .select('mat_code, system, iso_dwg_no, line_no, full_description, uom, qty, mat1, mat2')
-                    .eq('category', cat)
-                    .order('iso_dwg_no')
-                    .limit(100000);
-                if (sys !== 'All') query = query.eq('system', sys);
-                if (search) query = query.or(`iso_dwg_no.ilike.%${search}%,line_no.ilike.%${search}%,full_description.ilike.%${search}%`);
-                if (mat1 !== 'All') query = query.eq('mat1', mat1);
-                if (mat2 !== 'All') query = query.eq('mat2', mat2);
-                if (item !== 'All') {
-                    const prefixes = ITEM_PREFIX_MAP[item];
-                    query = (prefixes && prefixes.length > 0)
-                        ? query.or(prefixes.map(p => `mat_code.ilike.${p}-*`).join(','))
-                        : query.ilike('full_description', `%${item}%`);
-                }
-                if (size !== 'All') {
-                    if (cat === 'Others') {
-                        const m = size.match(/^([\d\/\-]+)"(?:x(\d+)mm)?$/);
-                        if (m) query = query.ilike('mat_code', m[2] ? `%-${m[1]}"x${m[2]}%` : `%-${m[1]}"%`);
-                    } else {
-                        const toD = v => 'D' + Math.round(parseFloat(v) * 10).toString().padStart(3, '0');
-                        const dualMatch = size.match(/([\d.]+)"×([\d.]+)"/);
-                        if (dualMatch) {
-                            query = query.ilike('mat_code', `%${toD(dualMatch[1])}${toD(dualMatch[2])}%`);
-                        } else {
-                            const single = size.match(/([\d.]+)"/);
-                            if (single) query = query.ilike('mat_code', `%-${toD(single[1])}-%`);
-                        }
-                    }
-                }
+                const exportRows = rows.map(r => ({
+                    'Item':     r.item,
+                    'Mat 1':    r.mat1,
+                    'Mat 2':    r.mat2,
+                    'Size':     r.size,
+                    'Unit':     r.unit,
+                    'BOM Qty':  r.bomQty,
+                    'Received': r.recQty,
+                    'Issued':   r.issQty,
+                    'Stock':    r.stockQty,
+                }));
 
-                const { data, error } = await query;
-                if (error) throw error;
-
-                const { recMap } = buildRecvMaps(r =>
-                    isReceivingActive(r.plNo) && isKpiReceiving(r) &&
-                    ['Pipe', 'Fitting', 'Others'].includes(r.category)
-                );
-                const issMap = getIssuedQtyMap(r => ['Pipe', 'Fitting', 'Others'].includes(r.category));
-
-                const rows = (data || []).map(b => {
-                    const matUpper = (b.mat_code || '').toUpperCase();
-                    let sz = (matUpper.startsWith('GSKT') || matUpper.startsWith('STB'))
-                        ? window.extractSizeLengthFromMatCode(b.mat_code)
-                        : window.extractSizeFromMatCode(b.mat_code);
-                    if (sz === '-' && b.line_no) sz = window.extractSizeFromLineNo(b.line_no);
-                    const desc = (b.full_description || '-').replace(/_/g, '-');
-                    const itemName = window.extractItemFromDesc(desc);
-                    const recQty = recMap[matUpper] || 0;
-                    const issQty = issMap[matUpper] || 0;
-
-                    return {
-                        'System':      b.system || '-',
-                        'ISO Drawing': b.iso_dwg_no || '-',
-                        'Line No':     b.line_no || '-',
-                        'Item':        itemName,
-                        'Mat 1':       b.mat1 || '-',
-                        'Mat 2':       b.mat2 || '-',
-                        'Size':        sz,
-                        'Unit':        b.uom || 'EA',
-                        'BOM Qty':     parseFloat(b.qty || 0),
-                        'Received':    recQty,
-                        'Issued':      issQty,
-                        'Stock':       Math.max(0, recQty - issQty),
-                    };
-                });
-
-                const ws = XLSX.utils.json_to_sheet(rows);
-                ws['!cols'] = [8, 20, 18, 14, 10, 12, 8, 6, 10, 10, 10, 10].map(w => ({ wch: w }));
+                const ws = XLSX.utils.json_to_sheet(exportRows);
+                ws['!cols'] = [16, 12, 14, 12, 6, 10, 10, 10, 10].map(w => ({ wch: w }));
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, 'Material Summary');
                 const today = new Date().toISOString().split('T')[0];
@@ -1608,8 +1542,6 @@ function initMssFilters() {
             }
         });
     }
-
-    refreshMssItemFilter();
 }
 
 // --- Material Shortage / Surplus 공용 ---

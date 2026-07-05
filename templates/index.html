@@ -57,6 +57,7 @@
 
                  <div class="section-title">Material Status</div>
                  <div class="nav-item" data-target="material_status"><i class="fas fa-warehouse"></i> Material Status</div>
+                 <div class="nav-item" data-target="material_summary"><i class="fas fa-list-check"></i> Material Summary</div>
 
                  <div class="section-title">Logistics</div>
                  <div class="nav-item" data-target="shipping"><i class="fas fa-ship"></i> Shipping / Custom Clearance</div>
@@ -1298,89 +1299,6 @@
                      <button class="ms-tab-btn" data-tab="stock" style="padding:8px 24px;border:none;border-bottom:3px solid #0A2540;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#0A2540;margin-bottom:-2px;letter-spacing:0.5px;">STOCK</button>
                      <button class="ms-tab-btn" data-tab="shortage" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">SHORTAGE</button>
                      <button class="ms-tab-btn" data-tab="surplus" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">SURPLUS</button>
-                     <button class="ms-tab-btn" data-tab="summary" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">MATERIAL SUMMARY</button>
-                 </div>
-
-                 <div id="msPanelSummary" style="display:none;">
-                 <div class="panel filter-panel" style="margin-bottom: 20px;">
-                      <div style="display: flex; align-items: flex-end; justify-content: space-between; width: 100%; gap: 10px; flex-wrap: nowrap;">
-                          <div style="display: flex; align-items: flex-end; gap: 10px; flex: 1; min-width: 0;">
-                              <div class="form-group" style="flex: 2; min-width: 0; margin-bottom: 0;">
-                                  <label>Search (ISO / Line / Description)</label>
-                                  <input type="text" id="mssSearch" class="form-control" style="width: 100%;" placeholder="ISO Drawing, Line No, Description...">
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
-                                  <label>System</label>
-                                  <select id="mssSystemFilter" class="form-control" style="width: 100%;"><option value="All">All Systems</option></select>
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
-                                  <label>Item</label>
-                                  <select id="mssItemFilter" class="form-control" style="width: 100%;"><option value="All">All Items</option></select>
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
-                                  <label>Mat 1</label>
-                                  <select id="mssMat1Filter" class="form-control" style="width: 100%;"><option value="All">All Mat 1</option></select>
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
-                                  <label>Mat 2</label>
-                                  <select id="mssMat2Filter" class="form-control" style="width: 100%;"><option value="All">All Mat 2</option></select>
-                              </div>
-                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
-                                  <label>Size</label>
-                                  <select id="mssSizeFilter" class="form-control" style="width: 100%;"><option value="All">All Sizes</option></select>
-                              </div>
-                              <div style="padding-bottom: 1px; display: flex; gap: 8px; flex-shrink: 0;">
-                                  <button class="btn btn-primary" id="btnFilterMss" style="white-space: nowrap;"><i class="fas fa-search"></i> Search</button>
-                                  <button class="btn btn-outline" id="btnClearMssFilters" style="white-space: nowrap;">Clear</button>
-                              </div>
-                          </div>
-                          <div style="padding-bottom: 1px; display: flex; gap: 8px; flex-shrink: 0;">
-                              <button class="btn btn-outline" id="btnExportMss" style="white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export Excel</button>
-                          </div>
-                      </div>
-                  </div>
-
-                 <div style="display:flex;gap:0;border-bottom:1px solid #c8cfe0;margin-bottom:16px;">
-                     <button class="mss-bulk-tab" data-tab="piping" style="padding:6px 20px;border:none;border-bottom:3px solid #0A2540;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#0A2540;margin-bottom:-1px;">Piping</button>
-                     <button class="mss-bulk-tab" data-tab="fitting" style="padding:6px 20px;border:none;border-bottom:3px solid transparent;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#888;margin-bottom:-1px;">Fitting</button>
-                     <button class="mss-bulk-tab" data-tab="others" style="padding:6px 20px;border:none;border-bottom:3px solid transparent;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#888;margin-bottom:-1px;">Others</button>
-                 </div>
-
-                 <div class="panel data-panel">
-                     <div class="panel-header">
-                         <h3 id="mssPanelTitle"><i class="fas fa-list-check"></i> Material Summary — Piping</h3>
-                         <span id="mssCountLabel" style="font-size:11px; color:#666;"></span>
-                     </div>
-                     <div style="padding:0 15px 8px;font-size:11px;color:#999;">* Received/Issued/Stock are MatCode-wide project totals, repeated on every line sharing the same MatCode — do not sum these columns across rows.</div>
-                     <div class="table-responsive">
-                         <table class="data-table" id="mssTable" style="font-size:0.82em;table-layout:fixed;width:100%;">
-                             <colgroup>
-                                 <col style="width:7%;"><col style="width:15%;"><col style="width:13%;">
-                                 <col style="width:9%;"><col style="width:7%;"><col style="width:8%;">
-                                 <col style="width:6%;"><col style="width:5%;"><col style="width:8%;">
-                                 <col style="width:8%;"><col style="width:8%;"><col style="width:6%;">
-                             </colgroup>
-                             <thead>
-                                 <tr>
-                                     <th style="text-align:center;">System</th>
-                                     <th style="text-align:center;">ISO Drawing</th>
-                                     <th style="text-align:center;">Line No.</th>
-                                     <th style="text-align:center;">Item</th>
-                                     <th style="text-align:center;">Mat 1</th>
-                                     <th style="text-align:center;">Mat 2</th>
-                                     <th style="text-align:center;">Size</th>
-                                     <th style="text-align:center;">Unit</th>
-                                     <th style="text-align:center;">BOM Qty</th>
-                                     <th style="text-align:center;">Received</th>
-                                     <th style="text-align:center;">Issued</th>
-                                     <th style="text-align:center;">Stock</th>
-                                 </tr>
-                             </thead>
-                             <tbody><tr><td colspan="12" style="text-align:center;color:#888;padding:20px;">Loading...</td></tr></tbody>
-                         </table>
-                     </div>
-                     <div id="mssPagination"></div>
-                 </div>
                  </div>
 
                  <div id="msPanelStock">
@@ -1652,6 +1570,87 @@
                     </div>
                     <div id="surplusPagination"></div>
                 </div>
+                 </div>
+            </section>
+
+            <!-- ── Material Summary (Item 단위 현황: Piping/Fitting/Others) ──────── -->
+            <section id="material_summary" class="view-section">
+                <div class="page-header">
+                     <div>
+                         <h1>Material Summary</h1>
+                         <p class="subtitle">Item 단위 BOM Qty / Received / Issued / Stock 현황 (Piping/Fitting/Others).</p>
+                     </div>
+                 </div>
+
+                 <div class="panel filter-panel" style="margin-bottom: 20px; max-width: 70%;">
+                      <div style="display: flex; align-items: flex-end; justify-content: space-between; width: 100%; gap: 10px; flex-wrap: nowrap;">
+                          <div style="display: flex; align-items: flex-end; gap: 10px; flex: 1; min-width: 0;">
+                              <div class="form-group" style="flex: 2; min-width: 0; margin-bottom: 0;">
+                                  <label>Search (Item / Mat / Size)</label>
+                                  <input type="text" id="mssSearch" class="form-control" style="width: 100%;" placeholder="Item, Material, Size...">
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                                  <label>Item</label>
+                                  <select id="mssItemFilter" class="form-control" style="width: 100%;"><option value="All">All Items</option></select>
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                                  <label>Mat 1</label>
+                                  <select id="mssMat1Filter" class="form-control" style="width: 100%;"><option value="All">All Mat 1</option></select>
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                                  <label>Mat 2</label>
+                                  <select id="mssMat2Filter" class="form-control" style="width: 100%;"><option value="All">All Mat 2</option></select>
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                                  <label>Size</label>
+                                  <select id="mssSizeFilter" class="form-control" style="width: 100%;"><option value="All">All Sizes</option></select>
+                              </div>
+                              <div style="padding-bottom: 1px; display: flex; gap: 8px; flex-shrink: 0;">
+                                  <button class="btn btn-primary" id="btnFilterMss" style="white-space: nowrap;"><i class="fas fa-search"></i> Search</button>
+                                  <button class="btn btn-outline" id="btnClearMssFilters" style="white-space: nowrap;">Clear</button>
+                              </div>
+                          </div>
+                          <div style="padding-bottom: 1px; display: flex; gap: 8px; flex-shrink: 0;">
+                              <button class="btn btn-outline" id="btnExportMss" style="white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export Excel</button>
+                          </div>
+                      </div>
+                  </div>
+
+                 <div style="display:flex;gap:0;border-bottom:1px solid #c8cfe0;margin-bottom:16px;">
+                     <button class="mss-bulk-tab" data-tab="piping" style="padding:6px 20px;border:none;border-bottom:3px solid #0A2540;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#0A2540;margin-bottom:-1px;">Piping</button>
+                     <button class="mss-bulk-tab" data-tab="fitting" style="padding:6px 20px;border:none;border-bottom:3px solid transparent;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#888;margin-bottom:-1px;">Fitting</button>
+                     <button class="mss-bulk-tab" data-tab="others" style="padding:6px 20px;border:none;border-bottom:3px solid transparent;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#888;margin-bottom:-1px;">Others</button>
+                 </div>
+
+                 <div class="panel data-panel">
+                     <div class="panel-header">
+                         <h3 id="mssPanelTitle"><i class="fas fa-list-check"></i> Material Summary — Piping</h3>
+                         <span id="mssCountLabel" style="font-size:11px; color:#666;"></span>
+                     </div>
+                     <div class="table-responsive">
+                         <table class="data-table" id="mssTable" style="font-size:0.82em;table-layout:fixed;width:100%;">
+                             <colgroup>
+                                 <col style="width:18%;"><col style="width:12%;"><col style="width:14%;">
+                                 <col style="width:10%;"><col style="width:7%;"><col style="width:12%;">
+                                 <col style="width:10%;"><col style="width:10%;"><col style="width:7%;">
+                             </colgroup>
+                             <thead>
+                                 <tr>
+                                     <th style="text-align:center;">Item</th>
+                                     <th style="text-align:center;">Mat 1</th>
+                                     <th style="text-align:center;">Mat 2</th>
+                                     <th style="text-align:center;">Size</th>
+                                     <th style="text-align:center;">Unit</th>
+                                     <th style="text-align:center;">BOM Qty</th>
+                                     <th style="text-align:center;">Received</th>
+                                     <th style="text-align:center;">Issued</th>
+                                     <th style="text-align:center;">Stock</th>
+                                 </tr>
+                             </thead>
+                             <tbody><tr><td colspan="9" style="text-align:center;color:#888;padding:20px;">Loading...</td></tr></tbody>
+                         </table>
+                     </div>
+                     <div id="mssPagination"></div>
                  </div>
             </section>
 
