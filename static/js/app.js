@@ -629,15 +629,15 @@ function renderBulkProgressBars(categories) {
         const surplus  = rec > bom ? rec - bom : 0;
         const shortage = rec < bom ? bom - rec : 0;
         const fillPct  = Math.min(pct, 100);
-        // 부족(Shortage)은 문제가 아니라 순차 입고 진행 중인 정상 상태 — 경고색(빨강) 대신 진행중 색(파랑)으로 표시
-        const barColor = pct >= 90 ? '#2e7d32' : '#1565c0';
-        const pctColor = pct >= 90 ? '#2e7d32' : '#1565c0';
+        // 부족(Shortage)은 문제가 아니라 순차 입고 진행 중인 정상 상태 — 연한 파랑/초록으로 차분하게 표시
+        const barColor = pct >= 90 ? '#66bb6a' : '#42a5f5';
+        const pctColor = pct >= 90 ? '#66bb6a' : '#42a5f5';
 
         const diffHtml = surplus > 0
             ? `<span style="color:#e65100;font-weight:700;">Surplus +${Math.round(surplus).toLocaleString()} ${unit}</span>`
             : shortage > 0
-            ? `<span style="color:#1565c0;font-weight:700;">Shortage -${Math.round(shortage).toLocaleString()} ${unit}</span>`
-            : `<span style="color:#2e7d32;font-weight:700;">✓ Complete</span>`;
+            ? `<span style="color:#42a5f5;font-weight:700;">Shortage -${Math.round(shortage).toLocaleString()} ${unit}</span>`
+            : `<span style="color:#66bb6a;font-weight:700;">✓ Complete</span>`;
 
         return `
         <div style="margin-bottom:10px;">
@@ -709,86 +709,70 @@ function updateDashboard() {
     }).catch(err => console.error("Dashboard Sync Fail:", err));
 }
 
-// 대표 Item(MatCode/Description에서 추출한 Item 이름) 기준 BOM vs Received 집계.
-// Mat1/Mat2/Size는 무시하고 순수 Item 단위로만 묶어 "지금 입고가 밀려있는 대표 품목"을 보여줌.
-// Pipe/Fitting/Others는 db.bom(matCode 단위) + db.receiving, Valve는 loadValveStockBom()(Tag 단위) 사용.
-async function computeItemReceivingSummary() {
-    const agg = {}; // item -> { item, unit, bom, rec }
-    const pipeSizeAgg = {}; // size(예: 1", 2") -> { size, bom, rec } — Pipe는 대표 Size Top 2를 따로 보여주기 위함
+// Pipe/Fitting을 대표 Item+Size 단위로 집계(Mat1/Mat2는 무시). Item 이름은 카테고리별로
+// 겹치지 않으므로(예: PIPE=Pipe 전용, ELBOW 90D=Fitting 전용) category 없이 item+size로만 묶어도 안전.
+function computeItemSizeSummary() {
+    const sizeAgg = {}; // "item|size" -> { category, item, size, unit, bom, rec }
 
     const recByMatCode = {};
     db.receiving.forEach(r => {
         if (!isReceivingActive(r.plNo)) return;
-        if (!['Pipe', 'Fitting', 'Others'].includes(r.category)) return;
+        if (!['Pipe', 'Fitting'].includes(r.category)) return;
         recByMatCode[r.matCode] = (recByMatCode[r.matCode] || 0) + (r.qty || 0);
     });
     db.bom.forEach(b => {
-        if (!['Pipe', 'Fitting', 'Others'].includes(b.category)) return;
+        if (!['Pipe', 'Fitting'].includes(b.category)) return;
         const item = window.extractItemFromMatCode(b.matCode);
         if (!item || item === '-') return;
-        if (!agg[item]) agg[item] = { item, unit: b.category === 'Pipe' ? 'M' : 'EA', bom: 0, rec: 0 };
-        agg[item].bom += b.qty;
-
-        if (b.category === 'Pipe') {
-            const size = window.extractSizeFromMatCode(b.matCode);
-            if (size && size !== '-') {
-                if (!pipeSizeAgg[size]) pipeSizeAgg[size] = { size, bom: 0, rec: 0 };
-                pipeSizeAgg[size].bom += b.qty;
-            }
-        }
+        const size = window.extractSizeFromMatCode(b.matCode) || '-';
+        const key = `${item}|${size}`;
+        if (!sizeAgg[key]) sizeAgg[key] = { category: b.category, item, size, unit: b.category === 'Pipe' ? 'M' : 'EA', bom: 0, rec: 0 };
+        sizeAgg[key].bom += b.qty;
     });
     Object.keys(recByMatCode).forEach(mc => {
         const item = window.extractItemFromMatCode(mc);
-        if (!item || item === '-' || !agg[item]) return;
-        agg[item].rec += recByMatCode[mc];
-    });
-    db.receiving.forEach(r => {
-        if (!isReceivingActive(r.plNo) || r.category !== 'Pipe') return;
-        const size = window.extractSizeFromMatCode(r.matCode);
-        if (!size || size === '-' || !pipeSizeAgg[size]) return;
-        pipeSizeAgg[size].rec += (r.qty || 0);
-    });
-
-    // Valve: MatCode가 없어(Tag 매칭) 별도 소스 — bom_detail(Tag 단위) + buildValveRecvMaps()
-    const valveBomRows = await loadValveStockBom();
-    const { recMap: valveRecMap } = buildValveRecvMaps();
-    valveBomRows.forEach(b => {
-        const item = window.extractItemFromDesc(b.full_description);
         if (!item || item === '-') return;
-        if (!agg[item]) agg[item] = { item, unit: 'EA', bom: 0, rec: 0 };
-        agg[item].bom += (b.qty || 0);
-        agg[item].rec += (valveRecMap[b.tag] || 0);
+        const size = window.extractSizeFromMatCode(mc) || '-';
+        const key = `${item}|${size}`;
+        if (!sizeAgg[key]) return;
+        sizeAgg[key].rec += recByMatCode[mc];
     });
 
-    return { items: Object.values(agg), pipeSizes: Object.values(pipeSizeAgg) };
+    return Object.values(sizeAgg);
 }
 
-// 입고율(Received/BOM)이 낮은 대표 Item Top 10 — 완전 입고(100% 이상)된 Item은 제외
+// "BOM 물량은 많은데 입고가 안 된" 대표 Item Top 10 — Pipe 2개(대표 Size) + Fitting 8개(수량 많고 입고율 낮은 순).
 // updateDashboard()가 초기 로딩 시 데이터 동기화 전/후로 두 번 호출되는데, 비동기 조회 순서가
 // 뒤바뀌면 먼저 시작된(데이터 없는) 호출이 나중에 끝나 화면을 덮어쓸 수 있음 — 요청 순번으로 방지.
+const PENDING_ITEMS_LOW_PCT = 50; // "입고율이 낮다"의 기준선(%) — 이보다 낮은 것만 대상
 let _pendingItemsReqId = 0;
 async function renderPendingItemsList() {
     const container = document.getElementById('pendingItemsList');
     if (!container) return;
     const reqId = ++_pendingItemsReqId;
 
-    const { items, pipeSizes } = await computeItemReceivingSummary();
+    const rows = computeItemSizeSummary();
     if (reqId !== _pendingItemsReqId) return; // 이후에 시작된 더 최신 호출이 있으면 이 결과는 폐기
 
-    // 입고율(%)이 아니라 절대 부족 수량(BOM-Received) 기준 정렬 — BOM 물량 자체가 큰데
-    // 아직 안 들어온 품목이 실무적으로 더 급함(수량 적은 품목이 0%인 것보다 중요).
-    // Pipe는 하나로 뭉뚱그리지 않고 부족 수량이 가장 큰 대표 Size 2개를 최상단에 고정 표시.
-    const pipeSizeRows = pipeSizes
+    const withPct = rows
         .filter(r => r.bom > 0 && r.rec < r.bom)
-        .map(r => ({ item: `PIPE (${r.size})`, unit: 'M', bom: r.bom, rec: r.rec, pct: r.rec / r.bom * 100 }))
+        .map(r => ({ ...r, pct: r.rec / r.bom * 100 }));
+
+    // Pipe: 대표 Size 2개(부족 수량이 가장 큰 순) — 소구경이 후순위로 밀리는 경향 확인용
+    const pipeRows = withPct
+        .filter(r => r.category === 'Pipe')
+        .map(r => ({ item: `PIPE (${r.size})`, unit: r.unit, bom: r.bom, rec: r.rec, pct: r.pct }))
         .sort((a, b) => (b.bom - b.rec) - (a.bom - a.rec))
         .slice(0, 2);
 
-    const allPending = items
-        .filter(r => r.item !== 'PIPE' && r.bom > 0 && r.rec < r.bom)
-        .map(r => ({ ...r, pct: r.rec / r.bom * 100 }))
-        .sort((a, b) => (b.bom - b.rec) - (a.bom - a.rec));
-    const pending = [...pipeSizeRows, ...allPending].slice(0, 10);
+    // Fitting: 입고율이 낮은(< 50%) 것만 대상으로, 그중 BOM 물량(=부족 수량)이 큰 순 8개
+    const fittingRows = withPct
+        .filter(r => r.category === 'Fitting' && r.pct < PENDING_ITEMS_LOW_PCT)
+        .map(r => ({ item: `${r.item} (${r.size})`, unit: r.unit, bom: r.bom, rec: r.rec, pct: r.pct }))
+        .sort((a, b) => (b.bom - b.rec) - (a.bom - a.rec))
+        .slice(0, 8);
+
+    const pending = [...pipeRows, ...fittingRows];
 
     if (pending.length === 0) {
         container.innerHTML = '<div class="empty-state-small">All representative items are 100% received.</div>';
@@ -796,8 +780,8 @@ async function renderPendingItemsList() {
     }
 
     container.innerHTML = pending.map(r => {
-        // 부족(Shortage)은 순차 입고 진행 중인 정상 상태 — 경고색(빨강) 대신 진행중 색(파랑)
-        const color = '#1565c0';
+        // 부족(Shortage)은 순차 입고 진행 중인 정상 상태 — 연한 파랑으로 차분하게 표시
+        const color = '#42a5f5';
         const shortage = r.bom - r.rec;
         return `
         <div style="margin-bottom:10px;">
@@ -810,8 +794,8 @@ async function renderPendingItemsList() {
             </div>
             <div style="display:flex;justify-content:space-between;margin-top:2px;font-size:10px;color:#555;">
                 <span>BOM <b style="color:#0A2540;">${Math.round(r.bom).toLocaleString()} ${r.unit}</b></span>
-                <span>Received <b style="color:#1565c0;">${Math.round(r.rec).toLocaleString()} ${r.unit}</b></span>
-                <span style="color:#1565c0;font-weight:700;">Shortage -${Math.round(shortage).toLocaleString()} ${r.unit}</span>
+                <span>Received <b style="color:${color};">${Math.round(r.rec).toLocaleString()} ${r.unit}</b></span>
+                <span style="color:${color};font-weight:700;">Shortage -${Math.round(shortage).toLocaleString()} ${r.unit}</span>
             </div>
         </div>`;
     }).join('');
@@ -873,8 +857,8 @@ function updateCategoryCharts() {
         // Category KPI cards — % progress per category (반환값은 Overall 평균 계산에 재사용)
         function setCatKpi(pctId, subId, bom, rec, unit) {
             const pct = bom > 0 ? (rec / bom * 100) : 0;
-            // 자재는 순차적으로 입고되는 중 — 진행률이 낮다고 경고색(빨강)을 쓰지 않음
-            const color = pct >= 90 ? '#2e7d32' : '#1565c0';
+            // 자재는 순차적으로 입고되는 중 — 진행률이 낮다고 경고색을 쓰지 않고 연한 파랑/초록만 사용
+            const color = pct >= 90 ? '#66bb6a' : '#42a5f5';
             const elPct = document.getElementById(pctId);
             if (elPct) { elPct.textContent = pct.toFixed(1) + '%'; elPct.style.color = color; }
             const elSub = document.getElementById(subId);
@@ -894,7 +878,7 @@ function updateCategoryCharts() {
         // Overall — 5개 카테고리(Pipe/Fitting/Valve/Others/Support) 진행률 단순 평균
         // (단위가 서로 달라 수량 합산 대신 %를 평균 — 카드별 표시값과 일관성 유지)
         const overallPct = (pctPipe + pctFit + pctValve + pctOth + pctSup) / 5;
-        const overallColor = overallPct >= 90 ? '#2e7d32' : '#1565c0';
+        const overallColor = overallPct >= 90 ? '#66bb6a' : '#42a5f5';
         const elOverall = document.getElementById('kpi-overall-pct');
         if (elOverall) { elOverall.textContent = overallPct.toFixed(1) + '%'; elOverall.style.color = overallColor; }
 
@@ -902,6 +886,7 @@ function updateCategoryCharts() {
         renderBulkProgressBars([
             { label: 'Pipe',    unit: 'M',  bom: bomDataArr[0], rec: recDataArr[0] },
             { label: 'Fitting', unit: 'EA', bom: bomDataArr[1], rec: recDataArr[1] },
+            { label: 'Valve',   unit: 'EA', bom: bomDataArr[2], rec: recDataArr[2] },
             { label: 'Others',  unit: 'EA', bom: bomDataArr[5], rec: recDataArr[5] },
             { label: 'Support', unit: 'EA', bom: supportBom,    rec: supportRec    },
         ]);

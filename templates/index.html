@@ -101,6 +101,18 @@
                      <div class="kpi-card">
                          <div class="kpi-info" style="flex:1;">
                              <div class="kpi-title" style="display:flex;align-items:center;gap:5px;">
+                                 <i class="fas fa-layer-group" style="color:#455a64;font-size:10px;"></i> Overall
+                                 <span style="font-size:10px;color:#aaa;font-weight:400;">(Avg)</span>
+                             </div>
+                             <div class="kpi-value" id="kpi-overall-pct">—</div>
+                             <div style="font-size:10px;color:#888;margin-top:1px;">Avg of Category Progress</div>
+                             <div class="kpi-desc" id="kpi-overall-sub" style="margin-top:2px;">Pipe/Fitting/Valve/Others/Support</div>
+                         </div>
+                         <div class="kpi-icon" style="background:rgba(69,90,100,0.08);color:#455a64;"><i class="fas fa-layer-group"></i></div>
+                     </div>
+                     <div class="kpi-card">
+                         <div class="kpi-info" style="flex:1;">
+                             <div class="kpi-title" style="display:flex;align-items:center;gap:5px;">
                                  <i class="fas fa-stream" style="color:#1565c0;font-size:10px;"></i> Pipe
                                  <span style="font-size:10px;color:#aaa;font-weight:400;">(M)</span>
                              </div>
@@ -158,18 +170,6 @@
                          </div>
                          <div class="kpi-icon issued" style="background:rgba(46,125,50,0.08);color:#2e7d32;"><i class="fas fa-tools"></i></div>
                      </div>
-                     <div class="kpi-card highlight">
-                         <div class="kpi-info" style="flex:1;">
-                             <div class="kpi-title" style="display:flex;align-items:center;gap:5px;">
-                                 <i class="fas fa-layer-group"></i> Overall
-                                 <span style="font-size:10px;font-weight:400;">(Avg)</span>
-                             </div>
-                             <div class="kpi-value" id="kpi-overall-pct">—</div>
-                             <div style="font-size:10px;margin-top:1px;">Avg of Category Progress</div>
-                             <div class="kpi-desc" id="kpi-overall-sub" style="margin-top:2px;">Pipe/Fitting/Valve/Others/Support</div>
-                         </div>
-                         <div class="kpi-icon"><i class="fas fa-layer-group"></i></div>
-                     </div>
                  </div>
 
                  <!-- Readiness & Charts -->
@@ -187,17 +187,17 @@
                      <!-- Chart 2: Bulk Material Progress -->
                      <div class="panel chart-panel">
                           <div class="panel-header">
-                              <h2><i class="fas fa-tasks"></i> Bulk Material Progress <span style="font-size:11px;font-weight:400;color:#888;">(BOM vs Receiving)</span></h2>
+                              <h2><i class="fas fa-tasks"></i> Material Progress</h2>
                           </div>
                           <div id="bulkProgressChart" style="padding:4px 4px;"></div>
                       </div>
                  </div>
 
-                 <!-- Items Pending Receipt (대표 Item 기준, 절대 부족 수량순 Top 10, Pipe는 항상 최상단) -->
+                 <!-- Items Pending Receipt (Pipe 대표 Size 2개 + Fitting 8개, BOM 물량 많고 입고율 낮은 순) -->
                  <div class="panel data-panel" style="margin-top: 10px;">
                     <div class="panel-header">
                         <h2><i class="fas fa-clipboard-list"></i> Items Pending Receipt</h2>
-                        <span style="font-size:11px;color:#666;">Top 10 by largest shortage qty (Pipe/Fitting/Valve/Others)</span>
+                        <span style="font-size:11px;color:#666;">Pipe Top 2 (by size) + Fitting Top 8 — high BOM qty, low receiving %</span>
                     </div>
                     <div id="pendingItemsList" style="padding:6px 14px 14px;">
                         <div class="empty-state-small">Loading...</div>
