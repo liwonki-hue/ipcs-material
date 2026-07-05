@@ -1185,6 +1185,7 @@ function renderStockTable(forcedCats, hideMatCode) {
         const fullDesc = db.bomDesc[matCode] || recDescMap[matCode] || '-';
         const size    = sizeOverride || window.getEffectiveSize(matCode, fullDesc, mData.size1);
         const unitStr = bomLookup[matCode]?.unit || 'EA';
+        const rating  = mData.classDesc || matCode.split('-')[3] || '-';
         const badge   = stock > 0 ? '<span class="status-badge ok">In Stock</span>' : '<span class="status-badge err">Out of Stock</span>';
         const docs    = docMap[key] ? [...docMap[key]].sort().join('<br>') : '-';
         const pkgs    = pkgMap[key] ? [...pkgMap[key]].sort().join('<br>') : '-';
@@ -1197,6 +1198,7 @@ function renderStockTable(forcedCats, hideMatCode) {
             <td>${item}</td>
             <td>${matl}</td>
             <td>${size}</td>
+            <td style="text-align:center;">${rating}</td>
             <td>${unitStr}</td>
             <td style="text-align:center;">${rec.toFixed(2)}</td>
             <td style="text-align:center;">${iss.toFixed(2)}</td>
@@ -1597,18 +1599,20 @@ function _enrichRow(matCode, bomMap, recMap, masterMap) {
     const size = (_sc && _sc !== '-') ? _sc : (mData.size1 || '-');
     const cat  = mData.category || window.getCategory(mData.itemDesc || '', matCode);
     const matl = (matCode.split('-')[1]) || '-';
+    const rating = mData.classDesc || (matCode.split('-')[3]) || '-';
     const unit = recMap[matCode]?.unit || bomMap[matCode]?.uom || 'EA';
     const bomQty = bomMap[matCode]?.qty ?? 0;
     const recQty = recMap[matCode]?.qty ?? 0;
-    return { matCode, cat, desc, item, matl, size, unit, bomQty, recQty };
+    return { matCode, cat, desc, item, matl, size, rating, unit, bomQty, recQty };
 }
 
-const _TABLE_ROW_TPL = ({ matCode, cat, item, matl, size, unit, bomQty, recQty, diffQty, diffColor }) => `<tr>
+const _TABLE_ROW_TPL = ({ matCode, cat, item, matl, size, rating, unit, bomQty, recQty, diffQty, diffColor }) => `<tr>
     <td style="text-align:center;"><strong>${cat}</strong></td>
     <td style="text-align:center;font-weight:600;color:var(--color-primary);white-space:nowrap;">${matCode}</td>
     <td style="text-align:center;">${item}</td>
     <td style="text-align:center;">${matl}</td>
     <td style="text-align:center;">${size}</td>
+    <td style="text-align:center;">${rating}</td>
     <td style="text-align:center;">${unit}</td>
     <td style="text-align:center;">${Math.round(bomQty).toLocaleString()}</td>
     <td style="text-align:center;">${Math.round(recQty).toLocaleString()}</td>
@@ -1655,7 +1659,7 @@ function renderShortageTable() {
     if (countEl) countEl.textContent = list.length > 0 ? `${list.length} items` : '';
 
     if (list.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#666;padding:20px;">No shortage items found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#666;padding:20px;">No shortage items found.</td></tr>';
         const sp = document.getElementById('shortagePagination'); if (sp) sp.innerHTML = '';
         return;
     }
@@ -1713,7 +1717,7 @@ function renderSurplusTable() {
     if (countEl) countEl.textContent = list.length > 0 ? `${list.length} items` : '';
 
     if (list.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#666;padding:20px;">No surplus items found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#666;padding:20px;">No surplus items found.</td></tr>';
         const sp = document.getElementById('surplusPagination'); if (sp) sp.innerHTML = '';
         return;
     }
@@ -2210,7 +2214,7 @@ function initFilterOptions() {
 async function renderBomTable() {
     let tbody = document.querySelector('#bomTable tbody');
     if(!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
 
     const search  = (document.getElementById('bomIsoSearch')?.value || '').trim();
     const sys     = document.getElementById('bomSystemFilter')?.value || 'All';
@@ -2276,7 +2280,7 @@ async function renderBomTable() {
 
     const [dataRes, countRes] = await Promise.all([dataQ, countQ]);
     if (dataRes.error) {
-        tbody.innerHTML = `<tr><td colspan="10" style="color:red;text-align:center;">Error: ${dataRes.error.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="12" style="color:red;text-align:center;">Error: ${dataRes.error.message}</td></tr>`;
         return;
     }
 
@@ -2290,6 +2294,7 @@ async function renderBomTable() {
         ? count
         : ((currentBomPage - 1) * PAGE_SIZE + data.length + (hasMore ? PAGE_SIZE : 0));
 
+    const masterMap = _buildMasterMap();
     tbody.innerHTML = data.map(b => {
         const isAuto = (b.mat_code || '').includes('NEW-MAT');
         const badgeClass = isAuto ? 'warn' : 'ok';
@@ -2313,6 +2318,9 @@ async function renderBomTable() {
         if (size === '-' && /STEAM TRAP/i.test(item)) size = '1"';
         const mat1Val = b.mat1 || '-';
         const mat2Val = b.mat2 || '-';
+        // Rating: Receiving DB와 동일한 산출 방식 (MatCode Master의 Class 우선, 없으면 MatCode 4번째 세그먼트)
+        const mData  = masterMap[b.mat_code] || {};
+        const rating = mData.classDesc || (b.mat_code || '').split('-')[3] || '-';
         return `<tr>
             <td style="text-align:center;white-space:nowrap;"><span class="status-badge ${badgeClass}">${b.mat_code || '-'}</span></td>
             <td style="text-align:center;white-space:nowrap;">${b.system || '-'}</td>
@@ -2322,6 +2330,7 @@ async function renderBomTable() {
             <td style="text-align:center;white-space:nowrap;">${mat1Val}</td>
             <td style="text-align:center;white-space:nowrap;">${mat2Val}</td>
             <td style="text-align:center;font-weight:600;">${size}</td>
+            <td style="text-align:center;white-space:nowrap;">${rating}</td>
             <td title="${desc}">${desc.length > 55 ? desc.substring(0, 52) + '...' : desc}</td>
             <td style="text-align:center;white-space:nowrap;">${b.uom || 'EA'}</td>
             <td style="text-align:center;white-space:nowrap;">${parseFloat(b.qty || 0).toFixed(2)}</td>
@@ -2504,7 +2513,7 @@ async function initVendorFilters() {
 async function renderVendorTable() {
     let tbody = document.querySelector('#vendorTable tbody');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
 
     const search = (document.getElementById('vendorIsoSearch')?.value || '').trim();
     const sys    = document.getElementById('vendorSystemFilter')?.value || 'All';
@@ -2539,17 +2548,20 @@ async function renderVendorTable() {
 
     const [dataRes, countRes] = await Promise.all([dataQ, countQ]);
     if (dataRes.error) {
-        tbody.innerHTML = `<tr><td colspan="11" style="color:red;text-align:center;">Error: ${dataRes.error.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="12" style="color:red;text-align:center;">Error: ${dataRes.error.message}</td></tr>`;
         return;
     }
 
     const data = dataRes.data || [];
     const count = countRes.count || 0;
 
+    const masterMap = _buildMasterMap();
     tbody.innerHTML = data.map(b => {
         const desc = b.full_description || '-';
         const rowSize = window.extractSizeLengthFromMatCode(b.mat_code);
         const rowItem = window.extractItemFromMatCode(b.mat_code);
+        const mData  = masterMap[b.mat_code] || {};
+        const rating = mData.classDesc || (b.mat_code || '').split('-')[3] || '-';
         return `<tr>
             <td style="text-align:center;white-space:nowrap;"><span class="status-badge ok">${b.mat_code || '-'}</span></td>
             <td style="text-align:center;white-space:nowrap;">${b.system || '-'}</td>
@@ -2559,11 +2571,12 @@ async function renderVendorTable() {
             <td style="text-align:center;white-space:nowrap;">${b.mat1 || '-'}</td>
             <td style="text-align:center;white-space:nowrap;">${b.mat2 || '-'}</td>
             <td style="text-align:center;font-weight:600;white-space:nowrap;">${rowSize}</td>
+            <td style="text-align:center;white-space:nowrap;">${rating}</td>
             <td title="${desc}">${desc}</td>
             <td style="text-align:center;white-space:nowrap;">${b.uom || 'EA'}</td>
             <td style="text-align:center;white-space:nowrap;">${parseFloat(b.qty || 0).toFixed(2)}</td>
         </tr>`;
-    }).join('') || '<tr><td colspan="11" style="text-align:center;color:#888;">No vendor items found.</td></tr>';
+    }).join('') || '<tr><td colspan="12" style="text-align:center;color:#888;">No vendor items found.</td></tr>';
 
     const totalPages = Math.max(1, Math.ceil(count / PAGE_SIZE));
     renderPagination('vendorPagination', currentVendorPage, totalPages, '_vendorGoPage');

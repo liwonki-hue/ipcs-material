@@ -115,19 +115,19 @@ ul { list-style: none; }
 /* Tables */
 .table-responsive { width: 100%; overflow-x: auto; }
 .data-table { width: 100%; border-collapse: collapse; }
-.data-table th, .data-table td { padding: 10px 15px; text-align: left; border-bottom: 1px solid var(--border-color); font-size: 13px; }
+.data-table th, .data-table td { padding: 10px 15px; text-align: left; border-bottom: 1px solid var(--border-color); font-size: 12px; }
 .data-table th { background-color: #f8f9fa; color: var(--text-secondary); font-weight: 600; font-size: 13px; text-transform: uppercase; }
 .data-table tbody tr:hover { background-color: rgba(10, 37, 64, 0.02); }
-#srecTable td { font-size: 13px; padding: 7px 10px; }
-#bomTable td  { font-size: 13px; padding: 7px 10px; }
-#vendorTable td { font-size: 13px; padding: 7px 10px; }
+#srecTable td { font-size: 12px; padding: 7px 10px; }
+#bomTable td  { font-size: 12px; padding: 7px 10px; }
+#vendorTable td { font-size: 12px; padding: 7px 10px; }
 #piping_bom .form-group label { font-size: 12px; }
 #piping_bom .form-control     { font-size: 13px; height: 34px; padding: 4px 10px; }
 #piping_bom .btn              { font-size: 13px; height: 34px; padding: 4px 12px; }
 #receiving .form-group label       { font-size: 12px; }
 #receiving .form-control           { font-size: 13px; height: 34px; padding: 4px 10px; }
 #receiving .btn                    { font-size: 13px; height: 34px; padding: 4px 12px; }
-#receiving .data-table td          { font-size: 13px; padding: 7px 10px; }
+#receiving .data-table td          { font-size: 12px; padding: 7px 10px; }
 
 /* Shipping KPI card click filter */
 .shipping-kpi-card { transition: border-color 0.15s, box-shadow 0.15s; }
@@ -236,7 +236,7 @@ ul { list-style: none; }
 
 /* MatCode Master 탭 글자 크기 */
 #bomMatCodeMasterPanel .panel-header h3   { font-size: 16px; }
-#bomMatCodeMasterPanel .data-table td     { font-size: 13px; padding: 7px 10px; }
+#bomMatCodeMasterPanel .data-table td     { font-size: 12px; padding: 7px 10px; }
 #bomMatCodeMasterPanel .data-table th     { font-size: 12px; }
 #bomMatCodeMasterPanel .status-badge      { font-size: 12px; }
 #bomMatCodeMasterPanel #masterInfo        { font-size: 14px; }
@@ -251,7 +251,7 @@ ul { list-style: none; }
 #material_status #msPanelStock .form-control       { font-size: 13px; height: 34px; padding: 4px 10px; }
 #material_status #msPanelStock .btn                { font-size: 13px; height: 34px; padding: 4px 12px; }
 #material_status #msPanelStock .panel-header h3    { font-size: 16px; }
-#material_status #msPanelStock .data-table td      { font-size: 13px; padding: 7px 10px; }
+#material_status #msPanelStock .data-table td      { font-size: 12px; padding: 7px 10px; }
 #material_status #msPanelStock .data-table th      { font-size: 12px; }
 #material_status #msPanelStock .status-badge       { font-size: 12px; }
 #material_status #msPanelStock #stockCountLabel    { font-size: 14px; }
@@ -263,7 +263,7 @@ ul { list-style: none; }
 #shipping .form-control       { font-size: 13px; height: 34px; padding: 4px 10px; }
 #shipping .btn                { font-size: 13px; height: 34px; padding: 4px 12px; }
 #shipping .panel-header h3    { font-size: 16px; }
-#shipping .data-table td      { font-size: 13px; padding: 4px 5px; overflow: hidden; }
+#shipping .data-table td      { font-size: 12px; padding: 4px 5px; overflow: hidden; }
 #shipping .data-table th      { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #shippingTable input.pl-datepicker, #shippingTable select { width: 100%; box-sizing: border-box; max-width: 100%; }
 #shippingTable input.pl-datepicker { text-align: center !important; }
