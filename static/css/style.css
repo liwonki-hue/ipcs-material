@@ -255,6 +255,23 @@ ul { list-style: none; }
 #material_status #msPanelStock .data-table th      { font-size: 12px; }
 #material_status #msPanelStock .status-badge       { font-size: 12px; }
 #material_status #msPanelStock #stockCountLabel    { font-size: 14px; }
+#material_status #msPanelShortage .form-group label { font-size: 12px; }
+#material_status #msPanelShortage .form-control     { font-size: 13px; height: 34px; padding: 4px 10px; }
+#material_status #msPanelShortage .btn              { font-size: 13px; height: 34px; padding: 4px 12px; }
+#material_status #msPanelSurplus .form-group label  { font-size: 12px; }
+#material_status #msPanelSurplus .form-control       { font-size: 13px; height: 34px; padding: 4px 10px; }
+#material_status #msPanelSurplus .btn                { font-size: 13px; height: 34px; padding: 4px 12px; }
+
+/* Material Summary 탭 글자 크기 (BOM 탭과 통일) */
+#material_summary .form-group label { font-size: 12px; }
+#material_summary .form-control     { font-size: 13px; height: 34px; padding: 4px 10px; }
+#material_summary .btn              { font-size: 13px; height: 34px; padding: 4px 12px; }
+#material_summary .data-table td    { font-size: 12px; padding: 7px 10px; }
+
+/* Material Issuance(Issue) 탭 글자 크기 (BOM 탭과 통일) */
+#issue .form-group label { font-size: 12px; }
+#issue .form-control     { font-size: 13px; height: 34px; padding: 4px 10px; }
+#issue .btn              { font-size: 13px; height: 34px; padding: 4px 12px; }
 
 /* Shipping / Custom Clearance 탭 글자 크기 */
 #shipping .page-header h1     { font-size: 24px; }

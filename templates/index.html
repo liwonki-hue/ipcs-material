@@ -228,7 +228,7 @@
                 <div class="page-header">
                      <div>
                          <h1>BOM</h1>
-                         <p class="subtitle">Piping Bill of Materials — Pipe, Fitting, Others</p>
+                         <p class="subtitle">Piping Bill of Materials — Pipe, Fitting, Valve, Others</p>
                      </div>
                      <div class="actions">
                          <input type="file" id="bomFileInput" accept=".xlsx,.xls" style="display:none;">
@@ -274,6 +274,7 @@
                  <div style="display:flex;gap:0;border-bottom:2px solid #c8cfe0;margin-bottom:16px;">
                      <button class="bom-tab-btn" data-tab="piping" style="padding:8px 24px;border:none;border-bottom:3px solid #0A2540;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#0A2540;margin-bottom:-2px;letter-spacing:0.5px;">PIPING</button>
                      <button class="bom-tab-btn" data-tab="fitting" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">FITTING</button>
+                     <button class="bom-tab-btn" data-tab="valve" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">VALVE</button>
                      <button class="bom-tab-btn" data-tab="others" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">OTHERS</button>
                      <button class="bom-tab-btn" data-tab="vendor" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">VENDOR</button>
                     <button class="bom-tab-btn" data-tab="matcode" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">MATCODE MASTER</button>
@@ -335,7 +336,7 @@
                              </colgroup>
                              <thead>
                                  <tr>
-                                     <th style="text-align:center;">Mat Code</th>
+                                     <th style="text-align:center;" id="bomCol1Header">Mat Code</th>
                                      <th style="text-align:center;">System</th>
                                      <th style="text-align:center;">ISO Drawing</th>
                                      <th style="text-align:center;">Line No.</th>
@@ -902,8 +903,20 @@
                                         <select id="valPkgFilter" class="form-control" style="width:100%;"><option value="All">All PKGs</option></select>
                                     </div>
                                     <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                        <label>Operation Type</label>
+                                        <select id="valOpTypeFilter" class="form-control" style="width:100%;"><option value="All">All Op. Types</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
                                         <label>Item</label>
                                         <select id="valItemFilter" class="form-control" style="width:100%;"><option value="All">All Items</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                        <label>Mat 1</label>
+                                        <select id="valMat1Filter" class="form-control" style="width:100%;"><option value="All">All Mat 1</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                        <label>Mat 2</label>
+                                        <select id="valMat2Filter" class="form-control" style="width:100%;"><option value="All">All Mat 2</option></select>
                                     </div>
                                     <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
                                         <label>Size</label>
@@ -934,17 +947,18 @@
                                     <thead>
                                         <tr>
                                             <th style="width:120px;">PKG</th><th style="width:220px;">PKG NO</th>
-                                            <th style="width:60px;">Category</th>
-                                            <th style="width:210px;">TAG NO</th>
-                                            <th style="width:130px;">Item</th>
-                                            <th style="width:40px;">Type</th>
-                                            <th style="width:120px;">Mat</th>
-                                            <th style="width:75px;">Size</th>
+                                            <th style="width:170px;">TAG NO</th>
+                                            <th style="width:90px;">Operation Type</th>
+                                            <th style="width:190px;">Valve Type</th>
+                                            <th style="width:120px;">Item</th>
+                                            <th style="width:90px;">Mat 1</th>
+                                            <th style="width:100px;">Mat 2</th>
+                                            <th style="width:65px;">Size</th>
                                             <th style="width:70px;">Rating</th>
-                                            <th style="width:75px;">Unit</th>
-                                            <th style="width:70px;">Qty</th>
+                                            <th style="width:60px;">Unit</th>
+                                            <th style="width:60px;">Qty</th>
                                             <th style="width:80px;">Status</th>
-                                            <th style="width:160px;">Purpose</th>
+                                            <th style="width:110px;">Purpose</th>
                                         </tr>
                                     </thead>
                                     <tbody></tbody>
@@ -1360,8 +1374,8 @@
                  </div>
 
                  <div id="msPanelStock">
-                 <!-- Stock Filter Panel -->
-                 <div class="panel filter-panel" style="margin-bottom: 20px;">
+                 <!-- Stock Filter Panel (Piping/Others 공용) -->
+                 <div id="stockDefaultFilterPanel" class="panel filter-panel" style="margin-bottom: 20px;">
                      <div style="display: flex; align-items: flex-end; justify-content: space-between; width: 100%;">
                          <div style="display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap;">
                              <div class="form-group" style="flex: 2; min-width: 160px;">
@@ -1411,13 +1425,14 @@
                      </div>
                  </div>
 
-                 <!-- Bulk Sub-tabs: Piping | Others -->
+                 <!-- Bulk Sub-tabs: Piping | Others | Valve -->
                  <div style="display:flex;gap:0;border-bottom:1px solid #c8cfe0;margin-bottom:16px;">
                      <button class="st-bulk-tab active" data-tab="piping" style="padding:6px 20px;border:none;border-bottom:3px solid #0A2540;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#0A2540;margin-bottom:-1px;">Piping</button>
                      <button class="st-bulk-tab" data-tab="others" style="padding:6px 20px;border:none;border-bottom:3px solid transparent;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#888;margin-bottom:-1px;">Others</button>
+                     <button class="st-bulk-tab" data-tab="valve" style="padding:6px 20px;border:none;border-bottom:3px solid transparent;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#888;margin-bottom:-1px;">Valve</button>
                  </div>
 
-                 <!-- Stock Table Panel -->
+                 <!-- Stock Table Panel (Piping/Others) -->
                  <div id="stTablePanel" class="panel data-panel">
                      <div class="panel-header">
                          <h3 id="stPanelTitle"><i class="fas fa-warehouse"></i> Stock — Pipe &amp; Fitting</h3>
@@ -1461,6 +1476,69 @@
                          </table>
                      </div>
                      <div id="stockPagination"></div>
+                 </div>
+
+                 <!-- Stock Filter Panel + Table (Valve — Tag 기준) -->
+                 <div id="stockValvePanel" style="display:none;">
+                 <div class="panel filter-panel" style="margin-bottom: 20px;">
+                     <div style="display: flex; align-items: flex-end; justify-content: space-between; width: 100%;">
+                         <div style="display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap;">
+                             <div class="form-group" style="flex: 2; min-width: 160px;">
+                                 <label>Search</label>
+                                 <input type="text" id="stockValveSearch" class="form-control" placeholder="Tag / Description...">
+                             </div>
+                             <div class="form-group" style="flex: 1; min-width: 130px;">
+                                 <label>Item</label>
+                                 <select id="stockValveItemFilter" class="form-control"><option value="All">All Items</option></select>
+                             </div>
+                             <div class="form-group" style="flex: 1; min-width: 100px;">
+                                 <label>Rating</label>
+                                 <select id="stockValveRatingFilter" class="form-control"><option value="All">All Ratings</option></select>
+                             </div>
+                             <div style="padding-bottom: 1px;">
+                                 <button class="btn btn-primary" id="btnStockValveSearch" style="height:38px; white-space:nowrap; display:flex; align-items:center; gap:8px;">
+                                     <i class="fas fa-search"></i> Search
+                                 </button>
+                             </div>
+                             <div style="padding-bottom: 1px;">
+                                 <button class="btn btn-outline" id="btnStockValveClear" style="height:38px; white-space:nowrap;">Clear</button>
+                             </div>
+                         </div>
+                     </div>
+                 </div>
+                 <div class="panel data-panel">
+                     <div class="panel-header">
+                         <h3><i class="fas fa-warehouse"></i> Stock — Valve (Tag 기준)</h3>
+                         <span id="stockValveCountLabel" style="font-size:11px; color:#666;"></span>
+                     </div>
+                     <div class="table-responsive">
+                         <table class="data-table" id="stockValveTable" style="table-layout:fixed;width:100%;font-size:0.85em;">
+                             <colgroup>
+                                 <col style="width:13%;"><col style="width:6%;"><col style="width:13%;">
+                                 <col style="width:11%;"><col style="width:10%;"><col style="width:7%;">
+                                 <col style="width:9%;"><col style="width:6%;"><col style="width:7%;">
+                                 <col style="width:9%;"><col style="width:9%;">
+                             </colgroup>
+                             <thead>
+                                 <tr>
+                                     <th>Tag</th>
+                                     <th>System</th>
+                                     <th>ISO Drawing</th>
+                                     <th>Line No.</th>
+                                     <th>Item</th>
+                                     <th>Mat 1</th>
+                                     <th>Mat 2</th>
+                                     <th>Size</th>
+                                     <th>Rating</th>
+                                     <th>Received</th>
+                                     <th>Stock</th>
+                                 </tr>
+                             </thead>
+                             <tbody></tbody>
+                         </table>
+                     </div>
+                     <div id="stockValvePagination"></div>
+                 </div>
                  </div>
                  </div>
 
@@ -1658,11 +1736,11 @@
                 <div class="page-header">
                      <div>
                          <h1>Material Summary</h1>
-                         <p class="subtitle">Item 단위 BOM Qty / Received / Issued / Stock 현황 (Piping/Fitting/Others).</p>
+                         <p class="subtitle">Item 단위 BOM Qty / Received / Issued / Stock 현황 (Piping/Fitting/Valve/Others).</p>
                      </div>
                  </div>
 
-                 <div class="panel filter-panel" style="margin-bottom: 20px; max-width: 70%;">
+                 <div id="mssDefaultFilterPanel" class="panel filter-panel" style="margin-bottom: 20px; max-width: 70%;">
                       <div style="display: flex; align-items: flex-end; justify-content: space-between; width: 100%; gap: 10px; flex-wrap: nowrap;">
                           <div style="display: flex; align-items: flex-end; gap: 10px; flex: 1; min-width: 0;">
                               <div class="form-group" style="flex: 2; min-width: 0; margin-bottom: 0;">
@@ -1703,10 +1781,11 @@
                  <div style="display:flex;gap:0;border-bottom:1px solid #c8cfe0;margin-bottom:16px;">
                      <button class="mss-bulk-tab" data-tab="piping" style="padding:6px 20px;border:none;border-bottom:3px solid #0A2540;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#0A2540;margin-bottom:-1px;">Piping</button>
                      <button class="mss-bulk-tab" data-tab="fitting" style="padding:6px 20px;border:none;border-bottom:3px solid transparent;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#888;margin-bottom:-1px;">Fitting</button>
+                     <button class="mss-bulk-tab" data-tab="valve" style="padding:6px 20px;border:none;border-bottom:3px solid transparent;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#888;margin-bottom:-1px;">Valve</button>
                      <button class="mss-bulk-tab" data-tab="others" style="padding:6px 20px;border:none;border-bottom:3px solid transparent;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#888;margin-bottom:-1px;">Others</button>
                  </div>
 
-                 <div class="panel data-panel">
+                 <div id="mssDefaultTablePanel" class="panel data-panel">
                      <div class="panel-header">
                          <h3 id="mssPanelTitle"><i class="fas fa-list-check"></i> Material Summary — Piping</h3>
                          <span id="mssCountLabel" style="font-size:11px; color:#666;"></span>
@@ -1736,6 +1815,73 @@
                          </table>
                      </div>
                      <div id="mssPagination"></div>
+                 </div>
+
+                 <!-- Material Summary (Valve — Item 기준 통합, Tag/System/ISO/Line 미표시) -->
+                 <div id="mssValvePanel" style="display:none;">
+                     <div class="panel filter-panel" style="margin-bottom: 20px; max-width: 70%;">
+                         <div style="display: flex; align-items: flex-end; gap: 10px;">
+                             <div class="form-group" style="flex: 2; margin-bottom: 0;">
+                                 <label>Search (Item / Mat / Size)</label>
+                                 <input type="text" id="mssValveSearch" class="form-control" style="width: 100%;" placeholder="Item, Material, Size...">
+                             </div>
+                             <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                                 <label>Item</label>
+                                 <select id="mssValveItemFilter" class="form-control" style="width: 100%;"><option value="All">All Items</option></select>
+                             </div>
+                             <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                                 <label>Mat 1</label>
+                                 <select id="mssValveMat1Filter" class="form-control" style="width: 100%;"><option value="All">All Mat 1</option></select>
+                             </div>
+                             <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                                 <label>Mat 2</label>
+                                 <select id="mssValveMat2Filter" class="form-control" style="width: 100%;"><option value="All">All Mat 2</option></select>
+                             </div>
+                             <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                                 <label>Size</label>
+                                 <select id="mssValveSizeFilter" class="form-control" style="width: 100%;"><option value="All">All Sizes</option></select>
+                             </div>
+                             <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                                 <label>Rating</label>
+                                 <select id="mssValveRatingFilter" class="form-control" style="width: 100%;"><option value="All">All Ratings</option></select>
+                             </div>
+                             <div style="padding-bottom: 1px; display: flex; gap: 8px;">
+                                 <button class="btn btn-primary" id="btnFilterMssValve" style="white-space: nowrap;"><i class="fas fa-search"></i> Search</button>
+                                 <button class="btn btn-outline" id="btnClearMssValveFilters" style="white-space: nowrap;">Clear</button>
+                             </div>
+                         </div>
+                     </div>
+                     <div class="panel data-panel">
+                         <div class="panel-header">
+                             <h3><i class="fas fa-list-check"></i> Material Summary — Valve</h3>
+                             <span id="mssValveCountLabel" style="font-size:11px; color:#666;"></span>
+                         </div>
+                         <div class="table-responsive">
+                             <table class="data-table" id="mssValveTable" style="font-size:0.82em;table-layout:fixed;width:100%;">
+                                 <colgroup>
+                                     <col style="width:17%;"><col style="width:11%;"><col style="width:13%;">
+                                     <col style="width:9%;"><col style="width:6%;"><col style="width:6%;">
+                                     <col style="width:12%;"><col style="width:10%;"><col style="width:10%;"><col style="width:6%;">
+                                 </colgroup>
+                                 <thead>
+                                     <tr>
+                                         <th style="text-align:center;">Item</th>
+                                         <th style="text-align:center;">Mat 1</th>
+                                         <th style="text-align:center;">Mat 2</th>
+                                         <th style="text-align:center;">Size</th>
+                                         <th style="text-align:center;">Rating</th>
+                                         <th style="text-align:center;">Unit</th>
+                                         <th style="text-align:center;">BOM Qty</th>
+                                         <th style="text-align:center;">Received</th>
+                                         <th style="text-align:center;">Issued</th>
+                                         <th style="text-align:center;">Stock</th>
+                                     </tr>
+                                 </thead>
+                                 <tbody><tr><td colspan="10" style="text-align:center;color:#888;padding:20px;">Loading...</td></tr></tbody>
+                             </table>
+                         </div>
+                         <div id="mssValvePagination"></div>
+                     </div>
                  </div>
             </section>
 

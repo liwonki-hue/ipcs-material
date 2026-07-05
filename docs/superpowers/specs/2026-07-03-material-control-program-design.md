@@ -79,10 +79,84 @@ Item 검색(Mode C)에서 Tag를 조회하면 BOM/입고/재고 아래에 서브
 
 1. **[진행 중, 사용자 작업]** `Valves`/`Untagged Items` 포맷으로 새 Valve (Receiving) 파일 완성
 2. 완성되면 `receiving` 테이블에 재적재 (Tag 유니크성 보장 — 검증된 방식 재사용)
-3. 설계팀 Valve List BOM 확보 → `bom` 테이블에 category='Valve'로 등록 (Tag 키로 매칭)
-4. Pipe/Fitting/Others처럼 Valve도 BOM 대비 입고/재고/부족자재 계산 가능해짐
-5. Material Finding Item 검색에 "설치 시 필요 부속품/공구" 서브 섹션 추가 (위 4번)
-6. Dashboard에 Valve KPI 카드 추가 검토
+3. **[완료, 2026-07-05]** 설계팀 Valve List BOM 확보 → `bom` 테이블에 category='Valve'로 등록 (Tag 키로 매칭) — 상세: 아래 "6. Valve List BOM DB 등록 (완료, 2026-07-05)" 섹션
+4. Pipe/Fitting/Others처럼 Valve도 BOM 대비 입고/재고/부족자재 계산 가능해짐 — **Stock 탭만 우선 적용됨(Shortage/Surplus는 제외, 아래 6번 참고)**
+5. Material Finding Item 검색에 "설치 시 필요 부속품/공구" 서브 섹션 추가 (위 4번) — **미착수**
+6. Dashboard에 Valve KPI 카드 추가 검토 — **미착수**
+
+### 6. Valve List BOM DB 등록 (완료, 2026-07-05)
+
+설계팀 Valve List(`Raw File/Valve List.xlsx`, 시트 `VALVELIST_BOP` — SYSTM/ISO DRAWING/LINE NO/TAG/OPERATION TYPE/VALVE TYPE/MAT 1/MAT 2/SIZE/RATING/END TYPE/QTY, 2,747행, TAG 100% 유니크·NULL 없음)를 `bom` 테이블에 category='Valve'로 등록. BOM 탭에는 Fitting 다음(Others 이전)에 VALVE 서브탭으로 배치. 스크립트: `scratch/insert_valve_bom.py`.
+
+**핵심 결정 — Valve는 MatCode를 만들지 않는다 (사용자 지시, 2026-07-05):** `bom.mat_code`를 Valve 행에는 항상 NULL로 둔다. Valve/Speciality는 0번 원칙대로 Tag 자체가 고유 키이므로 별도 MatCode 코드 체계가 불필요 — 과거(2026-05-27 커밋 `c0bca9b`/`0d67c3e`)에는 `BAV-CS05-D030-C150-RF` 형식 MatCode를 생성해 `receiving.mat_code`에 남아있는 레거시가 있지만, 이번 등록부터는 이 방식을 쓰지 않는다. 대신:
+- `mat1` = 재질 등급 분류(CS/SS/ALLOY (P91)/ALLOY (P22), Pipe/Fitting과 동일 관례) — MAT2 원본 값(A105/A216-WCB/A351-CF8/A182-F316L 등)으로부터 매핑.
+- `mat2` = 원본 MAT 2 값 그대로.
+- `full_description` = `"{VALVE TYPE} VALVE, {MAT2}, DN {mm}, CL{rating}, {SW/BW/RF/FF}"` 형식 — Item/Rating/Size 추출은 전부 이 문자열 기반 fallback으로 동작(아래 참고).
+
+**MatCode가 없어서 생긴 로직 변경(app.js, "각종 Logic Update"):**
+- BOM 탭 첫 컬럼: MatCode 없으면 Tag를 대신 표시(`b.mat_code || b.tag`), 헤더도 Valve 탭 활성화 시 "Tag"로 전환.
+- `getRatingForMatCode()`에 `fullDescription` 폴백 인자 추가 — MatCode 세그먼트가 없으면 Description의 `CL\d+` 패턴에서 직접 추출.
+- BOM 탭 Item/Rating 필터: Valve는 `mat_code ilike 'PREFIX-*'` 방식이 항상 무효(NULL이라)이므로 `full_description ilike` 방식으로 분기 처리. Item/Rating 드롭다운도 Valve는 고정 목록(GATE/GLOBE/CHECK/BUTTERFLY/BALL VALVE, CL150/300/600/1500) 사용 — MatCode 파싱 기반 동적 추출이 안 되기 때문.
+- **Size 컬럼 추출 순서 주의**: Valve는 Line No가 밸브 자체 규격이 아니라 설치된 호스트 배관 사이즈일 수 있음(예: 6" 라인의 1" 드레인 밸브) — 그래서 Valve 행은 Line No보다 Description의 `DN xx` 표기를 먼저 사용하도록 순서를 바꿈. Pipe/Fitting/Others는 기존 순서(MatCode → Line No → Description) 그대로 유지.
+
+**Material Status(Stock/Shortage/Surplus) 및 Material Summary 확장 범위 (사용자 확인, 2026-07-05):**
+- Shortage/Surplus는 원래부터 `['Pipe','Fitting','Others']`로 하드코딩되어 있어 Valve를 제외해왔음 — **이번에도 그대로 유지, 확장 안 함** (Valve는 Tag당 QTY=1이라 "부족/잉여 수량" 개념 자체가 희박하다는 판단).
+- **Stock 탭에만 Valve 서브탭 추가**(Piping/Others 옆). MatCode 기반 공용 로직(`renderStockTable`/`_buildBomMap` 등)은 재사용하지 않고, Tag 기준 전용 함수(`loadValveStockBom`/`renderValveStockTable`)를 새로 작성 — 컬럼: Tag/System/ISO Drawing/Line No/Item/Mat1/Mat2/Size/Rating/Received/Stock (BOM Qty·Issued·Unit 제외 — 전부 1개/미사용이라 의미 없음).
+- **Material Summary도 동일한 방식으로 Valve 서브탭 추가**(Piping/Fitting/Others 옆), Stock Valve와 완전히 동일한 데이터 소스·컬럼 재사용(`renderMssValveTable`).
+- 두 화면 모두 기존 MatCode 기반 테이블/필터 패널은 그대로 두고, Valve 탭 활성화 시에만 별도 패널(`#stockValvePanel`/`#mssValvePanel`)로 전환 표시 — 기존 Piping/Fitting/Others 로직은 전혀 건드리지 않음(회귀 없음, Playwright 스모크 테스트로 확인).
+
+### 남은 일 (Valve, 2026-07-05 기준)
+- [ ] Material Finding Item 검색에 "설치 시 필요 부속품/공구" 서브 섹션 (Untagged Items 연동, 미착수)
+- [ ] Dashboard Valve KPI 카드 추가 검토 (미착수)
+- [ ] 926개 System/ISO Drawing 공란 Tag — 향후 데이터 업로드 예정(사용자 확인, 이번 라운드는 BOM DB 등록 + Tag 매칭 연결까지만 범위)
+
+## 7. Valve (Receiving) 재적재 (완료, 2026-07-05)
+
+`Raw File/Valve (Receiving).xlsx`(Valve 시트 2,715행 + Untagged Items 시트 1,180행)로 `receiving` 테이블 category='Valve'를 **전체 교체**. 스크립트: `scratch/reload_valve_receiving.py`.
+
+### 배경 — 이 파일은 새 데이터가 아니라 기존 DB의 재분류
+사용자 확인: 이 파일은 기존 `receiving`의 Valve 데이터를 새 Valves/Untagged Items 포맷으로 사용자가 직접 재분류한 것. 따라서 등록 전 기존 DB와 대조 검증을 거쳤다.
+
+### 대조 결과 및 사용자 결정
+- **패키지 커버리지**: DB는 15개 문서(PGU-DE-xxxx), 새 파일은 14개(0364/0521 없음, 0540은 새로 추가됨) → **사용자 확인: 새 파일 기준 전체 교체, 0364/0521도 함께 삭제**.
+- **수량 불일치**: 일부 패키지(특히 `PGU-DE-0536-BOP-BFV-*` 계열)는 DB 수량이 새 파일보다 15~17배 많았음(예: BFV-007 DB=988 vs 파일=63) → **사용자 확인: 새 파일 수량이 맞고, DB의 큰 수량은 과거 오류로 부풀려진 것**.
+- 최종: 기존 3,629행 전량 삭제, 새 파일 기준 3,892행(Valve 2,712행[3개 순수 artifact 행 제외] + Untagged 1,180행)으로 교체. Qty 합계 6,982.
+
+### Tag 유니크화 (project_valve_bucket_tag_fix와 동일 원칙 재적용)
+새 파일에도 과거와 같은 유형의 통짜/중복 Tag가 재발견됨(`SPARE`, `HP TBS D-TUBE`, `LP TBS D-TUBE` 같은 리터럴, `B0-PCV-37017`/`B1-LCV-34083` 같이 서로 다른 PKG에 동일 Tag가 다른 규격으로 중복 기재된 경우, `PGU-DE-390` 계열의 동일 Tag 2~3회 반복). 전부 `parent_tag=원래 TAG NO, tag={parent_tag}-{일련번호:02d}` 방식으로 유니크화(원래 값은 `parent_tag`에 보존되어 추적 가능). Untagged Items의 `TAG NO (참조)`가 있으면 그 Tag를, 없으면 PKG NO를 parent_tag로 사용.
+
+### RLS 함정 재확인 — receiving에 DELETE 정책이 없었음
+`receiving` 테이블에 **DELETE RLS 정책이 없어** 기존 3,629행 삭제 요청이 200 OK를 반환하고도 실제로는 0행 삭제됨 (UPDATE 정책 부재와 같은 유형의 함정, [[project_valve_bucket_tag_fix]] 참고). 신규 3,892행을 먼저 넣어버려 일시적으로 7,521행(중복) 상태가 됐던 것을 발견 → 사용자가 Supabase SQL Editor에서 `scratch/add_receiving_delete_policy.sql` 실행 후 기존 3,629행만 재삭제하여 정리 완료. **앞으로 receiving을 DELETE하는 스크립트는 반드시 `Prefer: return=representation`으로 실제 삭제 행 수를 확인할 것 — status 200/204만으로 성공을 판단하지 말 것.**
+
+### 기타 함정 — receiving.id는 auto-increment가 아님
+`receiving.id`가 NOT NULL이고 자동 채번되지 않아, insert 시 반드시 현재 최대 id를 조회해 명시적으로 채번해야 함(`bom`/`vendor` 테이블은 auto-increment라 이 문제가 없었음 — 테이블마다 다르므로 매번 확인 필요).
+
+### 검증 결과
+- 최종 3,892행, Tag 100% 유니크(중복 0건) 확인.
+- BOM(Valve, 2,747 Tag) ↔ 새 Receiving(3,892 Tag) 매칭: 2,249개 일치(81.9%, 기존 낡은 데이터 기준 72.8%보다 개선). BOM에 없는 Tag는 MOV/CV/PSV/BYPASS 등 Manual Valve List(BOM) 범위 밖의 밸브 종류라 정상.
+- Material Status Stock(Valve), Receiving TAG Item(Valve) 탭 Playwright 확인, 콘솔 에러 0건.
+
+## 8. Valve Receiving 화면 개편 (완료, 2026-07-05 같은 날 이어서)
+
+사용자 요청: Category 컬럼 제거, Tag No 다음에 Operation Type/Valve Type 컬럼 추가(같은 Gate Valve라도 MOV/Manual은 설치 구역이 다름), Mat을 Mat1/Mat2로 분리, Size/Rating 등은 Tag가 BOM과 일치하면 BOM 데이터로 채움(원본 입력값이 틀린 경우 BOM 우선).
+
+### DB 스키마 변경
+`receiving`에 `op_type, valve_type, mat1, mat2, size, rating` 컬럼 추가(`scratch/add_receiving_valve_columns.sql`, 사용자가 Supabase SQL Editor에서 실행). 기존에는 이 정보들을 `full_description` 텍스트 하나에 뭉쳐서 저장했었는데(0705 1차 재적재 때), 그 텍스트 포맷이 Receiving 화면의 파싱 정규식과 안 맞아 Type/Mat/Size/Rating이 전부 "-"로 보이는 회귀가 있었음 — 이번에 구조적 컬럼으로 전환하며 근본 해결.
+
+### `reload_valve_receiving.py` 2차 개정 로직
+- Valve 시트의 Operation Type(MOV/BYPASS/PSV/CV/MANUAL)/Valve Type(원본 설명, 예: "FLEXIBLE WEDGE GATE VALVE")을 그대로 `op_type`/`valve_type` 컬럼에 저장.
+- Mat은 `mat1`(재질 등급, Pipe/Fitting과 동일한 CS/SS/ALLOY 분류)/`mat2`(원본 규격)로 분리.
+- **BOM 우선 원칙**: `bom`(category='Valve')에서 tag→{mat1, mat2, size(DN→inch 환산), rating(CL### 추출)} 참조맵을 먼저 만들고, receiving 행의 원래 Tag(일련번호 접미사 붙이기 전의 raw tag)가 이 맵에 있으면 Mat1/Mat2/Size/Rating을 **BOM 값으로 덮어씀** — 2,712행 중 2,295건이 BOM 값으로 보정됨(원본 파일엔 SIZE가 자주 비어있었는데 BOM에서 채워짐). BOM에 없는 Tag(MOV/CV/PSV/BYPASS 등 Manual Valve List 범위 밖)는 원본 파일 값 그대로 사용.
+
+### UI 변경
+- `#valTable` 컬럼: `PKG | PKG NO | TAG NO | OPERATION TYPE | VALVE TYPE | ITEM | MAT 1 | MAT 2 | SIZE | RATING | UNIT | QTY | STATUS | PURPOSE` (Category 제거, ITEM은 Valve Type에서 정규화 추출한 값으로 유지 — 필터 드롭다운용).
+- Operation Type 필터 드롭다운 추가(`valOpTypeFilter`).
+- **공용 `_renderRecvCore`(MatCode 기준 공통 렌더러)를 사용하지 않고 Valve 전용 렌더 함수(`renderTagValveTable` 재작성)로 분리** — Valve는 MatCode가 없어 공용 로직의 `effMat` 기반 파싱이 전부 무효했기 때문. Item/Size/Operation Type 필터 옵션도 `valveType`/`size`/`opType` 직접 필드 기반으로 재구성(기존엔 `bomTagMap`+MatCode 파싱 방식이라 Valve에서 제대로 동작하지 않았음). Piping/Fitting/Others/Speciality/Support가 쓰는 `_renderRecvCore`는 손대지 않음(회귀 없음, Playwright로 Speciality 탭 확인).
+
+### 검증
+- BOM 매칭 Tag(`B0-MV-40466`) 검색 시 Size='1"'/Rating='CL600'/Mat1='SS'/Mat2='A182-F304' 정상 표시(원본 파일엔 Size가 비어있었으나 BOM에서 채워짐).
+- Operation Type 필터(All/BYPASS/CV/MANUAL/MOV/PSV) 정상 동작.
+- Speciality Receiving, Material Status Stock(Valve), Material Summary(Valve) 탭 회귀 없음, 콘솔 에러 0건.
 
 ### 6. 다른 카테고리로의 확장 (추후)
 
@@ -173,19 +247,22 @@ BOM 화면에서 Material 정보가 MAT1(재질 등급)/MAT2(실제 규격)로 �
 - [ ] 구현 (신규 탭 HTML + `renderMaterialSummaryTable()` 등 app.js 로직)
 - [ ] 스모크 테스트: Piping/Fitting/Others 서브탭 전환, 필터, 페이지네이션, Export 확인
 
-## 현재 상태 / 다음 할 일 (Valve 적용 사례 기준, 마지막 갱신: 2026-07-03)
+## 현재 상태 / 다음 할 일 (Valve 적용 사례 기준, 마지막 갱신: 2026-07-05)
 
 - [x] 통짜/NULL tag 버그 수정 및 검증 완료 (DB 반영됨, 1,117건)
 - [x] Valve (Receiving) 신규 포맷 설계 완료, Excel 템플릿 작성 (`Raw File/Valve (Receiving)_Format_Template.xlsx`)
-- [ ] **사용자가 새 포맷으로 실제 Valve (Receiving) 파일 작성 중 — 완성 대기**
-- [ ] `B0-PCV-37017` 등 중복 Tag 의심 건 원본 재확인 (사용자)
-- [ ] 파일 완성 후: `receiving` 테이블 재적재 스크립트 작성 및 실행
-- [ ] 설계팀 Valve List BOM 확보 및 `bom` 테이블 등록
-- [ ] Material Finding "설치 시 필요 부속품/공구" 서브 섹션 구현
-- [ ] Dashboard Valve KPI 카드 추가 검토
+- [x] **사용자가 새 포맷(`Raw File/Valve (Receiving).xlsx`, Valve/Untagged Items 2시트)으로 파일 작성 완료 → `receiving` 테이블 category='Valve' 전체 재적재 완료 (2026-07-05, 3,892행). 상세: 아래 "7. Valve (Receiving) 재적재" 섹션**
+- [x] `B0-PCV-37017`/`B1-LCV-34083` 등 중복 Tag 건 — 원본 재확인 대신 `parent_tag`+일련번호로 유니크화하여 데이터는 보존(재확인이 필요하면 `parent_tag` 컬럼으로 원래 Tag 추적 가능)
+- [x] **설계팀 Valve List BOM(`Raw File/Valve List.xlsx`) 확보 및 `bom` 테이블 등록 완료 (2026-07-05, 2,747행, MatCode 없이 Tag 키만 사용)**
+- [x] **BOM 탭에 VALVE 서브탭 추가 완료 (Fitting 다음, Others 이전)**
+- [x] **Material Status Stock 탭 + Material Summary에 Valve(Tag 기준) 서브탭 추가 완료 — Shortage/Surplus는 범위 제외로 확정**
+- [ ] Material Finding "설치 시 필요 부속품/공구" 서브 섹션 구현 (미착수)
+- [ ] Dashboard Valve KPI 카드 추가 검토 (미착수)
+- [ ] 926개 System/ISO Drawing 공란 Tag 후속 데이터 업로드 (사용자 예정)
 
 ## 관련 메모리
 - `project_valve_bucket_tag_fix.md` — 통짜/NULL tag 수정 상세 내역, RLS 함정
-- `project_material_matching_challenge.md` — MatCode Master 존재 이유, 자재관리가 어려운 근본 배경
-- `project_matcode_rules.md` — Valve matcode 할당 규칙 (TAG 있는 항목만)
+- `project_material_matching_challenge.md` — MatCode Master 존재 이유, 자재관리가 어려운 근본 배경, Valve List BOM 등록 완료 반영
+- `project_matcode_rules.md` — Valve matcode 할당 규칙 (TAG 있는 항목만, 단 신규 BOM 등록부터는 MatCode 자체를 생성하지 않는 것으로 정책 변경 — 2026-07-05)
 - `project_pgu_de_0072_recovery.md` — PGU-DE-0072 197건 복구 완료 확인됨 (2026-07-02)
+- `project_valve_bom_registration.md` — Valve List BOM DB 등록 + BOM/Material Summary/Material Status Tag 매칭 연결 작업 상세 (2026-07-05)

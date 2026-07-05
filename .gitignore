@@ -41,3 +41,6 @@ scratch/assign_speciality_matcodes.sql
 
 # Claude memory
 .claude/
+
+# Playwright MCP session artifacts (screenshots, console logs)
+.playwright-mcp/

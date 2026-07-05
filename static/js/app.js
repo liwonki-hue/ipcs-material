@@ -61,6 +61,12 @@ async function syncShortageData() {
                 qty:      parseFloat(r.qty) || 0,
                 tag:      r.tag || '-',
                 purpose:  r.purpose || '',
+                opType:   r.op_type || '-',
+                valveType: r.valve_type || '-',
+                mat1:     r.mat1 || '-',
+                mat2:     r.mat2 || '-',
+                size:     r.size || '-',
+                rating:   r.rating || '-',
             })).filter(r => r.qty > 0);
             invalidateRecvPurposeMap();
         }
@@ -297,6 +303,12 @@ window.extractSizeLengthFromMatCode = function(matCode) {
     return m[2] ? `${m[1]}"x${m[2]}mm` : `${m[1]}"`;
 };
 
+// Valve(MatCode 없음) 등 description에 "DN xx" 형태로 박힌 사이즈 추출 — "DN 25" → "DN 25"
+window.extractDnSizeFromDesc = function(desc) {
+    const m = (desc || '').match(/\bDN\s*(\d+)\b/i);
+    return m ? 'DN ' + m[1] : null;
+};
+
 // D-code가 없는 Speciality 품목 등을 위해 description에서 인치 사이즈 파싱
 window.extractSizeFromDesc = function(desc) {
     if (!desc || desc === '-') return '-';
@@ -491,6 +503,12 @@ async function syncFromSupabase() {
                 qty:      parseFloat(r.qty) || 0,
                 tag:      r.tag || '-',
                 purpose:  r.purpose || '',
+                opType:   r.op_type || '-',
+                valveType: r.valve_type || '-',
+                mat1:     r.mat1 || '-',
+                mat2:     r.mat2 || '-',
+                size:     r.size || '-',
+                rating:   r.rating || '-',
             })).filter(r => r.qty > 0);
             invalidateRecvPurposeMap();
         }
@@ -1281,6 +1299,19 @@ function _setStockMatCodeCol(visible) {
 
 function renderActiveStockTab() {
     const title = document.getElementById('stPanelTitle');
+    const defaultFilterPanel = document.getElementById('stockDefaultFilterPanel');
+    const defaultTablePanel  = document.getElementById('stTablePanel');
+    const valvePanel         = document.getElementById('stockValvePanel');
+    const isValve = _stActiveBulkTab === 'valve';
+    if (defaultFilterPanel) defaultFilterPanel.style.display = isValve ? 'none' : '';
+    if (defaultTablePanel)  defaultTablePanel.style.display  = isValve ? 'none' : '';
+    if (valvePanel)         valvePanel.style.display         = isValve ? '' : 'none';
+
+    if (isValve) {
+        initStockValveFilters();
+        renderValveStockTable();
+        return;
+    }
     _setStockMatCodeCol(true);
     if (_stActiveBulkTab === 'piping') {
         if (title) title.innerHTML = '<i class="fas fa-warehouse"></i> Stock — Pipe & Fitting';
@@ -1291,6 +1322,117 @@ function renderActiveStockTab() {
     }
 }
 
+// --- Stock (Valve — Tag 기준, MatCode 없음) ---
+let _valveStockBomCache = null;
+async function loadValveStockBom() {
+    if (_valveStockBomCache) return _valveStockBomCache;
+    let all = [];
+    let from = 0;
+    const step = 2000;
+    while (true) {
+        const { data, error } = await supabaseClient.from('bom_detail')
+            .select('tag, system, iso_dwg_no, line_no, full_description, mat1, mat2, qty')
+            .eq('category', 'Valve')
+            .range(from, from + step - 1);
+        if (error) { console.error('loadValveStockBom 조회 실패:', error); break; }
+        if (!data || data.length === 0) break;
+        all = all.concat(data);
+        if (data.length < step) break;
+        from += step;
+    }
+    _valveStockBomCache = all;
+    return all;
+}
+
+// Tag별 Received/Issued 집계 — MatCode 대신 Tag로 직접 매칭 (Stock/Material Summary Valve 탭 공용)
+function buildValveRecvMaps() {
+    const recMap = {}, issMap = {};
+    db.receiving.forEach(r => {
+        if (r.category !== 'Valve' || !r.tag || r.tag === '-') return;
+        if (!isReceivingActive(r.plNo)) return;
+        recMap[r.tag] = (recMap[r.tag] || 0) + (r.qty || 0);
+        if (isPkgIssued(r.plNo)) issMap[r.tag] = (issMap[r.tag] || 0) + (r.qty || 0);
+    });
+    return { recMap, issMap };
+}
+
+let _stockValveFiltersInited = false;
+function initStockValveFilters() {
+    const itemEl = document.getElementById('stockValveItemFilter');
+    if (itemEl && itemEl.options.length <= 1) {
+        const items = ['GATE VALVE', 'GLOBE VALVE', 'CHECK VALVE', 'BUTTERFLY VALVE', 'BALL VALVE'];
+        itemEl.innerHTML = '<option value="All">All Items</option>'
+            + items.map(i => `<option value="${i}">${i}</option>`).join('');
+    }
+    const ratingEl = document.getElementById('stockValveRatingFilter');
+    if (ratingEl && ratingEl.options.length <= 1) {
+        ratingEl.innerHTML = '<option value="All">All Ratings</option>'
+            + ['CL150', 'CL300', 'CL600', 'CL1500'].map(r => `<option value="${r}">${r}</option>`).join('');
+    }
+    if (!_stockValveFiltersInited) {
+        _stockValveFiltersInited = true;
+        document.getElementById('btnStockValveSearch')?.addEventListener('click', () => { _stockPage = 1; renderValveStockTable(); });
+        document.getElementById('btnStockValveClear')?.addEventListener('click', () => {
+            document.getElementById('stockValveSearch').value = '';
+            if (itemEl) itemEl.value = 'All';
+            if (ratingEl) ratingEl.value = 'All';
+            _stockPage = 1; renderValveStockTable();
+        });
+    }
+}
+
+async function renderValveStockTable() {
+    const tbody = document.querySelector('#stockValveTable tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
+
+    const bomRows = await loadValveStockBom();
+    const { recMap, issMap } = buildValveRecvMaps();
+
+    const search   = (document.getElementById('stockValveSearch')?.value || '').trim().toUpperCase();
+    const itemF    = document.getElementById('stockValveItemFilter')?.value || 'All';
+    const ratingF  = document.getElementById('stockValveRatingFilter')?.value || 'All';
+
+    const filtered = bomRows.filter(b => {
+        const descUpper = (b.full_description || '').toUpperCase();
+        if (itemF !== 'All' && !descUpper.includes(itemF)) return false;
+        if (ratingF !== 'All' && !descUpper.includes(ratingF)) return false;
+        if (search && !(b.tag || '').toUpperCase().includes(search) && !descUpper.includes(search)) return false;
+        return true;
+    });
+
+    const label = document.getElementById('stockValveCountLabel');
+    if (label) label.textContent = `(${filtered.length.toLocaleString()} items)`;
+
+    const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    if (_stockPage > totalPages) _stockPage = 1;
+    const start = (_stockPage - 1) * PAGE_SIZE;
+    const display = filtered.slice(start, start + PAGE_SIZE);
+
+    tbody.innerHTML = display.map(b => {
+        const rec = recMap[b.tag] || 0;
+        const iss = issMap[b.tag] || 0;
+        const stock = Math.max(0, rec - iss);
+        const item = window.extractItemFromDesc(b.full_description);
+        const rating = getRatingForMatCode(null, null, b.full_description);
+        const size = window.extractDnSizeFromDesc(b.full_description) || '-';
+        return `<tr>
+            <td style="text-align:center;font-weight:600;">${b.tag || '-'}</td>
+            <td style="text-align:center;">${b.system || '-'}</td>
+            <td style="text-align:center;">${b.iso_dwg_no || '-'}</td>
+            <td style="text-align:center;">${b.line_no || '-'}</td>
+            <td style="text-align:center;">${item}</td>
+            <td style="text-align:center;">${b.mat1 || '-'}</td>
+            <td style="text-align:center;">${b.mat2 || '-'}</td>
+            <td style="text-align:center;">${size}</td>
+            <td style="text-align:center;">${rating}</td>
+            <td style="text-align:center;">${rec.toFixed(2)}</td>
+            <td style="text-align:center;font-weight:700;">${stock.toFixed(2)}</td>
+        </tr>`;
+    }).join('');
+
+    renderPagination('stockValvePagination', _stockPage, totalPages, '_stockGoPage');
+}
 
 let _msActiveTab = 'stock'; // 'stock' | 'shortage' | 'surplus'
 let _msTabsInited = false;
@@ -1473,6 +1615,19 @@ async function renderMssTable() {
 window._mssGoPage = function(p) { currentMssPage = p; renderMssTable(); };
 
 function renderActiveMssTab() {
+    const defaultFilterPanel = document.getElementById('mssDefaultFilterPanel');
+    const defaultTablePanel  = document.getElementById('mssDefaultTablePanel');
+    const valvePanel         = document.getElementById('mssValvePanel');
+    const isValve = _mssActiveTab === 'valve';
+    if (defaultFilterPanel) defaultFilterPanel.style.display = isValve ? 'none' : '';
+    if (defaultTablePanel)  defaultTablePanel.style.display  = isValve ? 'none' : '';
+    if (valvePanel)         valvePanel.style.display         = isValve ? '' : 'none';
+
+    if (isValve) {
+        initMssValveFilters();
+        renderMssValveTable();
+        return;
+    }
     const title = document.getElementById('mssPanelTitle');
     const TAB_LABEL = { piping: 'Piping', fitting: 'Fitting', others: 'Others' };
     if (title) title.innerHTML = `<i class="fas fa-list-check"></i> Material Summary — ${TAB_LABEL[_mssActiveTab] || 'Piping'}`;
@@ -1480,6 +1635,133 @@ function renderActiveMssTab() {
     refreshMssItemFilter();
     renderMssTable();
 }
+
+// --- Material Summary (Valve — 순수 Item 기준 통합, Tag/System/ISO/Line 미표시) ---
+// 같은 Item+Mat1+Mat2+Size+Rating이면 여러 Tag를 하나의 행으로 합산(BOM Qty/Received/Issued/Stock).
+let currentMssValvePage = 1;
+let _mssValveFiltersInited = false;
+function _valveAggKey(b) {
+    const item = window.extractItemFromDesc(b.full_description);
+    const rating = getRatingForMatCode(null, null, b.full_description);
+    const size = window.extractDnSizeFromDesc(b.full_description) || '-';
+    return { item, mat1: b.mat1 || '-', mat2: b.mat2 || '-', size, rating };
+}
+
+function initMssValveFilters() {
+    const itemEl = document.getElementById('mssValveItemFilter');
+    if (itemEl && itemEl.options.length <= 1) {
+        const items = ['GATE VALVE', 'GLOBE VALVE', 'CHECK VALVE', 'BUTTERFLY VALVE', 'BALL VALVE'];
+        itemEl.innerHTML = '<option value="All">All Items</option>'
+            + items.map(i => `<option value="${i}">${i}</option>`).join('');
+    }
+    const ratingEl = document.getElementById('mssValveRatingFilter');
+    if (ratingEl && ratingEl.options.length <= 1) {
+        ratingEl.innerHTML = '<option value="All">All Ratings</option>'
+            + ['CL150', 'CL300', 'CL600', 'CL1500'].map(r => `<option value="${r}">${r}</option>`).join('');
+    }
+    const mat1El = document.getElementById('mssValveMat1Filter');
+    const mat2El = document.getElementById('mssValveMat2Filter');
+    const sizeEl = document.getElementById('mssValveSizeFilter');
+    if ((mat1El && mat1El.dataset.filled !== '1') || (mat2El && mat2El.dataset.filled !== '1') || (sizeEl && sizeEl.dataset.filled !== '1')) {
+        loadValveStockBom().then(bomRows => {
+            const keys = bomRows.map(_valveAggKey);
+            if (mat1El && mat1El.dataset.filled !== '1') {
+                const vals = [...new Set(keys.map(k => k.mat1).filter(v => v && v !== '-'))].sort();
+                mat1El.innerHTML = '<option value="All">All Mat 1</option>' + vals.map(v => `<option value="${v.replace(/"/g,'&quot;')}">${v}</option>`).join('');
+                mat1El.dataset.filled = '1';
+            }
+            if (mat2El && mat2El.dataset.filled !== '1') {
+                const vals = [...new Set(keys.map(k => k.mat2).filter(v => v && v !== '-'))].sort();
+                mat2El.innerHTML = '<option value="All">All Mat 2</option>' + vals.map(v => `<option value="${v.replace(/"/g,'&quot;')}">${v}</option>`).join('');
+                mat2El.dataset.filled = '1';
+            }
+            if (sizeEl && sizeEl.dataset.filled !== '1') {
+                const sizes = [...new Set(keys.map(k => k.size).filter(v => v && v !== '-'))]
+                    .sort((a, b) => parseFloat(a.replace(/\D/g, '')) - parseFloat(b.replace(/\D/g, '')));
+                sizeEl.innerHTML = '<option value="All">All Sizes</option>' + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
+                sizeEl.dataset.filled = '1';
+            }
+        });
+    }
+    if (!_mssValveFiltersInited) {
+        _mssValveFiltersInited = true;
+        document.getElementById('btnFilterMssValve')?.addEventListener('click', () => { currentMssValvePage = 1; renderMssValveTable(); });
+        document.getElementById('btnClearMssValveFilters')?.addEventListener('click', () => {
+            document.getElementById('mssValveSearch').value = '';
+            if (itemEl) itemEl.value = 'All';
+            if (mat1El) mat1El.value = 'All';
+            if (mat2El) mat2El.value = 'All';
+            if (sizeEl) sizeEl.value = 'All';
+            if (ratingEl) ratingEl.value = 'All';
+            currentMssValvePage = 1; renderMssValveTable();
+        });
+    }
+}
+
+async function renderMssValveTable() {
+    const tbody = document.querySelector('#mssValveTable tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
+
+    const bomRows = await loadValveStockBom();
+    const { recMap, issMap } = buildValveRecvMaps();
+
+    // Tag 단위 BOM을 Item/Mat1/Mat2/Size/Rating 기준으로 집계 — System/ISO/Line은 이 탭에서 다루지 않음
+    const agg = {};
+    bomRows.forEach(b => {
+        const k = _valveAggKey(b);
+        const key = [k.item, k.mat1, k.mat2, k.size, k.rating].join('__');
+        if (!agg[key]) agg[key] = { ...k, bomQty: 0, received: 0, issued: 0 };
+        agg[key].bomQty += (b.qty || 0);
+        agg[key].received += recMap[b.tag] || 0;
+        agg[key].issued += issMap[b.tag] || 0;
+    });
+
+    const search  = (document.getElementById('mssValveSearch')?.value || '').trim().toUpperCase();
+    const itemF   = document.getElementById('mssValveItemFilter')?.value || 'All';
+    const mat1F   = document.getElementById('mssValveMat1Filter')?.value || 'All';
+    const mat2F   = document.getElementById('mssValveMat2Filter')?.value || 'All';
+    const sizeF   = document.getElementById('mssValveSizeFilter')?.value || 'All';
+    const ratingF = document.getElementById('mssValveRatingFilter')?.value || 'All';
+
+    const filtered = Object.values(agg).filter(row => {
+        if (itemF   !== 'All' && row.item   !== itemF)   return false;
+        if (mat1F   !== 'All' && row.mat1   !== mat1F)   return false;
+        if (mat2F   !== 'All' && row.mat2   !== mat2F)   return false;
+        if (sizeF   !== 'All' && row.size   !== sizeF)   return false;
+        if (ratingF !== 'All' && row.rating !== ratingF) return false;
+        if (search && ![row.item, row.mat1, row.mat2, row.size].some(v => (v || '').toUpperCase().includes(search))) return false;
+        return true;
+    }).sort((a, b) => a.item.localeCompare(b.item) || a.mat1.localeCompare(b.mat1) || a.mat2.localeCompare(b.mat2)
+        || (parseFloat(a.size.replace(/\D/g, '')) || 0) - (parseFloat(b.size.replace(/\D/g, '')) || 0));
+
+    const label = document.getElementById('mssValveCountLabel');
+    if (label) label.textContent = `(${filtered.length.toLocaleString()} items)`;
+
+    const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    if (currentMssValvePage > totalPages) currentMssValvePage = 1;
+    const start = (currentMssValvePage - 1) * PAGE_SIZE;
+    const display = filtered.slice(start, start + PAGE_SIZE);
+
+    tbody.innerHTML = display.map(row => {
+        const stock = Math.max(0, row.received - row.issued);
+        return `<tr>
+            <td style="text-align:center;font-weight:600;">${row.item}</td>
+            <td style="text-align:center;">${row.mat1}</td>
+            <td style="text-align:center;">${row.mat2}</td>
+            <td style="text-align:center;">${row.size}</td>
+            <td style="text-align:center;">${row.rating}</td>
+            <td style="text-align:center;">EA</td>
+            <td style="text-align:center;">${row.bomQty.toFixed(2)}</td>
+            <td style="text-align:center;">${row.received.toFixed(2)}</td>
+            <td style="text-align:center;">${row.issued.toFixed(2)}</td>
+            <td style="text-align:center;font-weight:700;">${stock.toFixed(2)}</td>
+        </tr>`;
+    }).join('');
+
+    renderPagination('mssValvePagination', currentMssValvePage, totalPages, '_mssValveGoPage');
+}
+window._mssValveGoPage = function(p) { currentMssValvePage = p; renderMssValveTable(); };
 
 let _mssTabsInited = false;
 function initMssTabs() {
@@ -1645,11 +1927,14 @@ function _buildMasterMap() {
 // 실제 Rating 패턴(CL150/S40/SCH40/XS/XXS/STD 등)일 때만 사용. Others(GSKT/STB)는 그
 // 자리에 재질 마감 라벨(HDG/ALLOY/SS304 등)이 오므로 패턴에 안 걸려 '-'로 남는다.
 const RATING_SEGMENT_RE = /^(CL\d+|SCH\d+|S\d+|XS|XXS|STD)$/i;
-function getRatingForMatCode(matCode, masterMap) {
+function getRatingForMatCode(matCode, masterMap, fullDescription) {
     const mData = (masterMap && masterMap[matCode]) || {};
     if (mData.classDesc) return mData.classDesc;
     const seg = (matCode || '').split('-')[3] || '';
-    return RATING_SEGMENT_RE.test(seg) ? seg : '-';
+    if (RATING_SEGMENT_RE.test(seg)) return seg;
+    // Valve(MatCode 없음)는 Description에 박힌 CL### 표기에서 직접 추출
+    const m = (fullDescription || '').match(/\bCL\d+\b/i);
+    return m ? m[0].toUpperCase() : '-';
 }
 
 // 카테고리(Pipe/Fitting/Others) 내 Rating 값 → 해당 MatCode 목록. BOM 탭의 Rating
@@ -2033,6 +2318,9 @@ function getBomItemsForCat(cat) {
     const src = (cat === 'All' || cat === 'ALL') ? db.bom : db.bom.filter(b => b.category === cat);
     const set = new Set(src.map(b => window.extractItemFromMatCode(b.matCode)).filter(v => v && v !== '-'));
     if (cat === 'All' || cat === 'ALL' || cat === 'Valve') {
+        // Valve는 mat_code가 없어(Tag로만 매칭) MatCode 접두사 기반 자동 추출이 안 됨 — 고정 목록 사용
+        set.add('GATE VALVE'); set.add('GLOBE VALVE'); set.add('CHECK VALVE');
+        set.add('BUTTERFLY VALVE'); set.add('BALL VALVE');
         set.add('BYPASS VALVE'); set.add('CONTROL VALVE'); set.add('SAFETY VALVE');
     }
     return [...set].sort();
@@ -2281,18 +2569,37 @@ function initFilterOptions() {
         return (r.plNo || '').toUpperCase().includes('BYPS') ? 'BYPASS VALVE' : raw;
     };
 
+    // Item/Size는 Valve 자체 필드(valveType/size)에서 직접 뽑음 — MatCode 없이도 안정적으로 동작
     const valItemEl = document.getElementById('valItemFilter');
     if (valItemEl) {
-        const items = [...new Set(recByCat.Valve.map(_tagItem).filter(v => v && v !== '-'))].sort();
+        const items = [...new Set(recByCat.Valve.map(r => window.extractItemFromDesc(r.valveType)).filter(v => v && v !== '-'))].sort();
         valItemEl.innerHTML = '<option value="All">All Items</option>'
             + items.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
     }
     const valSizeEl = document.getElementById('valSizeFilter');
     if (valSizeEl) {
-        const sizes = [...new Set(recByCat.Valve.map(_tagSize).filter(v => v && v !== '-'))]
+        const sizes = [...new Set(recByCat.Valve.map(r => r.size).filter(v => v && v !== '-'))]
             .sort((a, b) => parseFloat(a) - parseFloat(b));
         valSizeEl.innerHTML = '<option value="All">All Sizes</option>'
             + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
+    }
+    const valOpTypeEl = document.getElementById('valOpTypeFilter');
+    if (valOpTypeEl) {
+        const opTypes = [...new Set(recByCat.Valve.map(r => r.opType).filter(v => v && v !== '-'))].sort();
+        valOpTypeEl.innerHTML = '<option value="All">All Op. Types</option>'
+            + opTypes.map(o => `<option value="${o.replace(/"/g,'&quot;')}">${o}</option>`).join('');
+    }
+    const valMat1El = document.getElementById('valMat1Filter');
+    if (valMat1El) {
+        const mat1s = [...new Set(recByCat.Valve.map(r => r.mat1).filter(v => v && v !== '-'))].sort();
+        valMat1El.innerHTML = '<option value="All">All Mat 1</option>'
+            + mat1s.map(m => `<option value="${m.replace(/"/g,'&quot;')}">${m}</option>`).join('');
+    }
+    const valMat2El = document.getElementById('valMat2Filter');
+    if (valMat2El) {
+        const mat2s = [...new Set(recByCat.Valve.map(r => r.mat2).filter(v => v && v !== '-'))].sort();
+        valMat2El.innerHTML = '<option value="All">All Mat 2</option>'
+            + mat2s.map(m => `<option value="${m.replace(/"/g,'&quot;')}">${m}</option>`).join('');
     }
 
     // Speciality Filters
@@ -2322,7 +2629,7 @@ async function renderBomTable() {
 
     const search  = (document.getElementById('bomIsoSearch')?.value || '').trim();
     const sys     = document.getElementById('bomSystemFilter')?.value || 'All';
-    const TAB_CAT = { piping: 'Pipe', fitting: 'Fitting', others: 'Others' };
+    const TAB_CAT = { piping: 'Pipe', fitting: 'Fitting', valve: 'Valve', others: 'Others' };
     const cat     = TAB_CAT[_bomActiveTab] || 'Pipe';
     const item    = document.getElementById('bomItemFilter')?.value || 'All';
     const mat1    = document.getElementById('bomMat1Filter')?.value || 'All';
@@ -2333,7 +2640,7 @@ async function renderBomTable() {
     // 필터를 두 쿼리(data + count)에 동일하게 적용하는 헬퍼
     const applyFilters = (q) => {
         if (sys  !== 'All') q = q.eq('system', sys);
-        if (search) q = q.or(`iso_dwg_no.ilike.%${search}%,mat_code.ilike.%${search}%,category.ilike.%${search}%,full_description.ilike.%${search}%`);
+        if (search) q = q.or(`iso_dwg_no.ilike.%${search}%,mat_code.ilike.%${search}%,category.ilike.%${search}%,full_description.ilike.%${search}%,tag.ilike.%${search}%`);
         if (cat  !== 'All') q = q.eq('category', cat);
         if (mat1 !== 'All') q = q.eq('mat1', mat1);
         if (mat2 !== 'All') q = q.eq('mat2', mat2);
@@ -2344,7 +2651,8 @@ async function renderBomTable() {
                 q = q.or('tag.ilike.%-PSV%,tag.ilike.%-PRV%,mat_code.ilike.PSV-*,mat_code.ilike.PRV-*');
             } else {
                 const prefixes = ITEM_PREFIX_MAP[item];
-                if (prefixes && prefixes.length > 0) {
+                // Valve는 mat_code가 없어(Tag로만 매칭) prefix 검색이 항상 무효 — Description으로 대체
+                if (cat !== 'Valve' && prefixes && prefixes.length > 0) {
                     q = q.or(prefixes.map(p => `mat_code.ilike.${p}-*`).join(','));
                 } else {
                     q = q.ilike('full_description', `%${item}%`);
@@ -2368,8 +2676,13 @@ async function renderBomTable() {
             }
         }
         if (rating !== 'All') {
-            const codes = [...(getRatingMatCodesForCat(cat)[rating] || [])];
-            q = q.in('mat_code', codes.length ? codes : ['__NONE__']);
+            // Valve는 mat_code가 없어 Rating이 mat_code 세그먼트가 아닌 Description(CL150 등)에만 존재
+            if (cat === 'Valve') {
+                q = q.ilike('full_description', `%${rating}%`);
+            } else {
+                const codes = [...(getRatingMatCodesForCat(cat)[rating] || [])];
+                q = q.in('mat_code', codes.length ? codes : ['__NONE__']);
+            }
         }
         return q;
     };
@@ -2414,22 +2727,27 @@ async function renderBomTable() {
         let size = (matUpper.startsWith('GSKT') || matUpper.startsWith('STB'))
             ? window.extractSizeLengthFromMatCode(b.mat_code)
             : window.extractSizeFromMatCode(b.mat_code);
+        // Valve는 Line No가 밸브 자체 규격이 아니라 설치된 호스트 배관 사이즈일 수 있어
+        // (예: 6" 라인의 1" 드레인 밸브) Line No보다 Description의 DN 표기를 우선 사용
+        if (size === '-' && b.category === 'Valve') {
+            size = window.extractDnSizeFromDesc(b.full_description) || '-';
+        }
         if (size === '-' && b.line_no) {
             size = window.extractSizeFromLineNo(b.line_no);
         }
         if (size === '-' && b.full_description) {
-            const dnM = b.full_description.match(/\bDN\s*(\d+)\b/i);
-            if (dnM) size = 'DN ' + dnM[1];
-            else size = window.extractSizeFromDesc(b.full_description);
+            size = window.extractDnSizeFromDesc(b.full_description) || window.extractSizeFromDesc(b.full_description);
         }
         const item = window.extractItemFromDesc(desc);
         // Steam Trap: description에 사이즈 정보 없을 때 기본값 1" (확인된 사실)
         if (size === '-' && /STEAM TRAP/i.test(item)) size = '1"';
         const mat1Val = b.mat1 || '-';
         const mat2Val = b.mat2 || '-';
-        const rating = getRatingForMatCode(b.mat_code, masterMap);
+        const rating = getRatingForMatCode(b.mat_code, masterMap, b.full_description);
+        // Valve/Speciality는 MatCode 없이 Tag로만 매칭 — 첫 컬럼에 Tag를 대신 표시
+        const codeDisplay = b.mat_code || b.tag || '-';
         return `<tr>
-            <td style="text-align:center;white-space:nowrap;"><span class="status-badge ${badgeClass}">${b.mat_code || '-'}</span></td>
+            <td style="text-align:center;white-space:nowrap;"><span class="status-badge ${badgeClass}">${codeDisplay}</span></td>
             <td style="text-align:center;white-space:nowrap;">${b.system || '-'}</td>
             <td style="text-align:center;white-space:nowrap;">${b.iso_dwg_no || '-'}</td>
             <td style="text-align:center;white-space:nowrap;">${b.line_no || '-'}</td>
@@ -2450,7 +2768,7 @@ async function renderBomTable() {
 window._bomGoPage = function(p) { currentBomPage = p; renderBomTable(); };
 
 function refreshBomItemFilter() {
-    const TAB_CAT = { piping: 'Pipe', fitting: 'Fitting', others: 'Others' };
+    const TAB_CAT = { piping: 'Pipe', fitting: 'Fitting', valve: 'Valve', others: 'Others' };
     const cat = TAB_CAT[_bomActiveTab] || 'Pipe';
 
     const itemEl = document.getElementById('bomItemFilter');
@@ -2469,7 +2787,10 @@ function refreshBomItemFilter() {
 
     const ratingEl = document.getElementById('bomRatingFilter');
     if (ratingEl) {
-        const ratings = Object.keys(getRatingMatCodesForCat(cat)).sort();
+        // Valve는 mat_code가 없어 getRatingMatCodesForCat(mat_code 파싱 기반)이 무효 — 고정 목록 사용
+        const ratings = cat === 'Valve'
+            ? ['CL150', 'CL300', 'CL600', 'CL1500']
+            : Object.keys(getRatingMatCodesForCat(cat)).sort();
         ratingEl.innerHTML = '<option value="All">All Ratings</option>'
             + ratings.map(r => `<option value="${r.replace(/"/g, '&quot;')}">${r}</option>`).join('');
     }
@@ -2500,14 +2821,19 @@ function refreshBomItemFilter() {
     }
 }
 
-// BOM 탭(Piping/Fitting/Others/Vendor/MatCode Master) 중 현재 활성 탭에 맞는 패널만 보이고 해당 렌더 함수 호출
+// BOM 탭(Piping/Fitting/Valve/Others/Vendor/MatCode Master) 중 현재 활성 탭에 맞는 패널만 보이고 해당 렌더 함수 호출
 function renderActiveBomTab() {
     const mainPanel   = document.getElementById('bomMainPanel');
     const mcPanel     = document.getElementById('bomMatCodeMasterPanel');
     const vendorPanel = document.getElementById('bomVendorPanel');
-    if (mainPanel)   mainPanel.style.display   = _bomActiveTab === 'piping' || _bomActiveTab === 'fitting' || _bomActiveTab === 'others' ? '' : 'none';
+    const isMain = _bomActiveTab === 'piping' || _bomActiveTab === 'fitting' || _bomActiveTab === 'valve' || _bomActiveTab === 'others';
+    if (mainPanel)   mainPanel.style.display   = isMain ? '' : 'none';
     if (mcPanel)     mcPanel.style.display     = _bomActiveTab === 'matcode' ? '' : 'none';
     if (vendorPanel) vendorPanel.style.display = _bomActiveTab === 'vendor' ? '' : 'none';
+
+    // Valve는 MatCode 대신 Tag로 매칭 — 첫 컬럼 헤더 표기 전환
+    const col1Header = document.getElementById('bomCol1Header');
+    if (col1Header) col1Header.textContent = _bomActiveTab === 'valve' ? 'Tag' : 'Mat Code';
 
     if (_bomActiveTab === 'matcode') { renderMatCodeMaster(); return; }
     if (_bomActiveTab === 'vendor') { initVendorFilters(); renderVendorTable(); return; }
@@ -2921,16 +3247,72 @@ function renderBulkOthersTable() {
     });
 }
 
+// Valve Receiving — MatCode가 없는 카테고리라 공용 _renderRecvCore(MatCode 기준) 대신
+// Tag/Operation Type/Valve Type/Mat1/Mat2/Size/Rating 자체 필드를 직접 사용하는 전용 렌더러.
 function renderTagValveTable() {
-    _renderRecvCore({
-        tableId: 'valTable', searchId: 'valItemSearch',
-        docId: 'valDocFilter', pkgId: 'valPkgFilter', statusId: 'valStatusFilter',
-        itemId: 'valItemFilter', sizeId: 'valSizeFilter',
-        forcedCats: ['Valve'],
-        hideMatCode: true,
-        getPage: () => currentValPage,
-        paginationId: 'valPagination', goPageFn: '_valGoPage'
+    const tbody = document.querySelector('#valTable tbody');
+    if (!tbody) return;
+
+    const search   = (document.getElementById('valItemSearch')?.value || '').trim().toUpperCase();
+    const doc      = document.getElementById('valDocFilter')?.value    || 'All';
+    const pkg      = document.getElementById('valPkgFilter')?.value    || 'All';
+    const opTypeF  = document.getElementById('valOpTypeFilter')?.value || 'All';
+    const itemF    = document.getElementById('valItemFilter')?.value   || 'All';
+    const mat1F    = document.getElementById('valMat1Filter')?.value   || 'All';
+    const mat2F    = document.getElementById('valMat2Filter')?.value   || 'All';
+    const sizeF    = document.getElementById('valSizeFilter')?.value   || 'All';
+    const statusF  = document.getElementById('valStatusFilter')?.value || 'All';
+
+    const data = db.receiving.filter(r => {
+        if (r.category !== 'Valve') return false;
+        const item = window.extractItemFromDesc(r.valveType);
+        const matchSearch = !search
+            || (r.tag || '').toUpperCase().includes(search)
+            || (r.valveType || '').toUpperCase().includes(search)
+            || (r.desc || '').toUpperCase().includes(search);
+        const matchDoc    = doc === 'All' || r.docNo === doc;
+        const matchPkg    = pkg === 'All' || r.plNo  === pkg;
+        const matchOpType = opTypeF === 'All' || r.opType === opTypeF;
+        const matchItemF  = itemF === 'All' || item === itemF;
+        const matchMat1F  = mat1F === 'All' || r.mat1 === mat1F;
+        const matchMat2F  = mat2F === 'All' || r.mat2 === mat2F;
+        const matchSizeF  = sizeF === 'All' || r.size === sizeF;
+        const pkgSt       = (_plUpdatesCache[r.plNo] || {}).status || '';
+        const matchStatusF = statusF === 'All' || pkgSt === statusF;
+        return matchSearch && matchDoc && matchPkg && matchOpType && matchItemF && matchMat1F && matchMat2F && matchSizeF && matchStatusF;
+    }).sort((a, b) => a.docNo.localeCompare(b.docNo) || a.plNo.localeCompare(b.plNo));
+
+    const page = currentValPage;
+    const rows = data.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map(r => {
+        const item = window.extractItemFromDesc(r.valveType);
+        const pkgStatus  = (_plUpdatesCache[r.plNo] || {}).status || '';
+        const isOnSite   = pkgStatus === 'On-Site';
+        const statusColor = pkgStatus === 'On-Site' ? '#2e7d32' : pkgStatus === 'Shipping' ? '#1565c0' : pkgStatus === 'Preparing' ? '#888' : '#bbb';
+        const purposeOpts = PURPOSE_OPTS.map(v =>
+            `<option value="${v}"${r.purpose === v ? ' selected' : ''}>${v || '—'}</option>`
+        ).join('');
+        const purposeSel = `<select class="pl-purpose-sel" data-recv-id="${r.id}"
+            style="width:100%;border:1px solid #dde3ee;border-radius:4px;padding:3px 6px;font-size:12px;background:#fff;color:#0A2540;text-align:center;">
+            ${purposeOpts}</select>`;
+        return `<tr${isOnSite ? '' : ' style="color:#999;"'}>
+            <td style="text-align:center;white-space:nowrap;">${r.docNo}</td>
+            <td style="text-align:center;white-space:nowrap;">${r.plNo}</td>
+            <td style="text-align:center;">${r.tag && r.tag !== '-' ? r.tag : '-'}</td>
+            <td style="text-align:center;white-space:nowrap;">${r.opType}</td>
+            <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.valveType || ''}">${r.valveType}</td>
+            <td style="text-align:center;font-weight:600;white-space:nowrap;">${item}</td>
+            <td style="text-align:center;">${r.mat1}</td>
+            <td style="text-align:center;">${r.mat2}</td>
+            <td style="text-align:center;font-weight:600;">${r.size}</td>
+            <td style="text-align:center;">${r.rating}</td>
+            <td style="white-space:nowrap;text-align:center;">${r.unit || 'EA'}</td>
+            <td style="white-space:nowrap;text-align:center;">${Math.round(r.qty).toLocaleString()}</td>
+            <td style="text-align:center;white-space:nowrap;font-weight:600;color:${statusColor};">${pkgStatus || '—'}</td>
+            <td style="text-align:center;padding:3px;">${purposeSel}</td>
+        </tr>`;
     });
+    tbody.innerHTML = rows.join('');
+    renderPagination('valPagination', page, Math.max(1, Math.ceil(data.length / PAGE_SIZE)), '_valGoPage');
 }
 
 function renderTagSpecialityTable() {
