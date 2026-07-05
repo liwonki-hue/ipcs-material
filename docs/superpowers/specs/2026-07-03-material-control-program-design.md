@@ -142,6 +142,37 @@ BOM 화면에서 Material 정보가 MAT1(재질 등급)/MAT2(실제 규격)로 �
 - `project_stb_matcode_redesign.md` — STB matcode 재설계 이슈, 이번 새 Bolt&Gasket 시트의 실측 BoltSize/BoltLength로 재적재하며 사실상 해소됨(B16=ALLOY 포함 전체 4종 마감 라벨 확정)
 - `project_lb_sb_bom_verification.md` — 이번 세션 전체 작업 상세 기록
 
+---
+
+## Material Summary 탭 신설 (Material Status 섹션, 2026-07-05 설계 승인)
+
+### 배경
+사용자가 "Material Status" 섹션(사이드바 `Material Status` → `#material_status`, 기존 STOCK/SHORTAGE/SURPLUS 탭 보유)에 BOM 탭 테이블 구조를 참고한 새 탭을 요청. 등록된 모든 자재를 System/ISO/Line/Item/Mat1/Mat2/Size/Unit/BOM Qty/Received/Issued/Stock 컬럼으로 보여주되 MatCode·Description·Packing List 정보는 제외.
+
+### 범위 확인 (브레인스토밍으로 확정)
+- 처음엔 "전체 카테고리(Valve/Spool/Support/Speciality 포함)"로 요청했으나, 각 카테고리 실제 스키마 확인 결과 구조가 서로 달라 그대로 통합하면 빈 칸이 많이 생기는 문제 발견.
+  - Support: System/Line No 대신 Support Tag, Mat1/Mat2 대신 단일 Matl.
+  - Valve/Speciality: Mat1/Mat2 분리 없음, BOM Qty/Issued Qty 자체를 추적하지 않음(Received/Stock만 존재).
+  - Spool: ISO Drawing/Line No/Mat1/Mat2/BOM Qty/Issued Qty 개념 자체가 없음(입고 실적만 관리).
+- **최종 확정 범위: Piping/Fitting/Others만** (BOM 탭 `#bomTable`이 다루는 것과 동일한 3개 카테고리, `bom_detail` 테이블 기준 약 39,272행). Valve/Spool/Support/Speciality는 이번 범위에서 제외.
+
+### 계산 방식 확정
+- Received/Issued/Stock은 **MatCode 전체(프로젝트 전체 재고) 기준**으로 계산 — 특정 BOM 라인에 실제 배분된 양이 아니라, 그 MatCode가 프로젝트 전체에서 얼마나 입고/불출/재고 상태인지를 참고용으로 보여줌.
+- Material Finding(ISO Drawing 모드)의 라인별 FIFO 배분 방식은 **채택하지 않음** — 코드 주석에도 명시되어 있듯 ISO 한 장을 특정했을 때만 저렴하고, 전체 자재(39,272행)를 대상으로 하면 계산 비용이 너무 커짐.
+- 재사용 로직: 기존 STOCK 탭의 `buildRecvMaps`(`isReceivingActive && isKpiReceiving` 필터, `forcedCats=['Pipe','Fitting','Others']`)와 `getIssuedQtyMap`을 그대로 재사용. 신규 SQL 뷰나 백엔드 API 불필요.
+
+### UI/데이터 설계
+- 탭 위치: Material Status 섹션 탭바에 `MATERIAL SUMMARY`를 신규 추가(STOCK/SHORTAGE/SURPLUS와 동일 레벨).
+- 서브탭: BOM 탭과 동일하게 **Piping / Fitting / Others** 3분할(STOCK 탭의 Piping/Others 2분할과는 다름 — 데이터 원본이 3개로 나뉘어 있는 BOM 탭 패턴을 따름).
+- 필터: Search(ISO/Line/Description), System, Item, Mat1, Mat2, Size 드롭다운 + Search/Clear/Export 버튼. PKG/PKG NO/DOC 필터는 제외.
+- 컬럼(12개, MatCode·Description 제외): `System | ISO Drawing | Line No. | Item | Mat 1 | Mat 2 | Size | Unit | BOM Qty | Received | Issued | Stock`.
+- 데이터 조회: BOM 탭의 `renderBomTable()`과 동일하게 `bom_detail`을 `range()` 서버사이드 페이지네이션으로 조회(System/Item/Mat1/Mat2/Size/Search 필터 동일 적용), 현재 페이지 행들의 MatCode를 Received/Issued 맵에서 조회해 붙임.
+- Export: 기존 탭들과 동일하게 Export Excel 버튼 포함(현재 필터 조건 전체 결과 내보내기).
+
+### 남은 일
+- [ ] 구현 (신규 탭 HTML + `renderMaterialSummaryTable()` 등 app.js 로직)
+- [ ] 스모크 테스트: Piping/Fitting/Others 서브탭 전환, 필터, 페이지네이션, Export 확인
+
 ## 현재 상태 / 다음 할 일 (Valve 적용 사례 기준, 마지막 갱신: 2026-07-03)
 
 - [x] 통짜/NULL tag 버그 수정 및 검증 완료 (DB 반영됨, 1,117건)
