@@ -663,7 +663,6 @@ function updateDashboard() {
     if (!supabaseClient) return;
 
     if (typeof updateCategoryCharts === 'function') updateCategoryCharts();
-    if (typeof renderPackageLogisticsStatus === 'function') renderPackageLogisticsStatus();
     if (typeof renderPendingItemsList === 'function') renderPendingItemsList();
 
     supabaseClient.from('v_iso_stage_status').select('*').limit(10000).then(({ data, error }) => {
@@ -709,35 +708,6 @@ function updateDashboard() {
     }).catch(err => console.error("Dashboard Sync Fail:", err));
 }
 
-// 패키지 물류 현황(Preparing/Shipping/On-Site) — pl_updates 캐시(_plUpdatesCache) 기반, 추가 조회 없음
-function renderPackageLogisticsStatus() {
-    const container = document.getElementById('pkgLogisticsStatus');
-    if (!container) return;
-
-    const STAGES = [
-        { key: 'Preparing', label: 'Preparing', icon: 'fa-box-open', color: '#888' },
-        { key: 'Shipping',  label: 'Shipping',  color: '#1565c0', icon: 'fa-ship' },
-        { key: 'On-Site',   label: 'On-Site',   color: '#2e7d32', icon: 'fa-warehouse' },
-    ];
-    const counts = { Preparing: 0, Shipping: 0, 'On-Site': 0 };
-    const rows = Object.values(_plUpdatesCache || {});
-    rows.forEach(r => { if (counts.hasOwnProperty(r.status)) counts[r.status]++; });
-    const total = rows.length;
-
-    container.innerHTML = STAGES.map(s => {
-        const cnt = counts[s.key];
-        const pct = total > 0 ? (cnt / total * 100).toFixed(1) : '0.0';
-        return `
-        <div style="border:1px solid #e0e6ef;border-radius:6px;padding:14px;text-align:center;">
-            <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.5px;">
-                <i class="fas ${s.icon}" style="color:${s.color};margin-right:4px;"></i>${s.label}
-            </div>
-            <div style="font-size:28px;font-weight:700;color:${s.color};margin-top:4px;">${cnt.toLocaleString()}</div>
-            <div style="font-size:11px;color:#888;margin-top:2px;">${pct}% of ${total.toLocaleString()} PKG</div>
-        </div>`;
-    }).join('');
-}
-
 // 대표 Item(MatCode/Description에서 추출한 Item 이름) 기준 BOM vs Received 집계.
 // Mat1/Mat2/Size는 무시하고 순수 Item 단위로만 묶어 "지금 입고가 밀려있는 대표 품목"을 보여줌.
 // Pipe/Fitting/Others는 db.bom(matCode 단위) + db.receiving, Valve는 loadValveStockBom()(Tag 단위) 사용.
@@ -778,16 +748,24 @@ async function computeItemReceivingSummary() {
 }
 
 // 입고율(Received/BOM)이 낮은 대표 Item Top 10 — 완전 입고(100% 이상)된 Item은 제외
+// updateDashboard()가 초기 로딩 시 데이터 동기화 전/후로 두 번 호출되는데, 비동기 조회 순서가
+// 뒤바뀌면 먼저 시작된(데이터 없는) 호출이 나중에 끝나 화면을 덮어쓸 수 있음 — 요청 순번으로 방지.
+let _pendingItemsReqId = 0;
 async function renderPendingItemsList() {
     const container = document.getElementById('pendingItemsList');
     if (!container) return;
+    const reqId = ++_pendingItemsReqId;
 
     const items = await computeItemReceivingSummary();
-    const pending = items
+    if (reqId !== _pendingItemsReqId) return; // 이후에 시작된 더 최신 호출이 있으면 이 결과는 폐기
+
+    const allPending = items
         .filter(r => r.bom > 0 && r.rec < r.bom)
-        .map(r => ({ ...r, pct: r.rec / r.bom * 100 }))
-        .sort((a, b) => a.pct - b.pct)
-        .slice(0, 10);
+        .map(r => ({ ...r, pct: r.rec / r.bom * 100 }));
+    // Pipe는 물량 비중이 가장 큰 핵심 자재라 입고율 순위와 무관하게 항상 최상단 고정
+    const pipeItem = allPending.find(r => r.item === 'PIPE');
+    const rest = allPending.filter(r => r.item !== 'PIPE').sort((a, b) => a.pct - b.pct);
+    const pending = (pipeItem ? [pipeItem, ...rest] : rest).slice(0, 10);
 
     if (pending.length === 0) {
         container.innerHTML = '<div class="empty-state-small">모든 대표 Item이 100% 입고 완료되었습니다.</div>';
