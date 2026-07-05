@@ -664,6 +664,7 @@ function updateDashboard() {
 
     if (typeof updateCategoryCharts === 'function') updateCategoryCharts();
     if (typeof renderPackageLogisticsStatus === 'function') renderPackageLogisticsStatus();
+    if (typeof renderPendingItemsList === 'function') renderPendingItemsList();
 
     supabaseClient.from('v_iso_stage_status').select('*').limit(10000).then(({ data, error }) => {
         if (error) { console.error('v_iso_stage_status error:', error); return; }
@@ -733,6 +734,83 @@ function renderPackageLogisticsStatus() {
             </div>
             <div style="font-size:28px;font-weight:700;color:${s.color};margin-top:4px;">${cnt.toLocaleString()}</div>
             <div style="font-size:11px;color:#888;margin-top:2px;">${pct}% of ${total.toLocaleString()} PKG</div>
+        </div>`;
+    }).join('');
+}
+
+// 대표 Item(MatCode/Description에서 추출한 Item 이름) 기준 BOM vs Received 집계.
+// Mat1/Mat2/Size는 무시하고 순수 Item 단위로만 묶어 "지금 입고가 밀려있는 대표 품목"을 보여줌.
+// Pipe/Fitting/Others는 db.bom(matCode 단위) + db.receiving, Valve는 loadValveStockBom()(Tag 단위) 사용.
+async function computeItemReceivingSummary() {
+    const agg = {}; // item -> { item, unit, bom, rec }
+
+    const recByMatCode = {};
+    db.receiving.forEach(r => {
+        if (!isReceivingActive(r.plNo)) return;
+        if (!['Pipe', 'Fitting', 'Others'].includes(r.category)) return;
+        recByMatCode[r.matCode] = (recByMatCode[r.matCode] || 0) + (r.qty || 0);
+    });
+    db.bom.forEach(b => {
+        if (!['Pipe', 'Fitting', 'Others'].includes(b.category)) return;
+        const item = window.extractItemFromMatCode(b.matCode);
+        if (!item || item === '-') return;
+        if (!agg[item]) agg[item] = { item, unit: b.category === 'Pipe' ? 'M' : 'EA', bom: 0, rec: 0 };
+        agg[item].bom += b.qty;
+    });
+    Object.keys(recByMatCode).forEach(mc => {
+        const item = window.extractItemFromMatCode(mc);
+        if (!item || item === '-' || !agg[item]) return;
+        agg[item].rec += recByMatCode[mc];
+    });
+
+    // Valve: MatCode가 없어(Tag 매칭) 별도 소스 — bom_detail(Tag 단위) + buildValveRecvMaps()
+    const valveBomRows = await loadValveStockBom();
+    const { recMap: valveRecMap } = buildValveRecvMaps();
+    valveBomRows.forEach(b => {
+        const item = window.extractItemFromDesc(b.full_description);
+        if (!item || item === '-') return;
+        if (!agg[item]) agg[item] = { item, unit: 'EA', bom: 0, rec: 0 };
+        agg[item].bom += (b.qty || 0);
+        agg[item].rec += (valveRecMap[b.tag] || 0);
+    });
+
+    return Object.values(agg);
+}
+
+// 입고율(Received/BOM)이 낮은 대표 Item Top 10 — 완전 입고(100% 이상)된 Item은 제외
+async function renderPendingItemsList() {
+    const container = document.getElementById('pendingItemsList');
+    if (!container) return;
+
+    const items = await computeItemReceivingSummary();
+    const pending = items
+        .filter(r => r.bom > 0 && r.rec < r.bom)
+        .map(r => ({ ...r, pct: r.rec / r.bom * 100 }))
+        .sort((a, b) => a.pct - b.pct)
+        .slice(0, 10);
+
+    if (pending.length === 0) {
+        container.innerHTML = '<div class="empty-state-small">모든 대표 Item이 100% 입고 완료되었습니다.</div>';
+        return;
+    }
+
+    container.innerHTML = pending.map(r => {
+        const color = r.pct >= 70 ? '#e65100' : '#c62828';
+        const shortage = r.bom - r.rec;
+        return `
+        <div style="margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">
+                <span style="font-size:12px;font-weight:700;color:#0A2540;">${r.item} <span style="font-size:10px;font-weight:400;color:#888;">(${r.unit})</span></span>
+                <span style="font-size:13px;font-weight:800;color:${color};">${r.pct.toFixed(1)}%</span>
+            </div>
+            <div style="position:relative;height:14px;background:#e8edf5;border-radius:4px;overflow:hidden;">
+                <div style="position:absolute;left:0;top:0;height:100%;width:${Math.min(r.pct,100).toFixed(1)}%;background:${color};border-radius:4px;"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:2px;font-size:10px;color:#555;">
+                <span>BOM <b style="color:#0A2540;">${Math.round(r.bom).toLocaleString()} ${r.unit}</b></span>
+                <span>Received <b style="color:#1565c0;">${Math.round(r.rec).toLocaleString()} ${r.unit}</b></span>
+                <span style="color:#c62828;font-weight:700;">Shortage -${Math.round(shortage).toLocaleString()} ${r.unit}</span>
+            </div>
         </div>`;
     }).join('');
 }
