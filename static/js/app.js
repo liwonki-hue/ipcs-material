@@ -1394,7 +1394,7 @@ async function renderMssTable() {
             <td style="text-align:center;font-weight:600;white-space:nowrap;">${item}</td>
             <td style="text-align:center;white-space:nowrap;">${b.mat1 || '-'}</td>
             <td style="text-align:center;white-space:nowrap;">${b.mat2 || '-'}</td>
-            <td style="text-align:center;font-weight:600;white-space:nowrap;">${size}</td>
+            <td style="text-align:center;font-weight:600;">${size}</td>
             <td style="text-align:center;white-space:nowrap;">${b.uom || 'EA'}</td>
             <td style="text-align:center;white-space:nowrap;">${parseFloat(b.qty || 0).toFixed(2)}</td>
             <td style="text-align:center;white-space:nowrap;">${recQty.toFixed(2)}</td>
@@ -2389,7 +2389,7 @@ async function renderBomTable() {
             <td style="text-align:center;font-weight:600;white-space:nowrap;">${item}</td>
             <td style="text-align:center;white-space:nowrap;">${mat1Val}</td>
             <td style="text-align:center;white-space:nowrap;">${mat2Val}</td>
-            <td style="text-align:center;font-weight:600;white-space:nowrap;">${size}</td>
+            <td style="text-align:center;font-weight:600;">${size}</td>
             <td title="${desc}">${desc.length > 55 ? desc.substring(0, 52) + '...' : desc}</td>
             <td style="text-align:center;white-space:nowrap;">${b.uom || 'EA'}</td>
             <td style="text-align:center;white-space:nowrap;">${parseFloat(b.qty || 0).toFixed(2)}</td>
