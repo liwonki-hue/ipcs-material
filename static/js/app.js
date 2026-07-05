@@ -629,13 +629,14 @@ function renderBulkProgressBars(categories) {
         const surplus  = rec > bom ? rec - bom : 0;
         const shortage = rec < bom ? bom - rec : 0;
         const fillPct  = Math.min(pct, 100);
-        const barColor = pct >= 90 ? '#2e7d32' : pct >= 70 ? '#e65100' : '#c62828';
-        const pctColor = pct >= 90 ? '#2e7d32' : pct >= 70 ? '#e65100' : '#c62828';
+        // 부족(Shortage)은 문제가 아니라 순차 입고 진행 중인 정상 상태 — 경고색(빨강) 대신 진행중 색(파랑)으로 표시
+        const barColor = pct >= 90 ? '#2e7d32' : '#1565c0';
+        const pctColor = pct >= 90 ? '#2e7d32' : '#1565c0';
 
         const diffHtml = surplus > 0
             ? `<span style="color:#e65100;font-weight:700;">Surplus +${Math.round(surplus).toLocaleString()} ${unit}</span>`
             : shortage > 0
-            ? `<span style="color:#c62828;font-weight:700;">Shortage -${Math.round(shortage).toLocaleString()} ${unit}</span>`
+            ? `<span style="color:#1565c0;font-weight:700;">Shortage -${Math.round(shortage).toLocaleString()} ${unit}</span>`
             : `<span style="color:#2e7d32;font-weight:700;">✓ Complete</span>`;
 
         return `
@@ -774,27 +775,29 @@ async function renderPendingItemsList() {
     const { items, pipeSizes } = await computeItemReceivingSummary();
     if (reqId !== _pendingItemsReqId) return; // 이후에 시작된 더 최신 호출이 있으면 이 결과는 폐기
 
-    // Pipe는 하나로 뭉뚱그리지 않고 입고율이 가장 낮은 대표 Size 2개를 최상단에 고정 표시
-    // (소구경(1"/2" 등)이 후순위로 밀려 늦게 들어오는 경향이 있어 별도로 짚어주는 게 실무에 유용)
+    // 입고율(%)이 아니라 절대 부족 수량(BOM-Received) 기준 정렬 — BOM 물량 자체가 큰데
+    // 아직 안 들어온 품목이 실무적으로 더 급함(수량 적은 품목이 0%인 것보다 중요).
+    // Pipe는 하나로 뭉뚱그리지 않고 부족 수량이 가장 큰 대표 Size 2개를 최상단에 고정 표시.
     const pipeSizeRows = pipeSizes
         .filter(r => r.bom > 0 && r.rec < r.bom)
         .map(r => ({ item: `PIPE (${r.size})`, unit: 'M', bom: r.bom, rec: r.rec, pct: r.rec / r.bom * 100 }))
-        .sort((a, b) => a.pct - b.pct)
+        .sort((a, b) => (b.bom - b.rec) - (a.bom - a.rec))
         .slice(0, 2);
 
     const allPending = items
         .filter(r => r.item !== 'PIPE' && r.bom > 0 && r.rec < r.bom)
         .map(r => ({ ...r, pct: r.rec / r.bom * 100 }))
-        .sort((a, b) => a.pct - b.pct);
+        .sort((a, b) => (b.bom - b.rec) - (a.bom - a.rec));
     const pending = [...pipeSizeRows, ...allPending].slice(0, 10);
 
     if (pending.length === 0) {
-        container.innerHTML = '<div class="empty-state-small">모든 대표 Item이 100% 입고 완료되었습니다.</div>';
+        container.innerHTML = '<div class="empty-state-small">All representative items are 100% received.</div>';
         return;
     }
 
     container.innerHTML = pending.map(r => {
-        const color = r.pct >= 70 ? '#e65100' : '#c62828';
+        // 부족(Shortage)은 순차 입고 진행 중인 정상 상태 — 경고색(빨강) 대신 진행중 색(파랑)
+        const color = '#1565c0';
         const shortage = r.bom - r.rec;
         return `
         <div style="margin-bottom:10px;">
@@ -808,7 +811,7 @@ async function renderPendingItemsList() {
             <div style="display:flex;justify-content:space-between;margin-top:2px;font-size:10px;color:#555;">
                 <span>BOM <b style="color:#0A2540;">${Math.round(r.bom).toLocaleString()} ${r.unit}</b></span>
                 <span>Received <b style="color:#1565c0;">${Math.round(r.rec).toLocaleString()} ${r.unit}</b></span>
-                <span style="color:#c62828;font-weight:700;">Shortage -${Math.round(shortage).toLocaleString()} ${r.unit}</span>
+                <span style="color:#1565c0;font-weight:700;">Shortage -${Math.round(shortage).toLocaleString()} ${r.unit}</span>
             </div>
         </div>`;
     }).join('');
@@ -870,7 +873,8 @@ function updateCategoryCharts() {
         // Category KPI cards — % progress per category (반환값은 Overall 평균 계산에 재사용)
         function setCatKpi(pctId, subId, bom, rec, unit) {
             const pct = bom > 0 ? (rec / bom * 100) : 0;
-            const color = pct >= 90 ? '#2e7d32' : pct >= 70 ? '#e65100' : '#c62828';
+            // 자재는 순차적으로 입고되는 중 — 진행률이 낮다고 경고색(빨강)을 쓰지 않음
+            const color = pct >= 90 ? '#2e7d32' : '#1565c0';
             const elPct = document.getElementById(pctId);
             if (elPct) { elPct.textContent = pct.toFixed(1) + '%'; elPct.style.color = color; }
             const elSub = document.getElementById(subId);
@@ -890,7 +894,7 @@ function updateCategoryCharts() {
         // Overall — 5개 카테고리(Pipe/Fitting/Valve/Others/Support) 진행률 단순 평균
         // (단위가 서로 달라 수량 합산 대신 %를 평균 — 카드별 표시값과 일관성 유지)
         const overallPct = (pctPipe + pctFit + pctValve + pctOth + pctSup) / 5;
-        const overallColor = overallPct >= 90 ? '#2e7d32' : overallPct >= 70 ? '#e65100' : '#c62828';
+        const overallColor = overallPct >= 90 ? '#2e7d32' : '#1565c0';
         const elOverall = document.getElementById('kpi-overall-pct');
         if (elOverall) { elOverall.textContent = overallPct.toFixed(1) + '%'; elOverall.style.color = overallColor; }
 
@@ -4605,7 +4609,7 @@ function attachEventListeners() {
                     <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${safeDesc}">${safeDesc.length > 40 ? safeDesc.substring(0,40)+'...' : safeDesc}</td>
                     <td style="text-align:center;">${b.uom || 'EA'}</td>
                     <td style="text-align:center;">${qty.toFixed(2)}</td>
-                    <td style="text-align:center;" title="프로젝트 전체 입고량: ${totalRecAllProject.toFixed(2)}">${receivedQty.toFixed(2)}</td>
+                    <td style="text-align:center;" title="Total received across project: ${totalRecAllProject.toFixed(2)}">${receivedQty.toFixed(2)}</td>
                     <td style="text-align:center;color:${issuedQty > 0 ? '#e65100' : '#999'};">${issuedQty.toFixed(2)}</td>
                     <td style="text-align:center;"><strong style="color:${isFullyCovered ? '#2e7d32' : (stockQty > 0 ? '#e65100' : '#c62828')};">${stockQty.toFixed(2)}</strong></td>
                     <td style="text-align:left;font-size:11px;line-height:1.6;">${renderPkgListCell(fifoPkgMap)}</td>
@@ -5414,7 +5418,7 @@ function renderShippingTable(rows) {
             ${packingCell}
             ${pkgNoCell}
             <td style="padding:3px;">
-                <input type="text" style="${PL_INPUT_CSS}font-weight:600;" data-pkg="${pkg}" data-field="item" value="${(r.item || '-').replace(/"/g, '&quot;')}" title="자동 추출값이 기본. 여러 자재가 섞인 Package No는 대표 Item을 직접 입력해 덮어쓸 수 있음">
+                <input type="text" style="${PL_INPUT_CSS}font-weight:600;" data-pkg="${pkg}" data-field="item" value="${(r.item || '-').replace(/"/g, '&quot;')}" title="Auto-extracted by default. For Package Nos with mixed materials, you can manually enter a representative Item to override.">
             </td>
             <td style="text-align:center;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.description}">${r.description}</td>
             <td style="text-align:center;font-weight:600;">${qtyDisplay}</td>
