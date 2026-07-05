@@ -176,6 +176,7 @@ window.extractItemFromDesc = function(desc) {
         'FLANGE-BLIND', 'FLANGE-SLIP', 'FLANGE-WELD', 'FLANGE-LAP',
         'COUPLING-HALF', 'COUPLING-FULL',
         'SWAGE-CON', 'SWAGE-ECC',
+        'Y-STRAINER',
         'ELBOW LR', 'ELBOW SR',
         'NIPPLE', 'WELDOLET', 'SOCKOLET', 'THREADOLET',
     ];
