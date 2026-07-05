@@ -1333,8 +1333,13 @@ async function renderMssTable() {
                 if (m) q = q.ilike('mat_code', m[2] ? `%-${m[1]}"x${m[2]}%` : `%-${m[1]}"%`);
             } else {
                 const toD = v => 'D' + Math.round(parseFloat(v) * 10).toString().padStart(3, '0');
-                const single = size.match(/([\d.]+)"/);
-                if (single) q = q.ilike('mat_code', `%-${toD(single[1])}-%`);
+                const dualMatch = size.match(/([\d.]+)"×([\d.]+)"/);
+                if (dualMatch) {
+                    q = q.ilike('mat_code', `%${toD(dualMatch[1])}${toD(dualMatch[2])}%`);
+                } else {
+                    const single = size.match(/([\d.]+)"/);
+                    if (single) q = q.ilike('mat_code', `%-${toD(single[1])}-%`);
+                }
             }
         }
         return q;
