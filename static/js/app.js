@@ -1363,6 +1363,11 @@ async function renderMssTable() {
     }
 
     const data = dataRes.data || [];
+    const { recMap } = buildRecvMaps(r =>
+        isReceivingActive(r.plNo) && isKpiReceiving(r) &&
+        ['Pipe', 'Fitting', 'Others'].includes(r.category)
+    );
+    const issMap = getIssuedQtyMap(r => ['Pipe', 'Fitting', 'Others'].includes(r.category));
     const totalCount = countRes.count || 0;
 
     const label = document.getElementById('mssCountLabel');
@@ -1378,6 +1383,10 @@ async function renderMssTable() {
         const item = window.extractItemFromDesc(desc);
         if (size === '-' && /STEAM TRAP/i.test(item)) size = '1"';
 
+        const recQty = recMap[matUpper] || 0;
+        const issQty = issMap[matUpper] || 0;
+        const stockQty = Math.max(0, recQty - issQty);
+
         return `<tr>
             <td style="text-align:center;white-space:nowrap;">${b.system || '-'}</td>
             <td style="text-align:center;white-space:nowrap;">${b.iso_dwg_no || '-'}</td>
@@ -1388,9 +1397,9 @@ async function renderMssTable() {
             <td style="text-align:center;font-weight:600;white-space:nowrap;">${size}</td>
             <td style="text-align:center;white-space:nowrap;">${b.uom || 'EA'}</td>
             <td style="text-align:center;white-space:nowrap;">${parseFloat(b.qty || 0).toFixed(2)}</td>
-            <td style="text-align:center;white-space:nowrap;">—</td>
-            <td style="text-align:center;white-space:nowrap;">—</td>
-            <td style="text-align:center;white-space:nowrap;font-weight:700;">—</td>
+            <td style="text-align:center;white-space:nowrap;">${recQty.toFixed(2)}</td>
+            <td style="text-align:center;white-space:nowrap;">${issQty.toFixed(2)}</td>
+            <td style="text-align:center;white-space:nowrap;font-weight:700;">${stockQty.toFixed(2)}</td>
         </tr>`;
     }).join('');
 
