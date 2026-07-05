@@ -2706,7 +2706,7 @@ async function renderVendorTable() {
 }
 window._vendorGoPage = function(p) { currentVendorPage = p; renderVendorTable(); };
 
-function _renderRecvCore(cfg) {
+async function _renderRecvCore(cfg) {
     let tbody = document.querySelector(`#${cfg.tableId} tbody`);
     if (!tbody) return;
     tbody.innerHTML = '';
@@ -2714,6 +2714,7 @@ function _renderRecvCore(cfg) {
     const hideTag     = !!cfg.hideTag;
     const hideMatCode = !!cfg.hideMatCode;
     const hideType    = !!cfg.hideType;
+    const splitMat    = !!cfg.mat1Id; // BOM처럼 Mat 1/Mat 2로 분리 표시할지 (Bulk 탭만 true)
 
     const search  = (document.getElementById(cfg.searchId)?.value || '').trim().toUpperCase();
     const doc     = document.getElementById(cfg.docId)?.value    || 'All';
@@ -2722,8 +2723,17 @@ function _renderRecvCore(cfg) {
     const itemF   = document.getElementById(cfg.itemId)?.value   || 'All';
     const sizeF   = document.getElementById(cfg.sizeId)?.value   || 'All';
     const statusF = document.getElementById(cfg.statusId)?.value || 'All';
+    const mat1F   = splitMat ? (document.getElementById(cfg.mat1Id)?.value || 'All') : 'All';
+    const mat2F   = splitMat ? (document.getElementById(cfg.mat2Id)?.value || 'All') : 'All';
+    const ratingF = splitMat ? (document.getElementById(cfg.ratingId)?.value || 'All') : 'All';
 
     const masterMap = _buildMasterMap();
+    let mat12Map = {};
+    if (splitMat) {
+        const agg = await loadMssItemAgg();
+        agg.forEach(r => { mat12Map[r.matCode] = { mat1: r.mat1, mat2: r.mat2 }; });
+        refreshMat12RatingFilterOptions(cfg, agg, masterMap);
+    }
 
     const data = db.receiving.filter(r => {
         const matchSearch  = !search || (r.matCode||'').toUpperCase().includes(search) || r.plNo.toUpperCase().includes(search) || (r.category||'').toUpperCase().includes(search) || r.desc.toUpperCase().includes(search);
@@ -2743,7 +2753,11 @@ function _renderRecvCore(cfg) {
             : window.extractSizeFromLineNo(db.bomTagMap[(r.tag||'').toUpperCase()]?.lineNo) === sizeF);
         const pkgSt        = (_plUpdatesCache[r.plNo] || {}).status || '';
         const matchStatusF = statusF === 'All' || pkgSt === statusF;
-        return matchSearch && matchDoc && matchPkg && matchCat && matchItemF && matchSizeF && matchStatusF;
+        const m12          = splitMat ? (mat12Map[effMat] || {}) : {};
+        const matchMat1    = mat1F   === 'All' || (m12.mat1 || '-') === mat1F;
+        const matchMat2    = mat2F   === 'All' || (m12.mat2 || '-') === mat2F;
+        const matchRating  = ratingF === 'All' || getRatingForMatCode(effMat, masterMap) === ratingF;
+        return matchSearch && matchDoc && matchPkg && matchCat && matchItemF && matchSizeF && matchStatusF && matchMat1 && matchMat2 && matchRating;
     }).sort((a, b) => {
         if (cfg.catOrder) {
             const oa = cfg.catOrder[a.category] ?? 99, ob = cfg.catOrder[b.category] ?? 99;
@@ -2776,7 +2790,10 @@ function _renderRecvCore(cfg) {
         const mData  = masterMap[effMat] || {};
         const mcParts = (effMat || '').split('-');
         const matl   = mData.matlDesc || mcParts[1] || '-';
-        const rating = mData.classDesc || mcParts[3] || '-';
+        const rating = getRatingForMatCode(effMat, masterMap);
+        const m12    = splitMat ? (mat12Map[effMat] || {}) : {};
+        const mat1Val = m12.mat1 || '-';
+        const mat2Val = m12.mat2 || '-';
 
         const pkgStatus  = (_plUpdatesCache[r.plNo] || {}).status || '';
         const isOnSite   = pkgStatus === 'On-Site';
@@ -2797,7 +2814,9 @@ function _renderRecvCore(cfg) {
             ${hideTag ? '' : `<td style="text-align:center;">${r.tag || '-'}</td>`}
             <td style="font-weight:600;">${item}</td>
             ${hideType ? '' : `<td style="text-align:center;font-weight:600;white-space:nowrap;color:${flangeType!=='-'?'#1565c0':'#aaa'};">${flangeType}</td>`}
-            <td style="text-align:center;font-size:11px;">${matl}</td>
+            ${splitMat
+                ? `<td style="text-align:center;font-size:11px;">${mat1Val}</td><td style="text-align:center;font-size:11px;">${mat2Val}</td>`
+                : `<td style="text-align:center;font-size:11px;">${matl}</td>`}
             <td style="font-weight:600;white-space:nowrap;">${size}</td>
             <td style="text-align:center;font-size:11px;">${rating}</td>
             <td style="white-space:nowrap;text-align:center;">${r.unit || 'EA'}</td>
@@ -2808,6 +2827,31 @@ function _renderRecvCore(cfg) {
     });
     tbody.innerHTML = rows.join('');
     renderPagination(cfg.paginationId, page, Math.max(1, Math.ceil(data.length / PAGE_SIZE)), cfg.goPageFn);
+}
+
+// Mat 1/Mat 2/Rating 필터 옵션을 카테고리 범위 내에서 1회만 채움(선택값 유지를 위해 재채움 안 함)
+function refreshMat12RatingFilterOptions(cfg, agg, masterMap) {
+    const mat1El   = document.getElementById(cfg.mat1Id);
+    const mat2El   = document.getElementById(cfg.mat2Id);
+    const ratingEl = document.getElementById(cfg.ratingId);
+    if (!mat1El && !mat2El && !ratingEl) return;
+    const catRows = Array.isArray(cfg.forcedCats) ? agg.filter(r => cfg.forcedCats.includes(r.category)) : agg;
+
+    if (mat1El && mat1El.dataset.filled !== '1') {
+        const vals = [...new Set(catRows.map(r => r.mat1).filter(Boolean))].sort();
+        mat1El.innerHTML = '<option value="All">All Mat 1</option>' + vals.map(v => `<option value="${v.replace(/"/g, '&quot;')}">${v}</option>`).join('');
+        mat1El.dataset.filled = '1';
+    }
+    if (mat2El && mat2El.dataset.filled !== '1') {
+        const vals = [...new Set(catRows.map(r => r.mat2).filter(Boolean))].sort();
+        mat2El.innerHTML = '<option value="All">All Mat 2</option>' + vals.map(v => `<option value="${v.replace(/"/g, '&quot;')}">${v}</option>`).join('');
+        mat2El.dataset.filled = '1';
+    }
+    if (ratingEl && ratingEl.dataset.filled !== '1') {
+        const vals = [...new Set(catRows.map(r => getRatingForMatCode(r.matCode, masterMap)).filter(v => v && v !== '-'))].sort();
+        ratingEl.innerHTML = '<option value="All">All Ratings</option>' + vals.map(v => `<option value="${v.replace(/"/g, '&quot;')}">${v}</option>`).join('');
+        ratingEl.dataset.filled = '1';
+    }
 }
 
 // 현재 활성 receiving 섹션/탭 상태
@@ -2825,6 +2869,7 @@ function renderBulkPipingTable() {
         tableId: 'plTable', searchId: 'plItemSearch',
         docId: 'plDocFilter', pkgId: 'plPkgFilter', statusId: 'plStatusFilter',
         itemId: 'plItemFilter', sizeId: 'plSizeFilter',
+        mat1Id: 'plMat1Filter', mat2Id: 'plMat2Filter', ratingId: 'plRatingFilter',
         forcedCats: ['Pipe'],
         catFirst: true,
         hideTag: true,
@@ -2840,6 +2885,7 @@ function renderBulkFittingTable() {
         tableId: 'fitTable', searchId: 'fitItemSearch',
         docId: 'fitDocFilter', pkgId: 'fitPkgFilter', statusId: 'fitStatusFilter',
         itemId: 'fitItemFilter', sizeId: 'fitSizeFilter',
+        mat1Id: 'fitMat1Filter', mat2Id: 'fitMat2Filter', ratingId: 'fitRatingFilter',
         forcedCats: ['Fitting'],
         catFirst: true,
         hideTag: true,
@@ -2853,6 +2899,7 @@ function renderBulkOthersTable() {
         tableId: 'othTable', searchId: 'othItemSearch',
         docId: 'othDocFilter', pkgId: 'othPkgFilter', statusId: 'othStatusFilter',
         itemId: 'othItemFilter', sizeId: 'othSizeFilter',
+        mat1Id: 'othMat1Filter', mat2Id: 'othMat2Filter', ratingId: 'othRatingFilter',
         forcedCats: ['Others'],
         catFirst: true,
         hideTag: true,
