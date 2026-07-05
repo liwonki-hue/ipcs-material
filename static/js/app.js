@@ -189,6 +189,11 @@ window.extractItemFromDesc = function(desc) {
     // Safety / Control Valve 직접 감지 (description 전체 기준)
     if (/SAFETY VALVE|\bPSV\b|\bPRV\b/.test(upper)) return 'SAFETY VALVE';
     if (/\b(TCV|LCV|FCV|PCV)\b/.test(upper) || /\bXV\b/.test(upper) || /CONTROL VALVE/.test(upper)) return 'CONTROL VALVE';
+    // Valve Receiving/Packing List 형식 감지: "6\" 300 A216-WCB Flexible wedge GATE Valve"처럼
+    // Item이 맨 앞이 아니라 맨 뒤에 오는 포맷 — 앞쪽 자재 스펙(A216 등)을 Item으로 오인하지 않도록
+    // "{TYPE} VALVE"를 문자열 어디서든 우선 탐지
+    const valveTail = upper.match(/\b(GATE|GLOBE|BALL|CHECK|BUTTERFLY|PLUG|NEEDLE|DIAPHRAGM)\s+VALVE\b/);
+    if (valveTail) return valveTail[1] + ' VALVE';
     // 1단계: 앞의 치수 제거 (3", DN80, 2"x1" 등) — 숫자·따옴표·슬래시 연속 제거
     let s = desc2.replace(/^[\d"'\s\/\-×xX]+/, '').trim();
     // 2단계: 치수 뒤에 오는 스펙 표기 제거 (300#, Sch 120, Class 150, 단독 # 등)
