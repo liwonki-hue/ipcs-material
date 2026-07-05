@@ -4888,7 +4888,8 @@ function buildShippingGroupFilter(data) {
         });
     }
 
-    const items = [...new Set(data.map(r => r.item).filter(Boolean))].sort();
+    // 수동 지정된 Item(pl_updates.item)이 있으면 그 값 기준으로 필터 옵션 구성
+    const items = [...new Set(data.map(r => mergeRow(r).item).filter(v => v && v !== '-'))].sort();
     const itemSel = document.getElementById('shippingItemFilter');
     if (itemSel) {
         itemSel.innerHTML = '<option value="">All</option>';
@@ -4911,7 +4912,7 @@ function getShippingFiltered() {
         .filter(r => {
             if (group && r.packing !== group) return false;
             if (pkgF  && r.pkg_no  !== pkgF)  return false;
-            if (itemF && r.item    !== itemF) return false;
+            if (itemF && mergeRow(r).item !== itemF) return false;
             if (search && !r.pkg_no.toLowerCase().includes(search)
                        && !r.description.toLowerCase().includes(search)) return false;
             const needMerge = statusF || customF || (_shippingKpiFilter && _shippingKpiFilter !== 'all');
@@ -4962,6 +4963,11 @@ function mergeRow(r) {
         remark:        chg.remark        !== undefined ? chg.remark
                      : upd.remark        !== undefined ? upd.remark
                     : (r.remark || ''),
+        // Item: 자동 추출값이 기본값이지만, 사용자가 수동 지정(pl_updates.item)하면 그게 우선
+        // (Package No 하나에 여러 자재가 섞여 있는 경우 코드 추출만으로는 한계가 있어 수동 지정 허용)
+        item:          chg.item          !== undefined ? chg.item
+                     : upd.item          !== undefined && upd.item !== null ? upd.item
+                    : (r.item || '-'),
         purpose:       recvPurpose,
     };
 }
@@ -5070,7 +5076,9 @@ function renderShippingTable(rows) {
         return `<tr${newGroup ? ' style="background:#f8fafc;"' : ''}>
             ${packingCell}
             ${pkgNoCell}
-            <td style="text-align:center;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.item || '-'}">${r.item || '-'}</td>
+            <td style="padding:3px;">
+                <input type="text" style="${PL_INPUT_CSS}font-weight:600;" data-pkg="${pkg}" data-field="item" value="${(r.item || '-').replace(/"/g, '&quot;')}" title="자동 추출값이 기본. 여러 자재가 섞인 Package No는 대표 Item을 직접 입력해 덮어쓸 수 있음">
+            </td>
             <td style="text-align:center;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.description}">${r.description}</td>
             <td style="text-align:center;font-weight:600;">${qtyDisplay}</td>
             <td style="text-align:center;color:#555;">${r.unit || '—'}</td>
