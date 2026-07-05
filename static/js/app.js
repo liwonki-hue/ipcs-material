@@ -1363,12 +1363,14 @@ async function getMssFilteredRows() {
     const mat1    = document.getElementById('mssMat1Filter')?.value || 'All';
     const mat2    = document.getElementById('mssMat2Filter')?.value || 'All';
     const size    = document.getElementById('mssSizeFilter')?.value || 'All';
+    const rating  = document.getElementById('mssRatingFilter')?.value || 'All';
 
     const { recMap } = buildRecvMaps(r =>
         isReceivingActive(r.plNo) && isKpiReceiving(r) &&
         ['Pipe', 'Fitting', 'Others'].includes(r.category)
     );
     const issMap = getIssuedQtyMap(r => ['Pipe', 'Fitting', 'Others'].includes(r.category));
+    const masterMap = _buildMasterMap();
 
     const rows = agg.filter(r => r.category === cat).map(r => {
         const matUpper = r.matCode;
@@ -1380,7 +1382,7 @@ async function getMssFilteredRows() {
         const issQty = issMap[matUpper] || 0;
         return {
             matCode: matUpper, item: itemName, mat1: r.mat1 || '-', mat2: r.mat2 || '-',
-            size: sz, unit: r.unit, bomQty: r.bomQty, recQty, issQty,
+            size: sz, rating: getRatingForMatCode(matUpper, masterMap), unit: r.unit, bomQty: r.bomQty, recQty, issQty,
             stockQty: Math.max(0, recQty - issQty),
         };
     }).filter(r => {
@@ -1388,6 +1390,7 @@ async function getMssFilteredRows() {
         if (mat1 !== 'All' && r.mat1 !== mat1) return false;
         if (mat2 !== 'All' && r.mat2 !== mat2) return false;
         if (size !== 'All' && r.size !== size) return false;
+        if (rating !== 'All' && r.rating !== rating) return false;
         if (search && !(`${r.item} ${r.mat1} ${r.mat2} ${r.size}`).toUpperCase().includes(search)) return false;
         return true;
     });
@@ -1405,7 +1408,7 @@ async function getMssFilteredRows() {
 async function renderMssTable() {
     let tbody = document.querySelector('#mssTable tbody');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
 
     const rows = await getMssFilteredRows();
 
@@ -1413,7 +1416,7 @@ async function renderMssTable() {
     if (label) label.textContent = `(${rows.length.toLocaleString()} items)`;
 
     if (rows.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#888;padding:20px;">No items found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#888;padding:20px;">No items found.</td></tr>';
         const pg = document.getElementById('mssPagination'); if (pg) pg.innerHTML = '';
         return;
     }
@@ -1428,6 +1431,7 @@ async function renderMssTable() {
         <td style="text-align:center;white-space:nowrap;">${r.mat1}</td>
         <td style="text-align:center;white-space:nowrap;">${r.mat2}</td>
         <td style="text-align:center;font-weight:600;">${r.size}</td>
+        <td style="text-align:center;white-space:nowrap;">${r.rating}</td>
         <td style="text-align:center;white-space:nowrap;">${r.unit}</td>
         <td style="text-align:center;white-space:nowrap;">${r.bomQty.toFixed(2)}</td>
         <td style="text-align:center;white-space:nowrap;">${r.recQty.toFixed(2)}</td>
@@ -1501,6 +1505,12 @@ async function refreshMssItemFilter() {
         sizeEl.innerHTML = '<option value="All">All Sizes</option>'
             + sizes.map(s => `<option value="${s.replace(/"/g, '&quot;')}">${s}</option>`).join('');
     }
+    const ratingEl = document.getElementById('mssRatingFilter');
+    if (ratingEl) {
+        const ratings = Object.keys(getRatingMatCodesForCat(cat)).sort();
+        ratingEl.innerHTML = '<option value="All">All Ratings</option>'
+            + ratings.map(r => `<option value="${r.replace(/"/g, '&quot;')}">${r}</option>`).join('');
+    }
 }
 
 let _mssFiltersInited = false;
@@ -1523,7 +1533,7 @@ function initMssFilters() {
     document.getElementById('btnFilterMss')?.addEventListener('click', () => { currentMssPage = 1; renderMssTable(); });
     document.getElementById('btnClearMssFilters')?.addEventListener('click', () => {
         const searchEl = document.getElementById('mssSearch'); if (searchEl) searchEl.value = '';
-        ['mssItemFilter', 'mssMat1Filter', 'mssMat2Filter', 'mssSizeFilter'].forEach(id => {
+        ['mssItemFilter', 'mssMat1Filter', 'mssMat2Filter', 'mssSizeFilter', 'mssRatingFilter'].forEach(id => {
             const el = document.getElementById(id); if (el) el.value = 'All';
         });
         currentMssPage = 1;
@@ -1545,6 +1555,7 @@ function initMssFilters() {
                     'Mat 1':    r.mat1,
                     'Mat 2':    r.mat2,
                     'Size':     r.size,
+                    'Rating':   r.rating,
                     'Unit':     r.unit,
                     'BOM Qty':  r.bomQty,
                     'Received': r.recQty,
@@ -1553,7 +1564,7 @@ function initMssFilters() {
                 }));
 
                 const ws = XLSX.utils.json_to_sheet(exportRows);
-                ws['!cols'] = [16, 12, 14, 12, 6, 10, 10, 10, 10].map(w => ({ wch: w }));
+                ws['!cols'] = [16, 12, 14, 12, 10, 6, 10, 10, 10, 10].map(w => ({ wch: w }));
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, 'Material Summary');
                 const today = new Date().toISOString().split('T')[0];
@@ -4710,7 +4721,7 @@ async function initShipping() {
     }
 
     document.getElementById('shippingTbody').innerHTML =
-        '<tr><td colspan="11" style="text-align:center;color:#888;padding:30px;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        '<tr><td colspan="12" style="text-align:center;color:#888;padding:30px;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
     try {
         // pl_updates는 아직 로드 안 됐을 때만 조회
         if (Object.keys(_plUpdatesCache).length === 0) {
@@ -4750,6 +4761,7 @@ async function initShipping() {
                     packing,
                     pkg_no:       r.pkg_no,
                     description:  r.description || 'Piping Spool',
+                    item:         'SPOOL',
                     qty:          r.qty || 1,
                     unit:         r.unit || 'EA',
                     purpose:      r.purpose || 'Permanent',
@@ -4770,10 +4782,19 @@ async function initShipping() {
                 pkgSeen.add(r.plNo);
                 return true;
             })
-            .map(r => ({
+            .map(r => {
+                // Material Finding/Receiving 테이블과 동일한 Item 산출 방식 (TAG → BOM 매칭 우선)
+                const tagInfo    = db.bomTagMap[(r.tag || '').toUpperCase()];
+                const effMat     = r.matCode || (tagInfo ? tagInfo.matCode : '');
+                const bomFullDesc = tagInfo ? tagInfo.fullDescription : '';
+                const _mcItemR  = window.extractItemFromMatCode(effMat);
+                const _rawItemR = (_mcItemR && _mcItemR !== '-') ? _mcItemR : window.extractItemFromDesc(bomFullDesc || r.desc);
+                const item      = (r.plNo || '').toUpperCase().includes('BYPS') ? 'BYPASS VALVE' : _rawItemR;
+                return {
                 packing:      r.docNo,
                 pkg_no:       r.plNo,
                 description:  r.desc,
+                item:         item,
                 qty:          r.qty,
                 unit:         r.unit,
                 purpose:      r.purpose || '',
@@ -4782,7 +4803,8 @@ async function initShipping() {
                 custom_clear: '',
                 issue_date:   '',
                 remark:       '',
-            }));
+                };
+            });
 
         // spool_receiving 병합 (중복 PKG NO 제외)
         spoolShipping.forEach(s => {
@@ -4801,6 +4823,7 @@ async function initShipping() {
                         packing:      s.pkg || (s.package_no || '').match(/^(PGU-DE-\d+)/)?.[1] || '',
                         pkg_no:       s.package_no,
                         description:  s.description || 'Support',
+                        item:         'SUPPORT',
                         qty:          s.qty || 1,
                         unit:         s.unit || 'EA',
                         purpose:      'Permanent',
@@ -4821,7 +4844,7 @@ async function initShipping() {
         renderShippingTable(getShippingFiltered());
     } catch(e) {
         document.getElementById('shippingTbody').innerHTML =
-            '<tr><td colspan="11" style="text-align:center;color:#e53935;padding:30px;">Failed to load data.</td></tr>';
+            '<tr><td colspan="12" style="text-align:center;color:#e53935;padding:30px;">Failed to load data.</td></tr>';
     }
 }
 
@@ -4846,11 +4869,23 @@ function buildShippingGroupFilter(data) {
             pkgSel.appendChild(opt);
         });
     }
+
+    const items = [...new Set(data.map(r => r.item).filter(Boolean))].sort();
+    const itemSel = document.getElementById('shippingItemFilter');
+    if (itemSel) {
+        itemSel.innerHTML = '<option value="">All</option>';
+        items.forEach(i => {
+            const opt = document.createElement('option');
+            opt.value = i; opt.textContent = i;
+            itemSel.appendChild(opt);
+        });
+    }
 }
 
 function getShippingFiltered() {
     const group  = document.getElementById('shippingGroupFilter')?.value || '';
     const pkgF   = document.getElementById('shippingPkgFilter')?.value  || '';
+    const itemF  = document.getElementById('shippingItemFilter')?.value || '';
     const search = (document.getElementById('shippingSearch')?.value || '').trim().toLowerCase();
     const statusF = document.getElementById('shippingStatusFilter')?.value || '';
     const customF = document.getElementById('shippingCustomFilter')?.value || '';
@@ -4858,6 +4893,7 @@ function getShippingFiltered() {
         .filter(r => {
             if (group && r.packing !== group) return false;
             if (pkgF  && r.pkg_no  !== pkgF)  return false;
+            if (itemF && r.item    !== itemF) return false;
             if (search && !r.pkg_no.toLowerCase().includes(search)
                        && !r.description.toLowerCase().includes(search)) return false;
             const needMerge = statusF || customF || (_shippingKpiFilter && _shippingKpiFilter !== 'all');
@@ -4964,7 +5000,7 @@ function renderShippingTable(rows) {
 
     const tbody = document.getElementById('shippingTbody');
     if (!merged.length) {
-        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#888;padding:30px;">No data found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:#888;padding:30px;">No data found.</td></tr>';
         const spEl = document.getElementById('shippingPagination'); if (spEl) spEl.innerHTML = '';
         return;
     }
@@ -5016,6 +5052,7 @@ function renderShippingTable(rows) {
         return `<tr${newGroup ? ' style="background:#f8fafc;"' : ''}>
             ${packingCell}
             ${pkgNoCell}
+            <td style="text-align:center;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.item || '-'}">${r.item || '-'}</td>
             <td style="text-align:center;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.description}">${r.description}</td>
             <td style="text-align:center;font-weight:600;">${qtyDisplay}</td>
             <td style="text-align:center;color:#555;">${r.unit || '—'}</td>
@@ -5066,6 +5103,7 @@ function exportShippingExcel() {
     const data = _shippingFilteredRows.map(mergeRow).map(r => ({
         'Packing':      r.packing,
         'Package No.':  r.pkg_no,
+        'Item':         r.item || '-',
         'Description':  r.description,
         "Q'ty":         r.qty,
         'Unit':         r.unit || '',
@@ -5155,9 +5193,11 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('shippingGroupFilter').value = '';
         document.getElementById('shippingSearch').value = '';
         const pf = document.getElementById('shippingPkgFilter');
+        const itf = document.getElementById('shippingItemFilter');
         const sf = document.getElementById('shippingStatusFilter');
         const cf = document.getElementById('shippingCustomFilter');
         if (pf) pf.value = '';
+        if (itf) itf.value = '';
         if (sf) sf.value = '';
         if (cf) cf.value = '';
         resetKpiFilter();
