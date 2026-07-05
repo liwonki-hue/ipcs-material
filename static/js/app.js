@@ -935,18 +935,20 @@ function updateCategoryCharts() {
 
 // --- 6. Stock Ledger ---
 function initStockFilters() {
-    const stockCatEl  = document.getElementById('stockCatFilter');
-    const stockItemEl = document.getElementById('stockItemFilter');
-    const stockMatlEl = document.getElementById('stockMatlFilter');
-    const stockSizeEl = document.getElementById('stockSizeFilter');
+    const stockCatEl    = document.getElementById('stockCatFilter');
+    const stockItemEl   = document.getElementById('stockItemFilter');
+    const stockMatlEl   = document.getElementById('stockMatlFilter');
+    const stockSizeEl   = document.getElementById('stockSizeFilter');
+    const stockRatingEl = document.getElementById('stockRatingFilter');
 
     // 선택값 보존 (탭 재진입 시 초기화 방지)
-    const savedDoc  = document.getElementById('stockDocFilter')?.value  || 'All';
-    const savedPkg  = document.getElementById('stockPkgFilter')?.value  || 'All';
-    const savedCat  = stockCatEl?.value  || 'All';
-    const savedItem = stockItemEl?.value || 'All';
-    const savedMatl = stockMatlEl?.value || 'All';
-    const savedSize = stockSizeEl?.value || 'All';
+    const savedDoc    = document.getElementById('stockDocFilter')?.value  || 'All';
+    const savedPkg    = document.getElementById('stockPkgFilter')?.value  || 'All';
+    const savedCat    = stockCatEl?.value  || 'All';
+    const savedItem   = stockItemEl?.value || 'All';
+    const savedMatl   = stockMatlEl?.value || 'All';
+    const savedSize   = stockSizeEl?.value || 'All';
+    const savedRating = stockRatingEl?.value || 'All';
 
     const docs  = [...new Set(db.receiving.map(r => r.docNo).filter(Boolean))].sort();
     const pkgs  = [...new Set(db.receiving.map(r => r.plNo).filter(Boolean))].sort();
@@ -989,11 +991,22 @@ function initStockFilters() {
         const sizes = stockGetSizesForCatItem(cat, item);
         stockSizeEl.innerHTML = '<option value="All">All Sizes</option>' + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
     }
+    function stockGetRatingsForCat(cat) {
+        const src = cat === 'All' ? db.receiving : db.receiving.filter(r => (r.category || '') === cat);
+        const masterMap = _buildMasterMap();
+        return [...new Set(src.map(r => getRatingForMatCode(r.matCode, masterMap)).filter(v => v && v !== '-'))].sort();
+    }
+    function refreshStockRatingOptions(cat) {
+        if (!stockRatingEl) return;
+        const ratings = stockGetRatingsForCat(cat);
+        stockRatingEl.innerHTML = '<option value="All">All Ratings</option>' + ratings.map(r => `<option value="${r}">${r}</option>`).join('');
+    }
 
-    // 카테고리 → 아이템 → Material → 사이즈 순서로 재빌드 후 저장값 복원
+    // 카테고리 → 아이템 → Material → 사이즈 → Rating 순서로 재빌드 후 저장값 복원
     if (stockCatEl && [...stockCatEl.options].some(o => o.value === savedCat)) stockCatEl.value = savedCat;
     refreshStockItemOptions(stockCatEl?.value || 'All');
     refreshStockMatlOptions(stockCatEl?.value || 'All');
+    refreshStockRatingOptions(stockCatEl?.value || 'All');
     const docEl = document.getElementById('stockDocFilter');
     const pkgEl = document.getElementById('stockPkgFilter');
     if (docEl && [...docEl.options].some(o => o.value === savedDoc)) docEl.value = savedDoc;
@@ -1002,6 +1015,7 @@ function initStockFilters() {
     if (stockMatlEl && [...stockMatlEl.options].some(o => o.value === savedMatl)) stockMatlEl.value = savedMatl;
     refreshStockSizeOptions(stockCatEl?.value || 'All', stockItemEl?.value || 'All');
     if (stockSizeEl && [...stockSizeEl.options].some(o => o.value === savedSize)) stockSizeEl.value = savedSize;
+    if (stockRatingEl && [...stockRatingEl.options].some(o => o.value === savedRating)) stockRatingEl.value = savedRating;
 
     // 이벤트 리스너 1회만 등록 (탭 재진입 시 중복 방지)
     if (!_stockFiltersInitialized) {
@@ -1011,6 +1025,7 @@ function initStockFilters() {
                 refreshStockItemOptions(stockCatEl.value);
                 refreshStockMatlOptions(stockCatEl.value);
                 refreshStockSizeOptions(stockCatEl.value, 'All');
+                refreshStockRatingOptions(stockCatEl.value);
             });
         }
         if (stockItemEl) {
@@ -1032,6 +1047,7 @@ function initStockFilters() {
         if (stockItemEl) stockItemEl.value = 'All';
         if (stockMatlEl) stockMatlEl.value = 'All';
         if (stockSizeEl) stockSizeEl.value = 'All';
+        if (stockRatingEl) stockRatingEl.value = 'All';
         renderActiveStockTab();
     });
 
@@ -1052,7 +1068,7 @@ function initStockFilters() {
                 const iss = issMap[matCode] || 0;
                 const fullDesc = db.bomDesc[matCode] || recDescMap[matCode] || '-';
                 const size = sizeOverride || window.getEffectiveSize(matCode, fullDesc, m.size1);
-                const rating = m.classDesc || matCode.split('-')[3] || '-';
+                const rating = getRatingForMatCode(matCode, masterMap);
                 return {
                     'PKG':             docMap[key] ? [...docMap[key]].sort().join(', ') : '-',
                     'PKG NO':          pkgMap[key] ? [...pkgMap[key]].sort().join(', ') : '-',
@@ -1111,6 +1127,7 @@ function renderStockTable(forcedCats, hideMatCode) {
     const fItem    = document.getElementById('stockItemFilter')  ?.value || 'All';
     const fMatl    = document.getElementById('stockMatlFilter')  ?.value || 'All';
     const fSize    = document.getElementById('stockSizeFilter')  ?.value || 'All';
+    const fRating  = document.getElementById('stockRatingFilter')?.value || 'All';
 
     // Pre-build maps
     const masterMap = {};
@@ -1152,10 +1169,12 @@ function renderStockTable(forcedCats, hideMatCode) {
         const matl = (matCode.split('-')[1]) || '-';
         const fullDesc = db.bomDesc[matCode] || recDescMap[matCode] || '-';
         const size = sizeOverride || window.getEffectiveSize(matCode, fullDesc, mData.size1);
+        const rating = getRatingForMatCode(matCode, masterMap);
         if (!Array.isArray(forcedCats) && fCat !== 'All' && cat !== fCat) return false;
         if (fItem !== 'All' && item !== fItem)  return false;
         if (fMatl !== 'All' && matl !== fMatl)  return false;
         if (fSize !== 'All' && size !== fSize)  return false;
+        if (fRating !== 'All' && rating !== fRating) return false;
         if (search && !matCode.toLowerCase().includes(search) &&
             !(mData.itemDesc || '').toLowerCase().includes(search)) return false;
         return true;
@@ -1187,7 +1206,7 @@ function renderStockTable(forcedCats, hideMatCode) {
         const fullDesc = db.bomDesc[matCode] || recDescMap[matCode] || '-';
         const size    = sizeOverride || window.getEffectiveSize(matCode, fullDesc, mData.size1);
         const unitStr = bomLookup[matCode]?.unit || 'EA';
-        const rating  = mData.classDesc || matCode.split('-')[3] || '-';
+        const rating  = getRatingForMatCode(matCode, masterMap);
         const badge   = stock > 0 ? '<span class="status-badge ok">In Stock</span>' : '<span class="status-badge err">Out of Stock</span>';
         const docs    = docMap[key] ? [...docMap[key]].sort().join('<br>') : '-';
         const pkgs    = pkgMap[key] ? [...pkgMap[key]].sort().join('<br>') : '-';
@@ -1221,9 +1240,10 @@ function _setStockMatCodeCol(visible) {
     const ths  = document.querySelectorAll('#stockTable thead th');
     if (!cols.length) return;
     // null = auto(width 미지정), 0 = 0px(완전 숨김), 숫자 = 해당 px
+    // 순서: PKG, PKG NO, MatCode, Category, Item, Material, Size, Rating, Unit, Received, Issued, Stock, Status
     const W = visible
-        ? [90,  150, 140,  70,  95, 70, 55, 50, 75, 70, 75, 75]
-        : [ 90, 165,   0,  75, 110, 80, 65, 55, 80, 75, 80, 85];
+        ? [90,  150, 140,  70,  95, 70, 55, 55, 50, 75, 70, 75, 75]
+        : [ 90, 165,   0,  75, 110, 80, 65, 65, 55, 80, 75, 80, 85];
     cols.forEach((c, i) => { c.style.width = W[i] === null ? '' : W[i] + 'px'; });
     // display:none 대신 width:0+padding:0으로 처리 (헤더/데이터 정렬 유지)
     if (ths[2]) {
@@ -1581,6 +1601,32 @@ function _buildMasterMap() {
     return m;
 }
 
+// Rating(Class/Schedule): MatCode Master의 Class 우선, 없으면 MatCode 4번째 세그먼트가
+// 실제 Rating 패턴(CL150/S40/SCH40/XS/XXS/STD 등)일 때만 사용. Others(GSKT/STB)는 그
+// 자리에 재질 마감 라벨(HDG/ALLOY/SS304 등)이 오므로 패턴에 안 걸려 '-'로 남는다.
+const RATING_SEGMENT_RE = /^(CL\d+|SCH\d+|S\d+|XS|XXS|STD)$/i;
+function getRatingForMatCode(matCode, masterMap) {
+    const mData = (masterMap && masterMap[matCode]) || {};
+    if (mData.classDesc) return mData.classDesc;
+    const seg = (matCode || '').split('-')[3] || '';
+    return RATING_SEGMENT_RE.test(seg) ? seg : '-';
+}
+
+// 카테고리(Pipe/Fitting/Others) 내 Rating 값 → 해당 MatCode 목록. BOM 탭의 Rating
+// 필터 드롭다운 채우기와, 서버 쿼리에 .in('mat_code', [...]) 로 넘길 후보 산출에 공용.
+function getRatingMatCodesForCat(cat) {
+    const masterMap = _buildMasterMap();
+    const src = (cat === 'All' || cat === 'ALL') ? db.bom : db.bom.filter(b => b.category === cat);
+    const map = {};
+    src.forEach(b => {
+        const rating = getRatingForMatCode(b.matCode, masterMap);
+        if (rating === '-') return;
+        if (!map[rating]) map[rating] = new Set();
+        map[rating].add(b.matCode);
+    });
+    return map;
+}
+
 function _sortByCatItemSize(list) {
     list.sort((a, b) => {
         const oa = CAT_ORDER[a.cat] ?? 9, ob = CAT_ORDER[b.cat] ?? 9;
@@ -1601,7 +1647,7 @@ function _enrichRow(matCode, bomMap, recMap, masterMap) {
     const size = (_sc && _sc !== '-') ? _sc : (mData.size1 || '-');
     const cat  = mData.category || window.getCategory(mData.itemDesc || '', matCode);
     const matl = (matCode.split('-')[1]) || '-';
-    const rating = mData.classDesc || (matCode.split('-')[3]) || '-';
+    const rating = getRatingForMatCode(matCode, masterMap);
     const unit = recMap[matCode]?.unit || bomMap[matCode]?.uom || 'EA';
     const bomQty = bomMap[matCode]?.qty ?? 0;
     const recQty = recMap[matCode]?.qty ?? 0;
@@ -1634,11 +1680,12 @@ function renderShortageTable() {
     const recMap = _buildRecMap();
     const masterMap = _buildMasterMap();
 
-    const catFilter  = (document.getElementById('shortCatFilter')  || {}).value || 'ALL';
-    const itemFilter = (document.getElementById('shortItemFilter') || {}).value || 'ALL';
-    const matlFilter = (document.getElementById('shortMatlFilter') || {}).value || 'ALL';
-    const sizeFilter = (document.getElementById('shortSizeFilter') || {}).value || 'ALL';
-    const searchQ    = ((document.getElementById('shortSearch')    || {}).value || '').toUpperCase();
+    const catFilter    = (document.getElementById('shortCatFilter')    || {}).value || 'ALL';
+    const itemFilter   = (document.getElementById('shortItemFilter')   || {}).value || 'ALL';
+    const matlFilter   = (document.getElementById('shortMatlFilter')   || {}).value || 'ALL';
+    const sizeFilter   = (document.getElementById('shortSizeFilter')   || {}).value || 'ALL';
+    const ratingFilter = (document.getElementById('shortRatingFilter') || {}).value || 'ALL';
+    const searchQ      = ((document.getElementById('shortSearch')      || {}).value || '').toUpperCase();
 
     const list = [];
     Object.keys(bomMap).forEach(matCode => {
@@ -1646,10 +1693,11 @@ function renderShortageTable() {
         const diffQty = row.bomQty - row.recQty;
         if (diffQty <= 0.01) return;
         if (!['Pipe', 'Fitting', 'Others'].includes(row.cat)) return;
-        if (catFilter  !== 'ALL' && row.cat  !== catFilter)  return;
-        if (itemFilter !== 'ALL' && row.item !== itemFilter) return;
-        if (matlFilter !== 'ALL' && row.matl !== matlFilter) return;
-        if (sizeFilter !== 'ALL' && row.size !== sizeFilter) return;
+        if (catFilter    !== 'ALL' && row.cat    !== catFilter)    return;
+        if (itemFilter   !== 'ALL' && row.item   !== itemFilter)   return;
+        if (matlFilter   !== 'ALL' && row.matl   !== matlFilter)   return;
+        if (sizeFilter   !== 'ALL' && row.size   !== sizeFilter)   return;
+        if (ratingFilter !== 'ALL' && row.rating !== ratingFilter) return;
         if (searchQ && ![row.matCode, row.item, row.matl, row.size].some(v => (v||'').toUpperCase().includes(searchQ))) return;
         list.push({ ...row, diffQty });
     });
@@ -1691,11 +1739,12 @@ function renderSurplusTable() {
     const recMap = _buildRecMap();
     const masterMap = _buildMasterMap();
 
-    const catFilter  = (document.getElementById('surplusCatFilter')  || {}).value || 'ALL';
-    const itemFilter = (document.getElementById('surplusItemFilter') || {}).value || 'ALL';
-    const matlFilter = (document.getElementById('surplusMatlFilter') || {}).value || 'ALL';
-    const sizeFilter = (document.getElementById('surplusSizeFilter') || {}).value || 'ALL';
-    const searchQ    = ((document.getElementById('surplusSearch')    || {}).value || '').toUpperCase();
+    const catFilter    = (document.getElementById('surplusCatFilter')    || {}).value || 'ALL';
+    const itemFilter   = (document.getElementById('surplusItemFilter')   || {}).value || 'ALL';
+    const matlFilter   = (document.getElementById('surplusMatlFilter')   || {}).value || 'ALL';
+    const sizeFilter   = (document.getElementById('surplusSizeFilter')   || {}).value || 'ALL';
+    const ratingFilter = (document.getElementById('surplusRatingFilter') || {}).value || 'ALL';
+    const searchQ      = ((document.getElementById('surplusSearch')      || {}).value || '').toUpperCase();
 
     const allMatCodes = new Set([...Object.keys(bomMap), ...Object.keys(recMap)]);
     const list = [];
@@ -1704,10 +1753,11 @@ function renderSurplusTable() {
         const diffQty = row.recQty - row.bomQty;
         if (diffQty <= 0.01) return;
         if (!['Pipe', 'Fitting', 'Others'].includes(row.cat)) return;
-        if (catFilter  !== 'ALL' && row.cat  !== catFilter)  return;
-        if (itemFilter !== 'ALL' && row.item !== itemFilter) return;
-        if (matlFilter !== 'ALL' && row.matl !== matlFilter) return;
-        if (sizeFilter !== 'ALL' && row.size !== sizeFilter) return;
+        if (catFilter    !== 'ALL' && row.cat    !== catFilter)    return;
+        if (itemFilter   !== 'ALL' && row.item   !== itemFilter)   return;
+        if (matlFilter   !== 'ALL' && row.matl   !== matlFilter)   return;
+        if (sizeFilter   !== 'ALL' && row.size   !== sizeFilter)   return;
+        if (ratingFilter !== 'ALL' && row.rating !== ratingFilter) return;
         if (searchQ && ![row.matCode, row.item, row.matl, row.size].some(v => (v||'').toUpperCase().includes(searchQ))) return;
         list.push({ ...row, diffQty });
     });
@@ -2078,8 +2128,8 @@ function initFilterOptions() {
         } catch(e) { console.error('Support Receiving filter init failed:', e); }
     })();
 
-    // Shortage/Surplus Material 필터 공용 초기화 헬퍼
-    const initShortSurplusMatl = (catEl, itemEl, matlEl, sizeEl, allVal) => {
+    // Shortage/Surplus Material/Rating 필터 공용 초기화 헬퍼
+    const initShortSurplusMatl = (catEl, itemEl, matlEl, sizeEl, ratingEl, allVal) => {
         if (!itemEl) return;
         setupCatItemSize(catEl, itemEl, sizeEl, getBomItemsForCat, getBomSizesForCatItem, allVal);
         const refreshMatl = () => {
@@ -2090,6 +2140,15 @@ function initFilterOptions() {
                       .map(b => (b.matCode || '').split('-')[1]).filter(Boolean)
             )].sort();
             if (matlEl) matlEl.innerHTML = `<option value="${allVal}">All Materials</option>` + matls.map(m => `<option value="${m}">${m}</option>`).join('');
+
+            if (ratingEl) {
+                const masterMap = _buildMasterMap();
+                const ratings = [...new Set(
+                    db.bom.filter(b => cat === 'ALL' || b.category === cat)
+                          .map(b => getRatingForMatCode(b.matCode, masterMap)).filter(v => v && v !== '-')
+                )].sort();
+                ratingEl.innerHTML = `<option value="${allVal}">All Ratings</option>` + ratings.map(r => `<option value="${r}">${r}</option>`).join('');
+            }
         };
         refreshMatl();
         if (catEl) catEl.addEventListener('change', refreshMatl);
@@ -2101,7 +2160,8 @@ function initFilterOptions() {
             document.getElementById('shortCatFilter'),
             document.getElementById('shortItemFilter'),
             document.getElementById('shortMatlFilter'),
-            document.getElementById('shortSizeFilter'), 'ALL'
+            document.getElementById('shortSizeFilter'),
+            document.getElementById('shortRatingFilter'), 'ALL'
         );
     }
 
@@ -2111,7 +2171,8 @@ function initFilterOptions() {
             document.getElementById('surplusCatFilter'),
             document.getElementById('surplusItemFilter'),
             document.getElementById('surplusMatlFilter'),
-            document.getElementById('surplusSizeFilter'), 'ALL'
+            document.getElementById('surplusSizeFilter'),
+            document.getElementById('surplusRatingFilter'), 'ALL'
         );
     }
 
@@ -2227,6 +2288,7 @@ async function renderBomTable() {
     const mat1    = document.getElementById('bomMat1Filter')?.value || 'All';
     const mat2    = document.getElementById('bomMat2Filter')?.value || 'All';
     const size    = document.getElementById('bomSizeFilter')?.value || 'All';
+    const rating  = document.getElementById('bomRatingFilter')?.value || 'All';
 
     // 필터를 두 쿼리(data + count)에 동일하게 적용하는 헬퍼
     const applyFilters = (q) => {
@@ -2264,6 +2326,10 @@ async function renderBomTable() {
                     if (single) q = q.ilike('mat_code', `%-${toD(single[1])}-%`);
                 }
             }
+        }
+        if (rating !== 'All') {
+            const codes = [...(getRatingMatCodesForCat(cat)[rating] || [])];
+            q = q.in('mat_code', codes.length ? codes : ['__NONE__']);
         }
         return q;
     };
@@ -2321,9 +2387,7 @@ async function renderBomTable() {
         if (size === '-' && /STEAM TRAP/i.test(item)) size = '1"';
         const mat1Val = b.mat1 || '-';
         const mat2Val = b.mat2 || '-';
-        // Rating: Receiving DB와 동일한 산출 방식 (MatCode Master의 Class 우선, 없으면 MatCode 4번째 세그먼트)
-        const mData  = masterMap[b.mat_code] || {};
-        const rating = mData.classDesc || (b.mat_code || '').split('-')[3] || '-';
+        const rating = getRatingForMatCode(b.mat_code, masterMap);
         return `<tr>
             <td style="text-align:center;white-space:nowrap;"><span class="status-badge ${badgeClass}">${b.mat_code || '-'}</span></td>
             <td style="text-align:center;white-space:nowrap;">${b.system || '-'}</td>
@@ -2362,6 +2426,13 @@ function refreshBomItemFilter() {
     if (mat2El) mat2El.innerHTML = '<option value="All">All Mat 2</option>';
     const sizeEl = document.getElementById('bomSizeFilter');
     if (sizeEl) sizeEl.innerHTML = '<option value="All">All Sizes</option>';
+
+    const ratingEl = document.getElementById('bomRatingFilter');
+    if (ratingEl) {
+        const ratings = Object.keys(getRatingMatCodesForCat(cat)).sort();
+        ratingEl.innerHTML = '<option value="All">All Ratings</option>'
+            + ratings.map(r => `<option value="${r.replace(/"/g, '&quot;')}">${r}</option>`).join('');
+    }
 
     if (mat1El || mat2El || sizeEl) {
         supabaseClient.from('bom_detail')
@@ -2440,6 +2511,7 @@ function parseSizeSortKey(sizeStr) {
 }
 
 let _vendorFiltersInited = false;
+let _vendorRatingMap = {}; // rating → Set(mat_code), initVendorFilters()에서 채움
 async function initVendorFilters() {
     if (_vendorFiltersInited) return;
     _vendorFiltersInited = true;
@@ -2452,6 +2524,16 @@ async function initVendorFilters() {
         const sizes = [...new Set(data.map(r => window.extractSizeLengthFromMatCode(r.mat_code)).filter(v => v && v !== '-'))]
             .sort((a, b) => parseSizeSortKey(a) - parseSizeSortKey(b));
 
+        const masterMap = _buildMasterMap();
+        _vendorRatingMap = {};
+        data.forEach(r => {
+            const rating = getRatingForMatCode(r.mat_code, masterMap);
+            if (rating === '-') return;
+            if (!_vendorRatingMap[rating]) _vendorRatingMap[rating] = new Set();
+            _vendorRatingMap[rating].add(r.mat_code);
+        });
+        const ratings = Object.keys(_vendorRatingMap).sort();
+
         const sysEl = document.getElementById('vendorSystemFilter');
         if (sysEl) sysEl.innerHTML = '<option value="All">All Systems</option>' + systems.map(s => `<option value="${s}">${s}</option>`).join('');
         const itemEl = document.getElementById('vendorItemFilter');
@@ -2460,12 +2542,14 @@ async function initVendorFilters() {
         if (mat1El) mat1El.innerHTML = '<option value="All">All Mat 1</option>' + mat1s.map(m => `<option value="${m.replace(/"/g, '&quot;')}">${m}</option>`).join('');
         const sizeEl = document.getElementById('vendorSizeFilter');
         if (sizeEl) sizeEl.innerHTML = '<option value="All">All Sizes</option>' + sizes.map(s => `<option value="${s.replace(/"/g, '&quot;')}">${s}</option>`).join('');
+        const ratingEl = document.getElementById('vendorRatingFilter');
+        if (ratingEl) ratingEl.innerHTML = '<option value="All">All Ratings</option>' + ratings.map(r => `<option value="${r.replace(/"/g, '&quot;')}">${r}</option>`).join('');
     }
 
     document.getElementById('btnFilterVendor')?.addEventListener('click', () => { currentVendorPage = 1; renderVendorTable(); });
     document.getElementById('btnClearVendorFilters')?.addEventListener('click', () => {
         const isoEl = document.getElementById('vendorIsoSearch'); if (isoEl) isoEl.value = '';
-        ['vendorSystemFilter', 'vendorItemFilter', 'vendorMat1Filter', 'vendorSizeFilter'].forEach(id => {
+        ['vendorSystemFilter', 'vendorItemFilter', 'vendorMat1Filter', 'vendorSizeFilter', 'vendorRatingFilter'].forEach(id => {
             const el = document.getElementById(id); if (el) el.value = 'All';
         });
         currentVendorPage = 1;
@@ -2490,8 +2574,7 @@ async function initVendorFilters() {
 
                 const masterMap = _buildMasterMap();
                 const rows = (data || []).map(b => {
-                    const mData = masterMap[b.mat_code] || {};
-                    const rating = mData.classDesc || (b.mat_code || '').split('-')[3] || '-';
+                    const rating = getRatingForMatCode(b.mat_code, masterMap);
                     return {
                         'System Area': b.system || '-',
                         'ISO Drawing': b.iso_dwg_no || '-',
@@ -2529,6 +2612,7 @@ async function renderVendorTable() {
     const item   = document.getElementById('vendorItemFilter')?.value || 'All';
     const mat1   = document.getElementById('vendorMat1Filter')?.value || 'All';
     const size   = document.getElementById('vendorSizeFilter')?.value || 'All';
+    const rating = document.getElementById('vendorRatingFilter')?.value || 'All';
 
     const applyFilters = (q) => {
         if (sys !== 'All') q = q.eq('system', sys);
@@ -2542,6 +2626,10 @@ async function renderVendorTable() {
             // size 표시값(예: '3/4"x120mm', '8"')을 MatCode에 박힌 그대로의 부분 문자열로 역변환
             const m = size.match(/^([\d\/\-]+)"(?:x(\d+)mm)?$/);
             if (m) q = q.ilike('mat_code', m[2] ? `%-${m[1]}"x${m[2]}%` : `%-${m[1]}"%`);
+        }
+        if (rating !== 'All') {
+            const codes = [...(_vendorRatingMap[rating] || [])];
+            q = q.in('mat_code', codes.length ? codes : ['__NONE__']);
         }
         return q;
     };
@@ -2569,8 +2657,7 @@ async function renderVendorTable() {
         const desc = b.full_description || '-';
         const rowSize = window.extractSizeLengthFromMatCode(b.mat_code);
         const rowItem = window.extractItemFromMatCode(b.mat_code);
-        const mData  = masterMap[b.mat_code] || {};
-        const rating = mData.classDesc || (b.mat_code || '').split('-')[3] || '-';
+        const rating = getRatingForMatCode(b.mat_code, masterMap);
         return `<tr>
             <td style="text-align:center;white-space:nowrap;"><span class="status-badge ok">${b.mat_code || '-'}</span></td>
             <td style="text-align:center;white-space:nowrap;">${b.system || '-'}</td>
@@ -3549,6 +3636,8 @@ function attachEventListeners() {
             if (bomMat2Filter) bomMat2Filter.value = 'All';
             const bomSizeFilter = document.getElementById('bomSizeFilter');
             if (bomSizeFilter) bomSizeFilter.value = 'All';
+            const bomRatingFilter = document.getElementById('bomRatingFilter');
+            if (bomRatingFilter) bomRatingFilter.value = 'All';
             currentBomPage = 1;
             renderBomTable();
         });
@@ -3634,8 +3723,7 @@ function attachEventListeners() {
 
                 const masterMap = _buildMasterMap();
                 const rows = (data || []).map(b => {
-                    const mData = masterMap[b.mat_code] || {};
-                    const rating = mData.classDesc || (b.mat_code || '').split('-')[3] || '-';
+                    const rating = getRatingForMatCode(b.mat_code, masterMap);
                     return {
                         'System Area': b.system || '-',
                         'ISO Drawing': b.iso_dwg_no || '-',

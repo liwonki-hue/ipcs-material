@@ -308,6 +308,10 @@
                                   <label>Size</label>
                                   <select id="bomSizeFilter" class="form-control" style="width: 100%;"><option value="All">All Sizes</option></select>
                               </div>
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                                  <label>Rating</label>
+                                  <select id="bomRatingFilter" class="form-control" style="width: 100%;"><option value="All">All Ratings</option></select>
+                              </div>
                               <div style="padding-bottom: 1px; display: flex; gap: 8px; flex-shrink: 0;">
                                   <button class="btn btn-primary" id="btnFilterBom" style="white-space: nowrap;"><i class="fas fa-search"></i> Search</button>
                                   <button class="btn btn-outline" id="btnClearBomFilters" style="white-space: nowrap;">Clear</button>
@@ -447,6 +451,10 @@
                               <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
                                   <label>Size</label>
                                   <select id="vendorSizeFilter" class="form-control" style="width: 100%;"><option value="All">All Sizes</option></select>
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                                  <label>Rating</label>
+                                  <select id="vendorRatingFilter" class="form-control" style="width: 100%;"><option value="All">All Ratings</option></select>
                               </div>
                               <div style="padding-bottom: 1px; display: flex; gap: 8px; flex-shrink: 0;">
                                   <button class="btn btn-primary" id="btnFilterVendor" style="white-space: nowrap;"><i class="fas fa-search"></i> Search</button>
@@ -1336,6 +1344,10 @@
                                  <label>Size</label>
                                  <select id="stockSizeFilter" class="form-control"><option value="All">All Sizes</option></select>
                              </div>
+                             <div class="form-group" style="flex: 1; min-width: 90px;">
+                                 <label>Rating</label>
+                                 <select id="stockRatingFilter" class="form-control"><option value="All">All Ratings</option></select>
+                             </div>
                              <div style="padding-bottom: 1px;">
                                  <button class="btn btn-primary" id="btnStockSearch" style="height:38px; white-space:nowrap; display:flex; align-items:center; gap:8px;">
                                      <i class="fas fa-search"></i> Search
@@ -1439,11 +1451,17 @@
                                 <option value="ALL">All Sizes</option>
                             </select>
                         </div>
+                        <div class="form-group">
+                            <label>Rating</label>
+                            <select id="shortRatingFilter" class="form-control" style="width: 120px;">
+                                <option value="ALL">All Ratings</option>
+                            </select>
+                        </div>
                         <div style="padding-bottom: 1px; display: flex; gap: 8px;">
                             <button class="btn btn-primary" onclick="_shortagePage=1;renderShortageTable();" style="height: 38px; display: flex; align-items: center; gap: 8px;">
                                 <i class="fas fa-search"></i> Search
                             </button>
-                            <button class="btn btn-outline" onclick="(function(){var cat=document.getElementById('shortCatFilter');var si=document.getElementById('shortSearch');if(si)si.value='';if(cat){cat.value='ALL';cat.dispatchEvent(new Event('change'));}var ii=document.getElementById('shortItemFilter');var mt=document.getElementById('shortMatlFilter');var sz=document.getElementById('shortSizeFilter');if(ii)ii.value='ALL';if(mt)mt.value='ALL';if(sz)sz.value='ALL';_shortagePage=1;renderShortageTable();})()" style="height: 38px;">
+                            <button class="btn btn-outline" onclick="(function(){var cat=document.getElementById('shortCatFilter');var si=document.getElementById('shortSearch');if(si)si.value='';if(cat){cat.value='ALL';cat.dispatchEvent(new Event('change'));}var ii=document.getElementById('shortItemFilter');var mt=document.getElementById('shortMatlFilter');var sz=document.getElementById('shortSizeFilter');var rt=document.getElementById('shortRatingFilter');if(ii)ii.value='ALL';if(mt)mt.value='ALL';if(sz)sz.value='ALL';if(rt)rt.value='ALL';_shortagePage=1;renderShortageTable();})()" style="height: 38px;">
                                 Reset
                             </button>
                             <button class="btn btn-outline" id="btnExportShortage" style="height: 38px; white-space:nowrap; display:flex; align-items:center; gap:6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export Excel</button>
@@ -1527,11 +1545,17 @@
                                 <option value="ALL">All Sizes</option>
                             </select>
                         </div>
+                        <div class="form-group">
+                            <label>Rating</label>
+                            <select id="surplusRatingFilter" class="form-control" style="width: 120px;">
+                                <option value="ALL">All Ratings</option>
+                            </select>
+                        </div>
                         <div style="padding-bottom: 1px; display: flex; gap: 8px;">
                             <button class="btn btn-primary" onclick="_surplusPage=1;renderSurplusTable();" style="height: 38px; display: flex; align-items: center; gap: 8px;">
                                 <i class="fas fa-search"></i> Search
                             </button>
-                            <button class="btn btn-outline" onclick="(function(){var cat=document.getElementById('surplusCatFilter');var si=document.getElementById('surplusSearch');if(si)si.value='';if(cat){cat.value='ALL';cat.dispatchEvent(new Event('change'));}var ii=document.getElementById('surplusItemFilter');var mt=document.getElementById('surplusMatlFilter');var sz=document.getElementById('surplusSizeFilter');if(ii)ii.value='ALL';if(mt)mt.value='ALL';if(sz)sz.value='ALL';_surplusPage=1;renderSurplusTable();})()" style="height: 38px;">
+                            <button class="btn btn-outline" onclick="(function(){var cat=document.getElementById('surplusCatFilter');var si=document.getElementById('surplusSearch');if(si)si.value='';if(cat){cat.value='ALL';cat.dispatchEvent(new Event('change'));}var ii=document.getElementById('surplusItemFilter');var mt=document.getElementById('surplusMatlFilter');var sz=document.getElementById('surplusSizeFilter');var rt=document.getElementById('surplusRatingFilter');if(ii)ii.value='ALL';if(mt)mt.value='ALL';if(sz)sz.value='ALL';if(rt)rt.value='ALL';_surplusPage=1;renderSurplusTable();})()" style="height: 38px;">
                                 Reset
                             </button>
                             <button class="btn btn-outline" id="btnExportSurplus" style="height: 38px; white-space:nowrap; display:flex; align-items:center; gap:6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export Excel</button>
