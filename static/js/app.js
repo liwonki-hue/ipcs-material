@@ -709,7 +709,14 @@ function updateDashboard() {
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } }
+                    layout: { padding: { top: 8, bottom: 4 } },
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            align: 'center',
+                            labels: { font: { size: 12 }, padding: 20, boxWidth: 14, boxHeight: 14 }
+                        }
+                    }
                 }
             });
         }
@@ -814,7 +821,7 @@ function updateCategoryCharts() {
     // Fetch category summary + Valve/Speciality tag-based receiving + Spool counts + Support
     Promise.all([
         supabaseClient.from('v_category_readiness').select('*'),
-        supabaseClient.from('receiving').select('category, qty, tag, full_description').not('tag', 'is', null).in('category', ['Valve', 'Speciality']).limit(10000),
+        supabaseClient.from('receiving').select('category, qty, tag, full_description, pkg_no').not('tag', 'is', null).in('category', ['Valve', 'Speciality']).limit(10000),
         supabaseClient.from('spool_receiving').select('id', { count: 'exact', head: true }),
         supabaseClient.from('v_support_kpi').select('total_bom, total_received').single(),
         supabaseClient.from('bom').select('tag', { count: 'exact', head: true }).eq('category', 'Speciality'),
@@ -834,11 +841,15 @@ function updateCategoryCharts() {
         });
 
         // Pipe/Fitting/Support/Others: db.receiving 기반 (matCode 집계)
+        // On-Site만 Received로, Preparing/Shipping은 In Transit으로 별도 집계(2026-07-06, 사용자 확인)
         const activeRecByCategory = {};
-        db.receiving.filter(r => isReceivingActive(r.plNo)).forEach(r => {
+        const transitRecByCategory = {};
+        db.receiving.forEach(r => {
             if (r.category === 'Valve' || r.category === 'Speciality') return; // 별도 처리
             const cat = r.category !== '-' ? r.category : null;
-            if (cat) activeRecByCategory[cat] = (activeRecByCategory[cat] || 0) + r.qty;
+            if (!cat) return;
+            if (isReceivingActive(r.plNo)) activeRecByCategory[cat] = (activeRecByCategory[cat] || 0) + r.qty;
+            else if (isReceivingInTransit(r.plNo)) transitRecByCategory[cat] = (transitRecByCategory[cat] || 0) + r.qty;
         });
 
         // Valve/Speciality: DB 직접 쿼리 (Tag Item만)
@@ -849,6 +860,7 @@ function updateCategoryCharts() {
         // Speciality는 QTY 합계 대신 "받은 Tag 개수" 기준 — Orifice 등 일부 품목은 조립품 1개가
         // Packing List에는 여러 Item으로 쪼개져 기재되어 QTY 합계만으로는 입고율이 왜곡됨(사용자 확인, 2026-07-06)
         const specialityRecTagSet = new Set();
+        const specialityTransitTagSet = new Set();
 
         if (tagRecRes.data) {
             tagRecRes.data.forEach(r => {
@@ -861,23 +873,27 @@ function updateCategoryCharts() {
                     // Speciality는 BOM Tag와 정확히 일치하는 항목만 집계 — PKG 통짜 Tag(부속품/스페어파트)는
                     // BOM에 없는 Tag라 자동 제외됨(Valve처럼 Accessory 키워드 추정 대신 실제 Tag 매칭 사용)
                     if (!db.bomTagMap[tag.toUpperCase()]) return;
-                    specialityRecTagSet.add(tag);
+                    if (isReceivingActive(r.pkg_no)) specialityRecTagSet.add(tag);
+                    else if (isReceivingInTransit(r.pkg_no)) specialityTransitTagSet.add(tag);
                 } else {
                     if (!/^B[0-2]-/i.test(tag)) return;
                     if (ACCESSORY_RE.test(desc)) return;
                 }
 
-                activeRecByCategory[cat] = (activeRecByCategory[cat] || 0) + qty;
+                if (isReceivingActive(r.pkg_no)) activeRecByCategory[cat] = (activeRecByCategory[cat] || 0) + qty;
+                else if (isReceivingInTransit(r.pkg_no)) transitRecByCategory[cat] = (transitRecByCategory[cat] || 0) + qty;
             });
         }
 
         const recDataArr = catLabels.map(l => activeRecByCategory[l] || 0);
+        const transitDataArr = catLabels.map(l => transitRecByCategory[l] || 0);
         // Speciality는 Qty 합계 대신 Tag 개수 기준으로 교체 (BOM=전체 Tag 수, Received=매칭된 Tag 수)
         bomDataArr[3] = splTagCountRes.count || 0;
         recDataArr[3] = specialityRecTagSet.size;
+        transitDataArr[3] = specialityTransitTagSet.size;
 
         // Category KPI cards — % progress per category (반환값은 Overall 평균 계산에 재사용)
-        function setCatKpi(pctId, subId, bom, rec, unit) {
+        function setCatKpi(pctId, subId, bom, rec, unit, transitId, transit) {
             const pct = bom > 0 ? (rec / bom * 100) : 0;
             // 자재는 순차적으로 입고되는 중 — 진행률이 낮다고 경고색을 쓰지 않고 연한 파랑/초록만 사용
             const color = pct >= 90 ? '#66bb6a' : '#42a5f5';
@@ -885,13 +901,17 @@ function updateCategoryCharts() {
             if (elPct) { elPct.textContent = pct.toFixed(1) + '%'; elPct.style.color = color; }
             const elSub = document.getElementById(subId);
             if (elSub) elSub.textContent = `${Math.round(rec).toLocaleString()} / ${Math.round(bom).toLocaleString()} ${unit}`;
+            if (transitId) {
+                const elTransit = document.getElementById(transitId);
+                if (elTransit) elTransit.textContent = `${Math.round(transit || 0).toLocaleString()} ${unit}`;
+            }
             return pct;
         }
-        const pctPipe  = setCatKpi('kpi-pipe-pct',  'kpi-pipe-sub',  bomDataArr[0], recDataArr[0], 'M');
-        const pctFit   = setCatKpi('kpi-fit-pct',   'kpi-fit-sub',   bomDataArr[1], recDataArr[1], 'EA');
-        const pctValve = setCatKpi('kpi-valve-pct', 'kpi-valve-sub', bomDataArr[2], recDataArr[2], 'EA');
-        const pctSpc   = setCatKpi('kpi-spc-pct',   'kpi-spc-sub',   bomDataArr[3], recDataArr[3], 'EA');
-        const pctOth   = setCatKpi('kpi-oth-pct',   'kpi-oth-sub',   bomDataArr[5], recDataArr[5], 'EA');
+        const pctPipe  = setCatKpi('kpi-pipe-pct',  'kpi-pipe-sub',  bomDataArr[0], recDataArr[0], 'M',  'kpi-pipe-transit',  transitDataArr[0]);
+        const pctFit   = setCatKpi('kpi-fit-pct',   'kpi-fit-sub',   bomDataArr[1], recDataArr[1], 'EA', 'kpi-fit-transit',   transitDataArr[1]);
+        const pctValve = setCatKpi('kpi-valve-pct', 'kpi-valve-sub', bomDataArr[2], recDataArr[2], 'EA', 'kpi-valve-transit', transitDataArr[2]);
+        const pctSpc   = setCatKpi('kpi-spc-pct',   'kpi-spc-sub',   bomDataArr[3], recDataArr[3], 'EA', 'kpi-spc-transit',   transitDataArr[3]);
+        const pctOth   = setCatKpi('kpi-oth-pct',   'kpi-oth-sub',   bomDataArr[5], recDataArr[5], 'EA', 'kpi-oth-transit',   transitDataArr[5]);
 
         // Support: v_support_kpi 뷰에서 집계값 직접 사용
         const supportBom = parseFloat(suppKpiRes.data?.total_bom || 0);
@@ -5258,10 +5278,17 @@ window.setShippingKpiFilter = function(type) {
     renderShippingTable(getShippingFiltered());
 };
 
-// status가 Preparing/Shipping이면 아직 현장 미도착 → Receiving 집계 제외
+// status가 Preparing/Shipping이면 아직 현장 미도착 → Receiving 집계 제외.
+// pl_updates에 상태가 아예 없는 PKG(추적 누락)는 실제로는 대부분 On-Site라 입고완료로 간주(2026-07-06, 사용자 확인).
 function isReceivingActive(plNo) {
     const status = (_plUpdatesCache[plNo] || {}).status || '';
     return status !== 'Preparing' && status !== 'Shipping';
+}
+
+// Preparing/Shipping 단계(아직 현장 미입고, "In Transit")인지 여부 — Dashboard KPI의 Received/In Transit 구분 표기용
+function isReceivingInTransit(plNo) {
+    const status = (_plUpdatesCache[plNo] || {}).status || '';
+    return status === 'Preparing' || status === 'Shipping';
 }
 
 // PKG의 Issue Date가 설정되어 있으면 "불출 완료"로 판정

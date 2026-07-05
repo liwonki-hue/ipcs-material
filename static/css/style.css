@@ -101,6 +101,7 @@ ul { list-style: none; }
 .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border-color); }
 .panel-header h2, .panel-header h3 { font-size: 15px; color: var(--color-primary); font-weight: 600; display: flex; align-items: center; gap: 6px; }
 
+.chart-panel { display: flex; flex-direction: column; }
 .chart-container { flex: 1; position: relative; min-height: 170px; }
 
 /* Tables */
