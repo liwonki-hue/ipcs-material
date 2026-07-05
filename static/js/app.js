@@ -223,6 +223,16 @@ window.extractItemFromDesc = function(desc) {
     return raw;
 };
 
+// MOV/AOV/SOV/HOV 등 구동방식 코드가 PKG NO(예: PGU-DE-125-MOV-BFV-012)에 포함돼 있는데
+// Description에 실제 밸브 본체 표현("GATE VALVE" 등)이 없으면, 그 밸브에 딸린 부속품
+// (스터드볼트/개스킷 등)으로 보고 "{구동방식} ACCESSORY"로 분류. 밸브 본체 행은 그대로 둠.
+window.getValveOpAccessoryItem = function(plNo, desc) {
+    const opMatch = (plNo || '').toUpperCase().match(/-(MOV|AOV|SOV|HOV)-/);
+    if (!opMatch) return null;
+    const isValveBody = /\b(GATE|GLOBE|BALL|CHECK|BUTTERFLY|PLUG|NEEDLE|DIAPHRAGM)\s+VALVE\b/.test((desc || '').toUpperCase());
+    return isValveBody ? null : `${opMatch[1]} ACCESSORY`;
+};
+
 window.extractItemFromMatCode = function(matCode) {
     const prefix = (matCode || '').split('-')[0].toUpperCase();
     const MAP = {
@@ -2757,7 +2767,8 @@ function _renderRecvCore(cfg) {
             : ((bomFullDesc || r.desc).match(/(\d+(?:\.\d+)?"\s*[Xx×]\s*\d+(?:\.\d+)?"|DN\s*\d+)/i) || [])[0] || '-';
         const _mcItemR  = window.extractItemFromMatCode(effMat);
         const _rawItemR = (_mcItemR && _mcItemR !== '-') ? _mcItemR : window.extractItemFromDesc(bomFullDesc || r.desc);
-        const item      = (r.plNo || '').toUpperCase().includes('BYPS') ? 'BYPASS VALVE' : _rawItemR;
+        const item      = (r.plNo || '').toUpperCase().includes('BYPS') ? 'BYPASS VALVE'
+            : window.getValveOpAccessoryItem(r.plNo, bomFullDesc || r.desc) || _rawItemR;
         const etPart    = (effMat || '').split('-').pop().toUpperCase();
         const flangeType = (item === 'FLANGE' && (etPart === 'FF' || etPart === 'RF')) ? 'WN' + etPart : '-';
 
@@ -4794,7 +4805,8 @@ async function initShipping() {
                 const bomFullDesc = tagInfo ? tagInfo.fullDescription : '';
                 const _mcItemR  = window.extractItemFromMatCode(effMat);
                 const _rawItemR = (_mcItemR && _mcItemR !== '-') ? _mcItemR : window.extractItemFromDesc(bomFullDesc || r.desc);
-                const item      = (r.plNo || '').toUpperCase().includes('BYPS') ? 'BYPASS VALVE' : _rawItemR;
+                const item      = (r.plNo || '').toUpperCase().includes('BYPS') ? 'BYPASS VALVE'
+                    : window.getValveOpAccessoryItem(r.plNo, bomFullDesc || r.desc) || _rawItemR;
                 return {
                 packing:      r.docNo,
                 pkg_no:       r.plNo,
