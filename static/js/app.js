@@ -23,8 +23,6 @@ let db = {
     receiving: []
 };
 
-// Cached ISO stage data for client-side re-filtering (donut chart clicks)
-let cachedIsoData = [];
 let _knownSystems = new Set(); // db.bom 로드 후 갱신, 전역 검색 시스템 매칭용
 
 // Material Shortage 탭 자동 갱신 타이머
@@ -622,70 +620,6 @@ function renderAllViews() {
     updateDashboard();
 }
 
-// ISO stage classification (module-level for reuse)
-function getIsoStage(sp, fd) {
-    if (fd >= 100) return { label: 'ERECTION READY', cls: 'ok',   color: '#2e7d32' };
-    if (sp >= 100) return { label: 'SPOOL READY',    cls: 'info',  color: '#1565c0' };
-    if (sp >= 50)  return { label: 'SPOOL IN PROG',  cls: 'warn',  color: '#f57f17' };
-    return             { label: 'CRITICAL',        cls: 'err',   color: '#c62828' };
-}
-
-// Render ISO priority table — reusable for dropdown filter & donut chart click
-let isoCurrentPage = 1;
-let isoSortedData = [];
-
-function renderIsoPage(page) {
-    const tbody = document.getElementById('priorityIsoTbody');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-    const ISO_PAGE_SIZE = 10;
-    const start = (page - 1) * ISO_PAGE_SIZE;
-    const pageData = isoSortedData.slice(start, start + ISO_PAGE_SIZE);
-    if (pageData.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#888;padding:20px;">No ISOs found.</td></tr>`;
-    } else {
-        tbody.innerHTML = pageData.map(iso => {
-            const sp = parseFloat(iso.spool_score || 0);
-            const fd = parseFloat(iso.field_score || 0);
-            const stage = getIsoStage(sp, fd);
-            const spBar = `<div style="display:flex;align-items:center;gap:5px;"><div style="width:55px;background:#eee;height:7px;border-radius:4px;overflow:hidden;"><div style="width:${Math.min(sp,100)}%;background:#1565c0;height:100%;"></div></div><span style="font-size:11px;font-weight:600;color:#1565c0;">${sp}%</span></div>`;
-            const fdBar = `<div style="display:flex;align-items:center;gap:5px;"><div style="width:55px;background:#eee;height:7px;border-radius:4px;overflow:hidden;"><div style="width:${Math.min(fd,100)}%;background:#2e7d32;height:100%;"></div></div><span style="font-size:11px;font-weight:600;color:#2e7d32;">${fd}%</span></div>`;
-            return `<tr style="cursor:pointer;" onclick="window.showIsoDetail('${iso.iso_dwg_no}')" title="${iso.iso_dwg_no}">
-                <td><strong style="color:#0A2540;text-decoration:underline dotted;">${iso.iso_dwg_no}</strong></td>
-                <td>${spBar}</td>
-                <td>${fdBar}</td>
-                <td style="font-weight:600;color:#0d47a1;">${parseFloat(iso.total_bom_qty||0).toLocaleString()}</td>
-                <td style="font-weight:600;color:#2e7d32;">${parseFloat(iso.total_rec_qty||0).toLocaleString()}</td>
-                <td><span class="status-badge ${stage.cls}" style="white-space:nowrap;">${stage.label}</span></td>
-                <td><button style="background:#0A2540;color:white;border:none;padding:5px 12px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;" onclick="event.stopPropagation();window.showIsoDetail('${iso.iso_dwg_no}')"><i class="fas fa-file-signature"></i> Issue MR</button></td>
-            </tr>`;
-        }).join('');
-    }
-    const totalPages = Math.max(1, Math.ceil(isoSortedData.length / ISO_PAGE_SIZE));
-    renderPagination('isoPaginator', page, totalPages, 'isoGoPage');
-}
-
-window.isoGoPage = function(page) {
-    isoCurrentPage = page;
-    renderIsoPage(page);
-    document.getElementById('priorityIsoTbody')?.closest('.panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-};
-
-function renderIsoTable(data, dashStage) {
-    const stageOrder = { 'SPOOL READY': 0, 'SPOOL IN PROG': 1, 'ERECTION READY': 2, 'CRITICAL': 3 };
-    const filteredData = dashStage === 'All'
-        ? data
-        : data.filter(iso => getIsoStage(parseFloat(iso.spool_score||0), parseFloat(iso.field_score||0)).label === dashStage);
-    isoSortedData = [...filteredData].sort((a, b) => {
-        const sa = getIsoStage(parseFloat(a.spool_score||0), parseFloat(a.field_score||0));
-        const sb = getIsoStage(parseFloat(b.spool_score||0), parseFloat(b.field_score||0));
-        const od = (stageOrder[sa.label]??9) - (stageOrder[sb.label]??9);
-        return od !== 0 ? od : parseFloat(b.spool_score||0) - parseFloat(a.spool_score||0);
-    });
-    isoCurrentPage = 1;
-    renderIsoPage(1);
-}
-
 function renderBulkProgressBars(categories) {
     const container = document.getElementById('bulkProgressChart');
     if (!container) return;
@@ -728,72 +662,12 @@ function renderBulkProgressBars(categories) {
 function updateDashboard() {
     if (!supabaseClient) return;
 
-    // Populate dashSystemFilter from db.bomIsoList or db.bom
-    const dashSysSelect = document.getElementById('dashSystemFilter');
-    const dashIsoSelect = document.getElementById('dashIsoSelect');
+    if (typeof updateCategoryCharts === 'function') updateCategoryCharts();
+    if (typeof renderPackageLogisticsStatus === 'function') renderPackageLogisticsStatus();
 
-    function populateDashIsoDropdown(system) {
-        if (!dashIsoSelect) return;
-        const isoList = (db.bomIsoList.length ? db.bomIsoList : db.bom)
-            .filter(r => system === 'All' || r.system === system)
-            .map(r => r.iso).filter(Boolean);
-        const uniq = [...new Set(isoList)].sort();
-        dashIsoSelect.innerHTML = '<option value="All">All ISOs</option>' +
-            uniq.map(i => `<option value="${i}">${i}</option>`).join('');
-    }
-
-    if (dashSysSelect && dashSysSelect.options.length <= 1) {
-        const systems = [...new Set(
-            (db.bomIsoList.length ? db.bomIsoList : db.bom)
-                .map(r => r.system).filter(s => s && s.trim() && s.trim() !== 'Unassigned')
-        )].sort();
-        dashSysSelect.innerHTML = '<option value="All">All Systems</option>' +
-            systems.map(s => `<option value="${s}">${s}</option>`).join('');
-        populateDashIsoDropdown('All');
-
-        dashSysSelect.addEventListener('change', () => {
-            populateDashIsoDropdown(dashSysSelect.value);
-        });
-    }
-
-    const dashIso = dashIsoSelect?.value || 'All';
-    const dashSys = dashSysSelect?.value || 'All';
-    const dashStage = document.getElementById('dashStageFilter')?.value || 'All';
-    const dashIsoSearchVal = (document.getElementById('dashIsoSearch')?.value || '').trim().toUpperCase();
-
-    // Fetch KPI summary and ISO stage data in parallel
-    Promise.all([
-        supabaseClient.from('v_project_summary').select('*').limit(1),
-        (() => {
-            let q = supabaseClient.from('v_iso_stage_status').select('*').limit(10000);
-            if (dashSys !== 'All') q = q.eq('system', dashSys);
-            if (dashIso !== 'All') q = q.eq('iso_dwg_no', dashIso);
-            if (dashIsoSearchVal) q = q.ilike('iso_dwg_no', `%${dashIsoSearchVal}%`);
-            return q;
-        })()
-    ]).then(([summaryRes, listRes]) => {
-        // Always run these regardless of v_iso_stage_status result
-        if (typeof updateExpediteAlerts === 'function') updateExpediteAlerts();
-        if (typeof updateCategoryCharts === 'function') updateCategoryCharts();
-
-        // --- 2. Stage-based ISO chart & table ---
-        if (listRes.error) {
-            console.error('v_iso_stage_status error:', listRes.error);
-            const tbody = document.getElementById('priorityIsoTbody');
-            if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#c62828;padding:20px;">
-                <i class="fas fa-exclamation-triangle"></i> ISO stage data load failed.
-            </td></tr>`;
-            return;
-        }
-        const data = listRes.data;
-        if (!data || data.length === 0) {
-            const tbody = document.getElementById('priorityIsoTbody');
-            if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#888;padding:20px;">No ISO data found.</td></tr>';
-            return;
-        }
-
-        // Cache for donut chart click re-filtering
-        cachedIsoData = data;
+    supabaseClient.from('v_iso_stage_status').select('*').limit(10000).then(({ data, error }) => {
+        if (error) { console.error('v_iso_stage_status error:', error); return; }
+        if (!data || data.length === 0) return;
 
         // Count by stage
         let erectionReady = 0, spoolReady = 0, spoolInProg = 0, critical = 0;
@@ -806,8 +680,7 @@ function updateDashboard() {
             else critical++;
         });
 
-        // Donut chart — 4 stage segments with click-to-filter
-        const stageValues = ['ERECTION READY', 'SPOOL READY', 'SPOOL IN PROG', 'CRITICAL'];
+        // Donut chart — 4 stage segments
         if (window.isoChart) window.isoChart.destroy();
         const ctx = document.getElementById('isoReadinessChart');
         if (ctx && typeof Chart !== 'undefined') {
@@ -828,71 +701,40 @@ function updateDashboard() {
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } },
-                    onClick: (_event, elements) => {
-                        if (elements.length === 0) return;
-                        const stage = stageValues[elements[0].index];
-                        const sel = document.getElementById('dashStageFilter');
-                        if (sel) sel.value = stage;
-                        renderIsoTable(cachedIsoData, stage);
-                    }
+                    plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } }
                 }
             });
         }
-
-        // Render table with current stage filter
-        renderIsoTable(data, dashStage);
-
     }).catch(err => console.error("Dashboard Sync Fail:", err));
 }
 
-function updateExpediteAlerts() {
-    const expediteListEl = document.getElementById('expediteList');
-    if (!expediteListEl) return;
-    
-    expediteListEl.innerHTML = '';
-    const bomSummary = {};
-    db.bom.forEach(b => {
-        if(!bomSummary[b.matCode]) bomSummary[b.matCode] = { qty: 0, category: b.category };
-        bomSummary[b.matCode].qty += b.qty;
-    });
+// 패키지 물류 현황(Preparing/Shipping/On-Site) — pl_updates 캐시(_plUpdatesCache) 기반, 추가 조회 없음
+function renderPackageLogisticsStatus() {
+    const container = document.getElementById('pkgLogisticsStatus');
+    if (!container) return;
 
-    const recSummary = {};
-    db.receiving.filter(r => isReceivingActive(r.plNo) && isKpiReceiving(r)).forEach(r => {
-        const tagInfo = db.bomTagMap[(r.tag || '').toUpperCase()];
-        const effMat = r.matCode || (tagInfo ? tagInfo.matCode : '');
-        if (!effMat) return;
-        if(!recSummary[effMat]) recSummary[effMat] = 0;
-        recSummary[effMat] += r.qty;
-    });
+    const STAGES = [
+        { key: 'Preparing', label: 'Preparing', icon: 'fa-box-open', color: '#888' },
+        { key: 'Shipping',  label: 'Shipping',  color: '#1565c0', icon: 'fa-ship' },
+        { key: 'On-Site',   label: 'On-Site',   color: '#2e7d32', icon: 'fa-warehouse' },
+    ];
+    const counts = { Preparing: 0, Shipping: 0, 'On-Site': 0 };
+    const rows = Object.values(_plUpdatesCache || {});
+    rows.forEach(r => { if (counts.hasOwnProperty(r.status)) counts[r.status]++; });
+    const total = rows.length;
 
-    let hasAlert = false;
-    let alertCount = 0;
-    Object.keys(bomSummary).forEach(matCode => {
-        if (alertCount >= 20) return;
-        let req = bomSummary[matCode].qty;
-        let rec = recSummary[matCode] || 0;
-        let pct = (req > 0) ? (rec / req) * 100 : 100;
-
-        if (pct <= 20) {
-            hasAlert = true;
-            alertCount++;
-            let li = document.createElement('li');
-            li.className = 'warning-item';
-            li.innerHTML = `
-                <div class="wi-icon"><i class="fas fa-exclamation-circle text-danger"></i></div>
-                <div class="wi-content">
-                    <div class="wi-title">[${matCode}] ${bomSummary[matCode].category || '-'}</div>
-                    <div class="wi-desc">Req: ${req.toFixed(1)} | Rec: ${rec.toFixed(1)} (${pct.toFixed(1)}%)</div>
-                </div>
-            `;
-            expediteListEl.appendChild(li);
-        }
-    });
-
-    if(!hasAlert) {
-        expediteListEl.innerHTML = `<div class="empty-state-small" style="padding:10px; color:#666;">All items are > 20% received.</div>`;
-    }
+    container.innerHTML = STAGES.map(s => {
+        const cnt = counts[s.key];
+        const pct = total > 0 ? (cnt / total * 100).toFixed(1) : '0.0';
+        return `
+        <div style="border:1px solid #e0e6ef;border-radius:6px;padding:14px;text-align:center;">
+            <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.5px;">
+                <i class="fas ${s.icon}" style="color:${s.color};margin-right:4px;"></i>${s.label}
+            </div>
+            <div style="font-size:28px;font-weight:700;color:${s.color};margin-top:4px;">${cnt.toLocaleString()}</div>
+            <div style="font-size:11px;color:#888;margin-top:2px;">${pct}% of ${total.toLocaleString()} PKG</div>
+        </div>`;
+    }).join('');
 }
 
 function updateCategoryCharts() {
@@ -948,7 +790,7 @@ function updateCategoryCharts() {
 
         const recDataArr = catLabels.map(l => activeRecByCategory[l] || 0);
 
-        // Category KPI cards — % progress per category
+        // Category KPI cards — % progress per category (반환값은 Overall 평균 계산에 재사용)
         function setCatKpi(pctId, subId, bom, rec, unit) {
             const pct = bom > 0 ? (rec / bom * 100) : 0;
             const color = pct >= 90 ? '#2e7d32' : pct >= 70 ? '#e65100' : '#c62828';
@@ -956,15 +798,24 @@ function updateCategoryCharts() {
             if (elPct) { elPct.textContent = pct.toFixed(1) + '%'; elPct.style.color = color; }
             const elSub = document.getElementById(subId);
             if (elSub) elSub.textContent = `${Math.round(rec).toLocaleString()} / ${Math.round(bom).toLocaleString()} ${unit}`;
+            return pct;
         }
-        setCatKpi('kpi-pipe-pct', 'kpi-pipe-sub', bomDataArr[0], recDataArr[0], 'M');
-        setCatKpi('kpi-fit-pct',  'kpi-fit-sub',  bomDataArr[1], recDataArr[1], 'EA');
-        setCatKpi('kpi-oth-pct',  'kpi-oth-sub',  bomDataArr[5], recDataArr[5], 'EA');
+        const pctPipe  = setCatKpi('kpi-pipe-pct',  'kpi-pipe-sub',  bomDataArr[0], recDataArr[0], 'M');
+        const pctFit   = setCatKpi('kpi-fit-pct',   'kpi-fit-sub',   bomDataArr[1], recDataArr[1], 'EA');
+        const pctValve = setCatKpi('kpi-valve-pct', 'kpi-valve-sub', bomDataArr[2], recDataArr[2], 'EA');
+        const pctOth   = setCatKpi('kpi-oth-pct',   'kpi-oth-sub',   bomDataArr[5], recDataArr[5], 'EA');
 
         // Support: v_support_kpi 뷰에서 집계값 직접 사용
         const supportBom = parseFloat(suppKpiRes.data?.total_bom || 0);
         const supportRec = parseFloat(suppKpiRes.data?.total_received || 0);
-        setCatKpi('kpi-sup-pct', 'kpi-sup-sub', supportBom, supportRec, 'EA');
+        const pctSup = setCatKpi('kpi-sup-pct', 'kpi-sup-sub', supportBom, supportRec, 'EA');
+
+        // Overall — 5개 카테고리(Pipe/Fitting/Valve/Others/Support) 진행률 단순 평균
+        // (단위가 서로 달라 수량 합산 대신 %를 평균 — 카드별 표시값과 일관성 유지)
+        const overallPct = (pctPipe + pctFit + pctValve + pctOth + pctSup) / 5;
+        const overallColor = overallPct >= 90 ? '#2e7d32' : overallPct >= 70 ? '#e65100' : '#c62828';
+        const elOverall = document.getElementById('kpi-overall-pct');
+        if (elOverall) { elOverall.textContent = overallPct.toFixed(1) + '%'; elOverall.style.color = overallColor; }
 
         // Bulk Material Progress Bars (Pipe / Fitting / Others / Support)
         renderBulkProgressBars([
@@ -5013,40 +4864,7 @@ function attachEventListeners() {
         });
     }
 
-    const btnDashFilter = document.getElementById('btnDashFilter');
-    if (btnDashFilter) {
-        btnDashFilter.addEventListener('click', () => {
-            if (typeof window.updateDashboard === 'function') window.updateDashboard();
-        });
-    }
-
-    const dashIsoSearchInput = document.getElementById('dashIsoSearch');
-    if (dashIsoSearchInput) {
-        dashIsoSearchInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') btnDashFilter?.click();
-        });
-    }
-
 }
-
-/**
- * Navigate from Dashboard to Material Requisition for a specific ISO drawing
- */
-window.showIsoDetail = function(isoDwgNo) {
-    if (!isoDwgNo) return;
-    if (typeof showSection === 'function') showSection('issue');
-    // Wait for section switch and renderIssueOptions() to complete before searching
-    setTimeout(() => {
-        document.querySelector('.mf-mode-btn[data-mode="iso"]')?.click();
-        const searchInput = document.getElementById('issueIsoSearch');
-        if (searchInput) searchInput.value = isoDwgNo;
-        // Reset category filter then search all
-        const catFilter = document.getElementById('issueCategoryFilter');
-        if (catFilter) catFilter.value = 'All';
-        document.getElementById('btnFilterIssue')?.click();
-    }, 150);
-};
-
 
 // ── Shipping / Custom Clearance ────────────────────────────────────────
 let _shippingData          = null;

@@ -103,15 +103,6 @@ ul { list-style: none; }
 
 .chart-container { flex: 1; position: relative; min-height: 170px; }
 
-/* Warning / Alert Panel */
-.alert-header h2 { color: var(--color-danger); }
-.warning-list { display: flex; flex-direction: column; gap: 10px; max-height: 300px; overflow-y: auto; }
-.warning-item { display: flex; align-items: flex-start; gap: 12px; padding: 10px; border-radius: 6px; border-left: 4px solid var(--color-danger); background-color: rgba(198, 40, 40, 0.02); }
-.warning-item.alert-warn { border-left-color: var(--color-warning); background-color: rgba(245, 127, 23, 0.02); }
-.wi-content { flex: 1; }
-.wi-title { font-weight: 600; font-size: 15px; margin-bottom: 2px; }
-.wi-desc { font-size: 14px; color: var(--text-secondary); }
-
 /* Tables */
 .table-responsive { width: 100%; overflow-x: auto; }
 .data-table { width: 100%; border-collapse: collapse; }
