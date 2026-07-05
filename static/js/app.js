@@ -713,6 +713,7 @@ function updateDashboard() {
 // Pipe/Fitting/Others는 db.bom(matCode 단위) + db.receiving, Valve는 loadValveStockBom()(Tag 단위) 사용.
 async function computeItemReceivingSummary() {
     const agg = {}; // item -> { item, unit, bom, rec }
+    const pipeSizeAgg = {}; // size(예: 1", 2") -> { size, bom, rec } — Pipe는 대표 Size Top 2를 따로 보여주기 위함
 
     const recByMatCode = {};
     db.receiving.forEach(r => {
@@ -726,11 +727,25 @@ async function computeItemReceivingSummary() {
         if (!item || item === '-') return;
         if (!agg[item]) agg[item] = { item, unit: b.category === 'Pipe' ? 'M' : 'EA', bom: 0, rec: 0 };
         agg[item].bom += b.qty;
+
+        if (b.category === 'Pipe') {
+            const size = window.extractSizeFromMatCode(b.matCode);
+            if (size && size !== '-') {
+                if (!pipeSizeAgg[size]) pipeSizeAgg[size] = { size, bom: 0, rec: 0 };
+                pipeSizeAgg[size].bom += b.qty;
+            }
+        }
     });
     Object.keys(recByMatCode).forEach(mc => {
         const item = window.extractItemFromMatCode(mc);
         if (!item || item === '-' || !agg[item]) return;
         agg[item].rec += recByMatCode[mc];
+    });
+    db.receiving.forEach(r => {
+        if (!isReceivingActive(r.plNo) || r.category !== 'Pipe') return;
+        const size = window.extractSizeFromMatCode(r.matCode);
+        if (!size || size === '-' || !pipeSizeAgg[size]) return;
+        pipeSizeAgg[size].rec += (r.qty || 0);
     });
 
     // Valve: MatCode가 없어(Tag 매칭) 별도 소스 — bom_detail(Tag 단위) + buildValveRecvMaps()
@@ -744,7 +759,7 @@ async function computeItemReceivingSummary() {
         agg[item].rec += (valveRecMap[b.tag] || 0);
     });
 
-    return Object.values(agg);
+    return { items: Object.values(agg), pipeSizes: Object.values(pipeSizeAgg) };
 }
 
 // 입고율(Received/BOM)이 낮은 대표 Item Top 10 — 완전 입고(100% 이상)된 Item은 제외
@@ -756,16 +771,22 @@ async function renderPendingItemsList() {
     if (!container) return;
     const reqId = ++_pendingItemsReqId;
 
-    const items = await computeItemReceivingSummary();
+    const { items, pipeSizes } = await computeItemReceivingSummary();
     if (reqId !== _pendingItemsReqId) return; // 이후에 시작된 더 최신 호출이 있으면 이 결과는 폐기
 
-    const allPending = items
+    // Pipe는 하나로 뭉뚱그리지 않고 입고율이 가장 낮은 대표 Size 2개를 최상단에 고정 표시
+    // (소구경(1"/2" 등)이 후순위로 밀려 늦게 들어오는 경향이 있어 별도로 짚어주는 게 실무에 유용)
+    const pipeSizeRows = pipeSizes
         .filter(r => r.bom > 0 && r.rec < r.bom)
-        .map(r => ({ ...r, pct: r.rec / r.bom * 100 }));
-    // Pipe는 물량 비중이 가장 큰 핵심 자재라 입고율 순위와 무관하게 항상 최상단 고정
-    const pipeItem = allPending.find(r => r.item === 'PIPE');
-    const rest = allPending.filter(r => r.item !== 'PIPE').sort((a, b) => a.pct - b.pct);
-    const pending = (pipeItem ? [pipeItem, ...rest] : rest).slice(0, 10);
+        .map(r => ({ item: `PIPE (${r.size})`, unit: 'M', bom: r.bom, rec: r.rec, pct: r.rec / r.bom * 100 }))
+        .sort((a, b) => a.pct - b.pct)
+        .slice(0, 2);
+
+    const allPending = items
+        .filter(r => r.item !== 'PIPE' && r.bom > 0 && r.rec < r.bom)
+        .map(r => ({ ...r, pct: r.rec / r.bom * 100 }))
+        .sort((a, b) => a.pct - b.pct);
+    const pending = [...pipeSizeRows, ...allPending].slice(0, 10);
 
     if (pending.length === 0) {
         container.innerHTML = '<div class="empty-state-small">모든 대표 Item이 100% 입고 완료되었습니다.</div>';
