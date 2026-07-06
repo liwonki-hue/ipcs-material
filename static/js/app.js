@@ -3074,6 +3074,7 @@ function initFilterOptions() {
     // Receiving 단일 패스 분류 (5회 반복 filter → 1회 forEach)
     const recByCat = { Pipe: [], Fitting: [], Others: [], Valve: [], Speciality: [] };
     db.receiving.forEach(r => {
+        if (isSpareBodyRow(r)) return;
         if (isReceivingActive(r.plNo) && recByCat[r.category]) recByCat[r.category].push(r);
     });
 
@@ -4985,6 +4986,7 @@ function attachEventListeners() {
 
         return db.receiving.filter(r => {
             if (r.category !== forcedCat) return false;
+            if (isSpareBodyRow(r)) return false; // Spare 예비 본체는 Export에서도 제외 (화면과 일치)
             const matchSearch = !search || (r.matCode||'').toUpperCase().includes(search) || r.plNo.toUpperCase().includes(search) || (r.category||'').toUpperCase().includes(search) || r.desc.toUpperCase().includes(search);
             const matchDoc    = doc === 'All' || r.docNo === doc;
             const matchPkg    = pkg === 'All' || r.plNo  === pkg;
