@@ -155,7 +155,7 @@ ul { list-style: none; }
 #plTable th:nth-child(11), #plTable td:nth-child(11) { width: 65px;  min-width: 65px;  }
 #plTable th:nth-child(12), #plTable td:nth-child(12) { width: 125px; min-width: 125px; }
 
-.status-badge { padding: 4px 8px; border-radius: 4px; font-size: 13px; font-weight: 600; display: inline-block; }
+.status-badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; display: inline-block; }
 .status-badge.ok { background-color: rgba(46, 125, 50, 0.1); color: var(--color-success); }
 .status-badge.err { background-color: rgba(198, 40, 40, 0.1); color: var(--color-danger); }
 .status-badge.info { background-color: rgba(2, 136, 209, 0.1); color: var(--color-info); }
