@@ -2176,7 +2176,7 @@ function _sortByCatItemSize(list) {
     });
 }
 
-function _enrichRow(matCode, bomMap, recMap, masterMap) {
+function _enrichRow(matCode, bomMap, recMap, masterMap, mat12Map) {
     const mData = masterMap[matCode] || {};
     const desc = db.bomDesc[matCode] || (recMap[matCode]?.desc !== '-' ? recMap[matCode]?.desc : null) || mData.itemDesc || '-';
     const _itemMc = window.extractItemFromMatCode(matCode);
@@ -2184,19 +2184,22 @@ function _enrichRow(matCode, bomMap, recMap, masterMap) {
     const _sc = window.extractSizeFromMatCode(matCode);
     const size = (_sc && _sc !== '-') ? _sc : (mData.size1 || '-');
     const cat  = mData.category || window.getCategory(mData.itemDesc || '', matCode);
-    const matl = (matCode.split('-')[1]) || '-';
+    const m12  = (mat12Map && mat12Map[matCode]) || {};
+    const mat1 = m12.mat1 || '-';
+    const mat2 = m12.mat2 || '-';
     const rating = getRatingForMatCode(matCode, masterMap);
     const unit = recMap[matCode]?.unit || bomMap[matCode]?.uom || 'EA';
     const bomQty = bomMap[matCode]?.qty ?? 0;
     const recQty = recMap[matCode]?.qty ?? 0;
-    return { matCode, cat, desc, item, matl, size, rating, unit, bomQty, recQty };
+    return { matCode, cat, desc, item, mat1, mat2, size, rating, unit, bomQty, recQty };
 }
 
-const _TABLE_ROW_TPL = ({ matCode, cat, item, matl, size, rating, unit, bomQty, recQty, diffQty, diffColor }) => `<tr>
+const _TABLE_ROW_TPL = ({ matCode, cat, item, mat1, mat2, size, rating, unit, bomQty, recQty, diffQty, diffColor }) => `<tr>
     <td style="text-align:center;"><strong>${cat}</strong></td>
     <td style="text-align:center;font-weight:600;color:var(--color-primary);white-space:nowrap;">${matCode}</td>
     <td style="text-align:center;">${item}</td>
-    <td style="text-align:center;">${matl}</td>
+    <td style="text-align:center;">${mat1}</td>
+    <td style="text-align:center;">${mat2}</td>
     <td style="text-align:center;">${size}</td>
     <td style="text-align:center;">${rating}</td>
     <td style="text-align:center;">${unit}</td>
@@ -2209,7 +2212,7 @@ const _TABLE_ROW_TPL = ({ matCode, cat, item, matl, size, rating, unit, bomQty, 
 let _shortagePage = 1;
 let _shortageList = [];
 
-function renderShortageTable() {
+async function renderShortageTable() {
     const tbody = document.querySelector('#shortageTable tbody');
     if (!tbody) return;
     tbody.innerHTML = '';
@@ -2217,26 +2220,30 @@ function renderShortageTable() {
     const bomMap = _buildBomMap();
     const recMap = _buildRecMap();
     const masterMap = _buildMasterMap();
+    const mat12Map = {};
+    (await loadMssItemAgg()).forEach(r => { mat12Map[r.matCode] = { mat1: r.mat1, mat2: r.mat2 }; });
 
     const catFilter    = (document.getElementById('shortCatFilter')    || {}).value || 'ALL';
     const itemFilter   = (document.getElementById('shortItemFilter')   || {}).value || 'ALL';
-    const matlFilter   = (document.getElementById('shortMatlFilter')   || {}).value || 'ALL';
+    const mat1Filter   = (document.getElementById('shortMat1Filter')   || {}).value || 'ALL';
+    const mat2Filter   = (document.getElementById('shortMat2Filter')   || {}).value || 'ALL';
     const sizeFilter   = (document.getElementById('shortSizeFilter')   || {}).value || 'ALL';
     const ratingFilter = (document.getElementById('shortRatingFilter') || {}).value || 'ALL';
     const searchQ      = ((document.getElementById('shortSearch')      || {}).value || '').toUpperCase();
 
     const list = [];
     Object.keys(bomMap).forEach(matCode => {
-        const row = _enrichRow(matCode, bomMap, recMap, masterMap);
+        const row = _enrichRow(matCode, bomMap, recMap, masterMap, mat12Map);
         const diffQty = row.bomQty - row.recQty;
         if (diffQty <= 0.01) return;
         if (!['Pipe', 'Fitting', 'Others'].includes(row.cat)) return;
         if (catFilter    !== 'ALL' && row.cat    !== catFilter)    return;
         if (itemFilter   !== 'ALL' && row.item   !== itemFilter)   return;
-        if (matlFilter   !== 'ALL' && row.matl   !== matlFilter)   return;
+        if (mat1Filter   !== 'ALL' && row.mat1   !== mat1Filter)   return;
+        if (mat2Filter   !== 'ALL' && row.mat2   !== mat2Filter)   return;
         if (sizeFilter   !== 'ALL' && row.size   !== sizeFilter)   return;
         if (ratingFilter !== 'ALL' && row.rating !== ratingFilter) return;
-        if (searchQ && ![row.matCode, row.item, row.matl, row.size].some(v => (v||'').toUpperCase().includes(searchQ))) return;
+        if (searchQ && ![row.matCode, row.item, row.mat1, row.mat2, row.size].some(v => (v||'').toUpperCase().includes(searchQ))) return;
         list.push({ ...row, diffQty });
     });
     _sortByCatItemSize(list);
@@ -2247,7 +2254,7 @@ function renderShortageTable() {
     if (countEl) countEl.textContent = list.length > 0 ? `${list.length} items` : '';
 
     if (list.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#666;padding:20px;">No shortage items found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#666;padding:20px;">No shortage items found.</td></tr>';
         const sp = document.getElementById('shortagePagination'); if (sp) sp.innerHTML = '';
         return;
     }
@@ -2268,7 +2275,7 @@ function goShortagePage(p) {
 let _surplusPage = 1;
 let _surplusList = [];
 
-function renderSurplusTable() {
+async function renderSurplusTable() {
     const tbody = document.querySelector('#surplusTable tbody');
     if (!tbody) return;
     tbody.innerHTML = '';
@@ -2276,10 +2283,13 @@ function renderSurplusTable() {
     const bomMap = _buildBomMap();
     const recMap = _buildRecMap();
     const masterMap = _buildMasterMap();
+    const mat12Map = {};
+    (await loadMssItemAgg()).forEach(r => { mat12Map[r.matCode] = { mat1: r.mat1, mat2: r.mat2 }; });
 
     const catFilter    = (document.getElementById('surplusCatFilter')    || {}).value || 'ALL';
     const itemFilter   = (document.getElementById('surplusItemFilter')   || {}).value || 'ALL';
-    const matlFilter   = (document.getElementById('surplusMatlFilter')   || {}).value || 'ALL';
+    const mat1Filter   = (document.getElementById('surplusMat1Filter')   || {}).value || 'ALL';
+    const mat2Filter   = (document.getElementById('surplusMat2Filter')   || {}).value || 'ALL';
     const sizeFilter   = (document.getElementById('surplusSizeFilter')   || {}).value || 'ALL';
     const ratingFilter = (document.getElementById('surplusRatingFilter') || {}).value || 'ALL';
     const searchQ      = ((document.getElementById('surplusSearch')      || {}).value || '').toUpperCase();
@@ -2287,16 +2297,17 @@ function renderSurplusTable() {
     const allMatCodes = new Set([...Object.keys(bomMap), ...Object.keys(recMap)]);
     const list = [];
     allMatCodes.forEach(matCode => {
-        const row = _enrichRow(matCode, bomMap, recMap, masterMap);
+        const row = _enrichRow(matCode, bomMap, recMap, masterMap, mat12Map);
         const diffQty = row.recQty - row.bomQty;
         if (diffQty <= 0.01) return;
         if (!['Pipe', 'Fitting', 'Others'].includes(row.cat)) return;
         if (catFilter    !== 'ALL' && row.cat    !== catFilter)    return;
         if (itemFilter   !== 'ALL' && row.item   !== itemFilter)   return;
-        if (matlFilter   !== 'ALL' && row.matl   !== matlFilter)   return;
+        if (mat1Filter   !== 'ALL' && row.mat1   !== mat1Filter)   return;
+        if (mat2Filter   !== 'ALL' && row.mat2   !== mat2Filter)   return;
         if (sizeFilter   !== 'ALL' && row.size   !== sizeFilter)   return;
         if (ratingFilter !== 'ALL' && row.rating !== ratingFilter) return;
-        if (searchQ && ![row.matCode, row.item, row.matl, row.size].some(v => (v||'').toUpperCase().includes(searchQ))) return;
+        if (searchQ && ![row.matCode, row.item, row.mat1, row.mat2, row.size].some(v => (v||'').toUpperCase().includes(searchQ))) return;
         list.push({ ...row, diffQty });
     });
     _sortByCatItemSize(list);
@@ -2307,7 +2318,7 @@ function renderSurplusTable() {
     if (countEl) countEl.textContent = list.length > 0 ? `${list.length} items` : '';
 
     if (list.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#666;padding:20px;">No surplus items found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#666;padding:20px;">No surplus items found.</td></tr>';
         const sp = document.getElementById('surplusPagination'); if (sp) sp.innerHTML = '';
         return;
     }
@@ -2329,7 +2340,8 @@ function _exportDiffList(list, sheetName, filenamePrefix) {
         'Category':      r.cat,
         'MatCode':       r.matCode,
         'Item':          r.item,
-        'Material':      r.matl,
+        'Mat 1':         r.mat1,
+        'Mat 2':         r.mat2,
         'Size (Inch)':   r.size,
         'Rating':        r.rating,
         'Unit':          r.unit,
@@ -2338,7 +2350,7 @@ function _exportDiffList(list, sheetName, filenamePrefix) {
         [`${filenamePrefix} QTY`]: Math.round(r.diffQty),
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
-    ws['!cols'] = [12, 22, 18, 12, 10, 10, 8, 12, 14, 14].map(w => ({ wch: w }));
+    ws['!cols'] = [12, 22, 18, 10, 14, 10, 10, 8, 12, 14, 14].map(w => ({ wch: w }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
     const today = new Date().toISOString().split('T')[0];
@@ -2669,19 +2681,23 @@ function initFilterOptions() {
         } catch(e) { console.error('Support Receiving filter init failed:', e); }
     })();
 
-    // Shortage/Surplus Material/Rating 필터 공용 초기화 헬퍼
-    const initShortSurplusMatl = (catEl, itemEl, matlEl, sizeEl, ratingEl, allVal) => {
+    // Shortage/Surplus Mat1/Mat2/Rating 필터 공용 초기화 헬퍼
+    const initShortSurplusMatl = (catEl, itemEl, mat1El, mat2El, sizeEl, ratingEl, allVal) => {
         if (!itemEl) return;
         setupCatItemSize(catEl, itemEl, sizeEl, getBomItemsForCat, getBomSizesForCatItem, allVal);
-        const refreshMatl = () => {
+        const refreshMatl = async () => {
             const TAB_CAT = { ALL: 'ALL', Pipe: 'Pipe', Fitting: 'Fitting', Others: 'Others' };
             const cat = catEl ? (TAB_CAT[catEl.value] || 'ALL') : 'ALL';
-            const matls = [...new Set(
-                db.bom.filter(b => cat === 'ALL' || b.category === cat)
-                      .map(b => (b.matCode || '').split('-')[1]).filter(Boolean)
-            )].sort();
-            if (matlEl) matlEl.innerHTML = `<option value="${allVal}">All Materials</option>` + matls.map(m => `<option value="${m}">${m}</option>`).join('');
+            const agg = (await loadMssItemAgg()).filter(r => cat === 'ALL' || r.category === cat);
 
+            if (mat1El) {
+                const vals1 = [...new Set(agg.map(r => r.mat1).filter(Boolean))].sort();
+                mat1El.innerHTML = `<option value="${allVal}">All Mat 1</option>` + vals1.map(v => `<option value="${v}">${v}</option>`).join('');
+            }
+            if (mat2El) {
+                const vals2 = [...new Set(agg.map(r => r.mat2).filter(Boolean))].sort();
+                mat2El.innerHTML = `<option value="${allVal}">All Mat 2</option>` + vals2.map(v => `<option value="${v}">${v}</option>`).join('');
+            }
             if (ratingEl) {
                 const masterMap = _buildMasterMap();
                 const ratings = [...new Set(
@@ -2700,7 +2716,8 @@ function initFilterOptions() {
         initShortSurplusMatl(
             document.getElementById('shortCatFilter'),
             document.getElementById('shortItemFilter'),
-            document.getElementById('shortMatlFilter'),
+            document.getElementById('shortMat1Filter'),
+            document.getElementById('shortMat2Filter'),
             document.getElementById('shortSizeFilter'),
             document.getElementById('shortRatingFilter'), 'ALL'
         );
@@ -2711,7 +2728,8 @@ function initFilterOptions() {
         initShortSurplusMatl(
             document.getElementById('surplusCatFilter'),
             document.getElementById('surplusItemFilter'),
-            document.getElementById('surplusMatlFilter'),
+            document.getElementById('surplusMat1Filter'),
+            document.getElementById('surplusMat2Filter'),
             document.getElementById('surplusSizeFilter'),
             document.getElementById('surplusRatingFilter'), 'ALL'
         );
@@ -3342,7 +3360,13 @@ async function _renderRecvCore(cfg) {
             ? _sizeFromMat
             : ((bomFullDesc || r.desc).match(/(\d+(?:\.\d+)?"\s*[Xx×]\s*\d+(?:\.\d+)?"|DN\s*\d+)/i) || [])[0] || '-';
         const _mcItemR  = window.extractItemFromMatCode(effMat);
-        const _rawItemR = (_mcItemR && _mcItemR !== '-') ? _mcItemR : window.extractItemFromDesc(bomFullDesc || r.desc);
+        // Pipe는 MatCode 접두어(PIS/PIW)가 SMLS/WELDED 구분 없이 'PIPE'로 뭉뚱그려지는데,
+        // Receiving desc는 BOM처럼 콤마로 구분돼 있지 않아 Description 파싱으로도 구분이 안 됨 —
+        // BOM 탭과 동일하게 보이도록 MatCode 접두어로 직접 SMLS/WELDED를 구분
+        const _matPrefixR = (effMat || '').split('-')[0].toUpperCase();
+        const _rawItemR = _matPrefixR === 'PIS' ? 'PIPE SMLS'
+            : _matPrefixR === 'PIW' ? 'PIPE WELDED'
+            : (_mcItemR && _mcItemR !== '-') ? _mcItemR : window.extractItemFromDesc(bomFullDesc || r.desc);
         const item      = (r.plNo || '').toUpperCase().includes('BYPS') ? 'BYPASS VALVE'
             : window.getValveOpAccessoryItem(r.plNo, bomFullDesc || r.desc) || _rawItemR;
         const etPart    = (effMat || '').split('-').pop().toUpperCase();
@@ -3433,6 +3457,7 @@ function renderBulkPipingTable() {
         mat1Id: 'plMat1Filter', mat2Id: 'plMat2Filter', ratingId: 'plRatingFilter',
         forcedCats: ['Pipe'],
         catFirst: true,
+        hideCat: true,
         hideTag: true,
         hideType: true,
         getPage: () => currentPlPage,
@@ -3449,6 +3474,7 @@ function renderBulkFittingTable() {
         mat1Id: 'fitMat1Filter', mat2Id: 'fitMat2Filter', ratingId: 'fitRatingFilter',
         forcedCats: ['Fitting'],
         catFirst: true,
+        hideCat: true,
         hideTag: true,
         getPage: () => currentFitPage,
         paginationId: 'fitPagination', goPageFn: '_fitGoPage'
@@ -3463,6 +3489,7 @@ function renderBulkOthersTable() {
         mat1Id: 'othMat1Filter', mat2Id: 'othMat2Filter', ratingId: 'othRatingFilter',
         forcedCats: ['Others'],
         catFirst: true,
+        hideCat: true,
         hideTag: true,
         getPage: () => currentOthPage,
         paginationId: 'othPagination', goPageFn: '_othGoPage'
