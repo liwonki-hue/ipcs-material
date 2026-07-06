@@ -34,7 +34,7 @@
              </div>
              <div class="nav-links">
                  <div class="section-title">Dashboard</div>
-                 <div class="nav-item active" data-target="dashboard"><i class="fas fa-chart-pie"></i> Integrated Dashboard</div>
+                 <div class="nav-item active" data-target="dashboard"><i class="fas fa-chart-pie"></i> Overview</div>
 
                  <div class="section-title">Finding</div>
                  <div class="nav-item" data-target="issue"><i class="fas fa-file-signature"></i> Material Finding</div>
@@ -85,17 +85,17 @@
                   </div>
              </div>
 
-            <!-- 1. Integrated Dashboard -->
+            <!-- 1. Overview -->
             <section id="dashboard" class="view-section active">
                  <div class="page-header">
                      <div>
-                         <h1>Integrated Dashboard</h1>
+                         <h1>Overview</h1>
                          <p class="subtitle">BOM vs Receiving vs Issue vs Stock Overview.</p>
                      </div>
                  </div>
                  
                  <!-- KPI Cards — 카테고리별 % 대신 "주목해야 할 것" 중심 요약 (카테고리별 %는 아래 Material Progress 막대그래프에서 확인) -->
-                 <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
+                 <div class="kpi-grid" style="grid-template-columns:repeat(6,1fr);">
                      <div class="kpi-card">
                          <div class="kpi-info" style="flex:1;">
                              <div class="kpi-title" style="display:flex;align-items:center;gap:5px;">
@@ -105,17 +105,6 @@
                              <div class="kpi-value" id="kpi-overall-pct">—</div>
                              <div style="font-size:10px;color:#888;margin-top:1px;">Avg of Category Progress</div>
                              <div class="kpi-desc" id="kpi-overall-sub" style="margin-top:2px;">Pipe/Fitting/Valve/Speciality/Others/Support/Spool</div>
-                         </div>
-                     </div>
-                     <div class="kpi-card">
-                         <div class="kpi-info" style="flex:1;">
-                             <div class="kpi-title" style="display:flex;align-items:center;gap:5px;">
-                                 <i class="fas fa-check-circle" style="color:#2e7d32;font-size:10px;"></i> Categories On Track
-                                 <span style="font-size:10px;color:#aaa;font-weight:400;">(≥90%)</span>
-                             </div>
-                             <div class="kpi-value" id="kpi-ontrack-count">—</div>
-                             <div style="font-size:10px;color:#888;margin-top:1px;">of 7 Categories</div>
-                             <div class="kpi-desc" id="kpi-ontrack-sub" style="margin-top:2px;">—</div>
                          </div>
                      </div>
                      <div class="kpi-card">
@@ -132,12 +121,43 @@
                      <div class="kpi-card">
                          <div class="kpi-info" style="flex:1;">
                              <div class="kpi-title" style="display:flex;align-items:center;gap:5px;">
-                                 <i class="fas fa-exclamation-triangle" style="color:#c62828;font-size:10px;"></i> ISO Critical
-                                 <span style="font-size:10px;color:#aaa;font-weight:400;">(Drawings)</span>
+                                 <i class="fas fa-grip-lines" style="color:#1565c0;font-size:10px;"></i> Pipe
+                                 <span style="font-size:10px;color:#aaa;font-weight:400;">(Progress)</span>
                              </div>
-                             <div class="kpi-value" id="kpi-critical-count">—</div>
-                             <div style="font-size:10px;color:#888;margin-top:1px;">Erection/Spool Readiness Low</div>
-                             <div class="kpi-desc" id="kpi-critical-sub" style="margin-top:2px;">—</div>
+                             <div class="kpi-value" id="kpi-pipe-pct">—</div>
+                             <div style="font-size:10px;color:#888;margin-top:1px;">Received / BOM</div>
+                             <div class="kpi-desc" id="kpi-pipe-sub" style="margin-top:2px;">—</div>
+                         </div>
+                     </div>
+                     <div class="kpi-card">
+                         <div class="kpi-info" style="flex:1;">
+                             <div class="kpi-title" style="display:flex;align-items:center;gap:5px;">
+                                 <i class="fas fa-project-diagram" style="color:#2e7d32;font-size:10px;"></i> Fitting
+                                 <span style="font-size:10px;color:#aaa;font-weight:400;">(Progress)</span>
+                             </div>
+                             <div class="kpi-value" id="kpi-fit-pct">—</div>
+                             <div style="font-size:10px;color:#888;margin-top:1px;">Received / BOM</div>
+                             <div class="kpi-desc" id="kpi-fit-sub" style="margin-top:2px;">—</div>
+                         </div>
+                     </div>
+                     <div class="kpi-card">
+                         <div class="kpi-info" style="flex:1;">
+                             <div class="kpi-title" style="display:flex;align-items:center;gap:5px;">
+                                 <i class="fas fa-arrow-down" style="color:#c62828;font-size:10px;"></i> Pipe Shortage
+                             </div>
+                             <div class="kpi-value" id="kpi-pipe-shortage">— <span class="unit">M</span></div>
+                             <div style="font-size:10px;color:#888;margin-top:1px;">BOM - Received</div>
+                             <div class="kpi-desc" id="kpi-pipe-shortage-sub" style="margin-top:2px;">—</div>
+                         </div>
+                     </div>
+                     <div class="kpi-card">
+                         <div class="kpi-info" style="flex:1;">
+                             <div class="kpi-title" style="display:flex;align-items:center;gap:5px;">
+                                 <i class="fas fa-arrow-down" style="color:#c62828;font-size:10px;"></i> Fitting Shortage
+                             </div>
+                             <div class="kpi-value" id="kpi-fit-shortage">— <span class="unit">EA</span></div>
+                             <div style="font-size:10px;color:#888;margin-top:1px;">BOM - Received</div>
+                             <div class="kpi-desc" id="kpi-fit-shortage-sub" style="margin-top:2px;">—</div>
                          </div>
                      </div>
                  </div>
@@ -149,8 +169,10 @@
                          <div class="panel-header">
                              <h2><i class="fas fa-tasks"></i> ISO Drawing Readiness</h2>
                          </div>
-                         <div class="chart-container" style="min-height: 170px;">
-                             <canvas id="isoReadinessChart"></canvas>
+                         <div class="chart-container" style="min-height: 170px; display:flex; align-items:center; justify-content:center;">
+                             <div style="position:relative; width:80%; height:80%;">
+                                 <canvas id="isoReadinessChart"></canvas>
+                             </div>
                          </div>
                      </div>
 
@@ -228,6 +250,7 @@
                      <button class="bom-tab-btn" data-tab="fitting" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">FITTING</button>
                      <button class="bom-tab-btn" data-tab="valve" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">VALVE</button>
                      <button class="bom-tab-btn" data-tab="speciality" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">SPECIALITY</button>
+                     <button class="bom-tab-btn" data-tab="spool" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">SPOOL</button>
                      <button class="bom-tab-btn" data-tab="others" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">OTHERS</button>
                      <button class="bom-tab-btn" data-tab="vendor" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">VENDOR</button>
                     <button class="bom-tab-btn" data-tab="matcode" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">MATCODE MASTER</button>
@@ -447,6 +470,61 @@
                      <div id="vendorPagination"></div>
                  </div>
                  </div>
+
+                 <div id="bomSpoolPanel" style="display:none;">
+                 <div class="panel filter-panel" style="margin-bottom: 20px;">
+                      <div style="display: flex; align-items: flex-end; justify-content: space-between; width: 100%; gap: 10px; flex-wrap: nowrap;">
+                          <div style="display: flex; align-items: flex-end; gap: 10px; flex: 1; min-width: 0;">
+                              <div class="form-group" style="flex: 2; min-width: 0; margin-bottom: 0;">
+                                  <label>Search (Tag / ISO / Description)</label>
+                                  <input type="text" id="bomSpoolSearch" class="form-control" style="width: 100%;" placeholder="Tag No, ISO Drawing, Description...">
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                                  <label>System</label>
+                                  <select id="bomSpoolSystemFilter" class="form-control" style="width: 100%;"><option value="All">All Systems</option></select>
+                              </div>
+                              <div style="padding-bottom: 1px; display: flex; gap: 8px; flex-shrink: 0;">
+                                  <button class="btn btn-primary" id="btnFilterBomSpool" style="white-space: nowrap;"><i class="fas fa-search"></i> Search</button>
+                                  <button class="btn btn-outline" id="btnClearBomSpoolFilters" style="white-space: nowrap;">Clear</button>
+                              </div>
+                          </div>
+                          <div style="padding-bottom: 1px; display: flex; gap: 8px; flex-shrink: 0;">
+                              <button class="btn btn-outline" id="btnExportBomSpool" style="white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export</button>
+                          </div>
+                      </div>
+                  </div>
+
+                 <div class="panel data-panel">
+                     <div class="panel-header"><h3><i class="fas fa-cube"></i> Spool BOM (1 Tag = 1 Spool Assembly)</h3></div>
+                     <div class="table-responsive">
+                         <table class="data-table" id="bomSpoolTable" style="font-size:0.82em;table-layout:fixed;width:100%;">
+                             <colgroup>
+                                 <col style="width:14%;"><col style="width:6%;"><col style="width:13%;">
+                                 <col style="width:11%;"><col style="width:19%;"><col style="width:6%;">
+                                 <col style="width:9%;"><col style="width:9%;"><col style="width:6%;">
+                                 <col style="width:4%;"><col style="width:6%;">
+                             </colgroup>
+                             <thead>
+                                 <tr>
+                                     <th style="text-align:center;">Tag No</th>
+                                     <th style="text-align:center;">System</th>
+                                     <th style="text-align:center;">ISO Drawing</th>
+                                     <th style="text-align:center;">Line No.</th>
+                                     <th style="text-align:center;">Description</th>
+                                     <th style="text-align:center;">Size</th>
+                                     <th style="text-align:center;">Mat 1</th>
+                                     <th style="text-align:center;">Mat 2</th>
+                                     <th style="text-align:center;">Rating</th>
+                                     <th style="text-align:center;">Unit</th>
+                                     <th style="text-align:center;">Design Qty</th>
+                                 </tr>
+                             </thead>
+                             <tbody><tr><td colspan="11" style="text-align:center;color:#888;">Loading...</td></tr></tbody>
+                         </table>
+                     </div>
+                     <div id="bomSpoolPagination"></div>
+                 </div>
+                 </div>
             </section>
 
 
@@ -456,9 +534,6 @@
                     <div>
                         <h1>Material Receiving</h1>
                         <p class="subtitle">Material Receiving — Bulk &amp; Tag Items</p>
-                    </div>
-                    <div class="actions">
-                        <input type="file" id="plFileInput" accept=".xlsx,.xls" style="display:none;">
                     </div>
                 </div>
 
@@ -517,7 +592,6 @@
                                 </div>
                                 <div style="display:flex;gap:8px;align-items:flex-end;padding-bottom:1px;">
                                     <button class="btn btn-outline" id="btnExportPl" style="white-space:nowrap;display:flex;align-items:center;gap:6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export Excel</button>
-                                    <button class="btn btn-outline" id="btnUploadPL" style="white-space:nowrap;display:flex;align-items:center;gap:6px;"><i class="fas fa-file-upload" style="color:#1565c0;"></i> Upload Packing List</button>
                                 </div>
                             </div>
                         </div>
@@ -554,32 +628,6 @@
                                 </table>
                             </div>
                             <div id="plPagination"></div>
-                        </div>
-                        <!-- PL Import Review Panel -->
-                        <div id="plReviewPanel" style="display:none;margin-top:20px;">
-                            <div class="panel data-panel">
-                                <div class="panel-header" style="background:var(--color-primary);color:white;padding:12px 16px;margin-bottom:0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-                                    <h3 style="margin:0;font-size:14px;font-weight:600;color:white;"><i class="fas fa-file-import"></i> Packing List Import Review</h3>
-                                    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-                                        <span id="plReviewSummary" style="font-size:12px;color:rgba(255,255,255,0.9);"></span>
-                                        <button id="btnSavePLReview" disabled style="background:white;color:var(--color-primary);border:none;border-radius:4px;padding:6px 14px;font-weight:600;cursor:pointer;font-size:12px;"><i class="fas fa-save"></i> Save to Receiving</button>
-                                        <button id="btnCancelPLReview" style="background:transparent;color:white;border:1px solid rgba(255,255,255,0.5);border-radius:4px;padding:6px 14px;cursor:pointer;font-size:12px;">Cancel</button>
-                                    </div>
-                                </div>
-                                <div class="table-responsive" style="max-height:480px;overflow-y:auto;">
-                                    <table class="data-table" id="plReviewTable">
-                                        <thead>
-                                            <tr>
-                                                <th>PKG</th><th>PKG NO</th>
-                                                <th style="min-width:260px;">Full Description</th>
-                                                <th>Unit</th><th>QTY</th><th>Status</th>
-                                                <th style="min-width:180px;">MatCode</th><th>Category</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="plReviewTbody"></tbody>
-                                    </table>
-                                </div>
-                            </div>
                         </div>
                     </div><!-- end recTabPiping -->
 
@@ -774,13 +822,12 @@
                     <!-- Spool tab -->
                     <div id="recTagSpool">
                         <div class="kpi-grid" style="margin-bottom:20px;" id="spoolRecKpiGrid">
-                            <div class="kpi-card highlight">
+                            <div class="kpi-card">
                                 <div class="kpi-info">
                                     <div class="kpi-title">Overall Progress</div>
                                     <div class="kpi-value spool-kpi-progress">— <span class="unit">%</span></div>
                                     <div class="kpi-desc spool-kpi-prog-sub">—</div>
                                 </div>
-                                <div class="kpi-icon"><i class="fas fa-chart-line"></i></div>
                             </div>
                             <div class="kpi-card">
                                 <div class="kpi-info">
@@ -788,7 +835,6 @@
                                     <div class="kpi-value spool-kpi-bom">— <span class="unit">Tags</span></div>
                                     <div class="kpi-desc spool-kpi-bom-sub">—</div>
                                 </div>
-                                <div class="kpi-icon"><i class="fas fa-cubes"></i></div>
                             </div>
                             <div class="kpi-card">
                                 <div class="kpi-info">
@@ -796,7 +842,13 @@
                                     <div class="kpi-value spool-kpi-received">— <span class="unit">EA</span></div>
                                     <div class="kpi-desc spool-kpi-rec-sub">—</div>
                                 </div>
-                                <div class="kpi-icon received"><i class="fas fa-truck-loading"></i></div>
+                            </div>
+                            <div class="kpi-card">
+                                <div class="kpi-info">
+                                    <div class="kpi-title">Shortage / Surplus</div>
+                                    <div class="kpi-value spool-kpi-diff">— <span class="unit">EA</span></div>
+                                    <div class="kpi-desc spool-kpi-diff-sub">—</div>
+                                </div>
                             </div>
                         </div>
                         <div class="panel" style="padding:16px;margin-bottom:16px;">
@@ -827,7 +879,7 @@
                                 <table class="data-table" id="spoolReceivingTable" style="table-layout:fixed;width:100%;">
                                     <colgroup>
                                         <col style="width:140px;"><col style="width:240px;">
-                                        <col style="width:85px;"><col style="width:190px;">
+                                        <col style="width:85px;"><col style="width:200px;">
                                         <col style="width:210px;"><col style="width:90px;">
                                         <col style="width:75px;"><col style="width:75px;">
                                         <col style="width:70px;"><col style="width:160px;">
@@ -1166,8 +1218,13 @@
                              <div class="form-group" style="flex: 0 0 160px;">
                                  <button class="btn btn-primary" id="btnFilterIssue" style="height: 38px; width: 160px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0;"><i class="fas fa-search"></i> Search</button>
                              </div>
+                             <div class="form-group" style="flex: 0 0 130px;">
+                                 <button class="btn btn-outline" id="btnPrintIso" style="height: 38px; width: 130px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0;"><i class="fas fa-print"></i> Print</button>
+                             </div>
                          </div>
                      </div>
+
+                     <div id="printHeaderPiping" class="print-header"></div>
 
                      <div class="panel data-panel" style="margin-bottom: 20px; border: 1px solid #ddd;">
                          <div class="panel-header" style="background:#f8f9fa; padding:6px 15px; margin-bottom:0; min-height:44px; border-bottom:1px solid #ddd;">
@@ -1200,6 +1257,8 @@
                              </table>
                          </div>
                      </div>
+
+                     <div id="printHeaderSupport" class="print-header"></div>
 
                      <div class="panel data-panel" style="border: 1px solid #ddd;">
                          <div class="panel-header" style="background:#f8f9fa; padding:6px 15px; margin-bottom:0; min-height:44px; border-bottom:1px solid #ddd;">
@@ -1510,17 +1569,17 @@
                              </colgroup>
                              <thead>
                                  <tr>
-                                     <th>Tag</th>
-                                     <th>System</th>
-                                     <th>ISO Drawing</th>
-                                     <th>Line No.</th>
-                                     <th>Item</th>
-                                     <th>Mat 1</th>
-                                     <th>Mat 2</th>
-                                     <th>Size</th>
-                                     <th>Rating</th>
-                                     <th>Received</th>
-                                     <th>Stock</th>
+                                     <th style="text-align:center;">Tag</th>
+                                     <th style="text-align:center;">System</th>
+                                     <th style="text-align:center;">ISO Drawing</th>
+                                     <th style="text-align:center;">Line No.</th>
+                                     <th style="text-align:center;">Item</th>
+                                     <th style="text-align:center;">Mat 1</th>
+                                     <th style="text-align:center;">Mat 2</th>
+                                     <th style="text-align:center;">Size</th>
+                                     <th style="text-align:center;">Rating</th>
+                                     <th style="text-align:center;">Received</th>
+                                     <th style="text-align:center;">Stock</th>
                                  </tr>
                              </thead>
                              <tbody></tbody>
@@ -1573,17 +1632,17 @@
                              </colgroup>
                              <thead>
                                  <tr>
-                                     <th>Tag</th>
-                                     <th>System</th>
-                                     <th>ISO Drawing</th>
-                                     <th>Line No.</th>
-                                     <th>Item</th>
-                                     <th>Mat 1</th>
-                                     <th>Mat 2</th>
-                                     <th>Size</th>
-                                     <th>Rating</th>
-                                     <th>Received</th>
-                                     <th>Stock</th>
+                                     <th style="text-align:center;">Tag</th>
+                                     <th style="text-align:center;">System</th>
+                                     <th style="text-align:center;">ISO Drawing</th>
+                                     <th style="text-align:center;">Line No.</th>
+                                     <th style="text-align:center;">Item</th>
+                                     <th style="text-align:center;">Mat 1</th>
+                                     <th style="text-align:center;">Mat 2</th>
+                                     <th style="text-align:center;">Size</th>
+                                     <th style="text-align:center;">Rating</th>
+                                     <th style="text-align:center;">Received</th>
+                                     <th style="text-align:center;">Stock</th>
                                  </tr>
                              </thead>
                              <tbody></tbody>
@@ -1845,7 +1904,7 @@
                          </div>
                          <div class="table-responsive">
                              <table class="data-table" id="dhTable-valve">
-                                 <thead><tr><th style="text-align:center;">Tag</th><th style="text-align:center;">Category</th><th style="text-align:center;">Item</th><th style="text-align:center;">ISO Drawing</th></tr></thead>
+                                 <thead><tr><th style="text-align:center;">ISO Drawing</th><th style="text-align:center;">Tag</th><th style="text-align:center;">Category</th><th style="text-align:center;">Item</th><th style="text-align:center;">Action</th></tr></thead>
                                  <tbody></tbody>
                              </table>
                          </div>
@@ -2339,62 +2398,6 @@
             <div id="plModalFooter" style="display:flex;justify-content:flex-end;gap:10px;padding:14px 24px;border-top:1px solid #e2e8f0;background:#f8fafc;">
                 <button class="btn btn-outline" onclick="document.getElementById('plModal').style.display='none'"><i class="fas fa-times"></i> Close</button>
                 <button class="btn btn-primary" onclick="printPlModal()"><i class="fas fa-print"></i> Print</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- New MatCode Assignment Modal -->
-    <div id="newMatCodeModal" class="modal-overlay">
-        <div class="modal-content" style="width:640px;">
-            <div class="modal-header">
-                <h2><i class="fas fa-plus-circle"></i> Assign / Create MatCode</h2>
-                <button class="btn btn-outline" id="btnCloseNewMatCode" style="border:none; font-size:18px;"><i class="fas fa-times"></i></button>
-            </div>
-            <div class="modal-body">
-                <div style="background:#fff8e1; border-left:4px solid #ffc107; padding:12px 14px; border-radius:4px; margin-bottom:16px;">
-                    <div style="font-size:11px; color:#888; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.5px;">PL Description (Unmatched)</div>
-                    <div id="newMatPLDesc" style="font-size:13px; font-weight:600; color:#333;"></div>
-                </div>
-                <!-- Search existing MatCode -->
-                <div class="form-group" style="margin-bottom:12px;">
-                    <label style="font-size:12px; font-weight:600; color:var(--color-primary);">① Search Existing MatCode Master</label>
-                    <input type="text" id="newMatSearch" class="form-control" placeholder="Type MatCode or description to search..." oninput="searchExistingMatCode(this.value)">
-                </div>
-                <div id="newMatSearchResults" style="max-height:160px; overflow-y:auto; border:1px solid var(--border-color); border-radius:4px; margin-bottom:16px; display:none;">
-                    <table class="data-table" style="margin:0;">
-                        <tbody id="newMatSearchTbody"></tbody>
-                    </table>
-                </div>
-                <div style="border-top:1px solid var(--border-color); padding-top:12px; margin-bottom:12px;">
-                    <label style="font-size:12px; font-weight:600; color:var(--color-primary);">② OR Create New MatCode</label>
-                </div>
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-                    <div class="form-group">
-                        <label>Category <span style="color:red;">*</span></label>
-                        <select id="newMatCategory" class="form-control">
-                            <option value="">-- Select --</option>
-                            <option value="Pipe">Pipe</option>
-                            <option value="Fitting">Fitting</option>
-                            <option value="Valve">Valve</option>
-                            <option value="Speciality">Speciality</option>
-                            <option value="Other">Other</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>MatCode <span style="color:red;">*</span></label>
-                        <input type="text" id="newMatCodeInput" class="form-control" placeholder="e.g. NIP-AS91-D010-S80" oninput="this.value=this.value.toUpperCase()">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:normal;">
-                        <input type="checkbox" id="newMatSaveToMaster" style="width:15px; height:15px;">
-                        <span style="font-size:13px;">Save this MatCode to MatCode Master</span>
-                    </label>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-outline" id="btnCancelNewMatCode">Cancel</button>
-                <button class="btn btn-primary" id="btnConfirmNewMatCode"><i class="fas fa-check"></i> Apply to PL Row</button>
             </div>
         </div>
     </div>

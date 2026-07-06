@@ -281,3 +281,21 @@ ul { list-style: none; }
 
 /* Material Stock 테이블 전체 가운데 정렬 */
 #stockTable th, #stockTable td { text-align: center !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Material Finding — ISO Drawing 모드 인쇄(A4) */
+.print-header { display: none; }
+@media print {
+    @page { size: A4 landscape; margin: 12mm; }
+    body * { visibility: hidden; }
+    #mfModeIso, #mfModeIso * { visibility: visible; }
+    #mfModeIso { position: absolute; top: 0; left: 0; width: 100%; }
+    #mfModeIso .filter-panel { display: none !important; }
+    #mfModeIso .print-header { display: block !important; margin-bottom: 14px; }
+    #mfModeIso .print-header h2 { margin: 0 0 4px; font-size: 16px; }
+    #mfModeIso .print-header-meta { font-size: 11px; color: #333; }
+    #mfModeIso .data-panel { border: none !important; box-shadow: none !important; margin-bottom: 16px !important; }
+    #mfModeIso .data-panel .panel-header { display: none !important; }
+    #mfModeIso .data-table { font-size: 10px; table-layout: auto !important; }
+    #mfModeIso .data-table th, #mfModeIso .data-table td { padding: 3px 5px; overflow: visible !important; white-space: normal !important; }
+    #mfModeIso .table-responsive { overflow: visible !important; }
+}

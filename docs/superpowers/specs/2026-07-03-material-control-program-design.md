@@ -339,6 +339,12 @@ Spool BOM 기능은 최초 `dc9b83a`(2026-06-01)에서 탭·KPI·대시보드까
 - 잔여 사항(Minor, 블로커 아님): Dashboard `updateCategoryCharts()`의 `spool_bom`/`spool_receiving` fetch 실패 시 에러가 콘솔에도 안 뜸(기존 다른 카테고리 fetch들과 동일한 패턴이라 회귀 아님) — 향후 강화 여지.
 - **`57014 statement timeout` 수정 완료(2026-07-06, 같은 날 후속)**: `bom_desc`/`bom_iso_list`/`bom_detail`/`v_iso_stage_status`/`v_category_readiness` 등 조회가 간헐적으로 timeout에 걸려도 재시도 없이 실패 처리되던 문제(Items Pending Receipt가 빈 상태로 보이는 증상의 원인). `fetchIsoBoreMap()`에 이미 있던 "최대 3회 재시도" 패턴을 `fetchWithRetry()`로 공용화해 `fetchAllRows()`/`syncFromSupabase()`/`updateCategoryCharts()`/`updateDashboard()`의 관련 쿼리 전체에 적용. 원인 조사 중 이 세션에서 여러 subagent가 Playwright로 브라우저를 열었다가 정리 안 하고 끝나 chrome 프로세스가 30개+ 누적된 것도 발견 — DB 커넥션 경합의 한 요인으로 추정(직접 증명은 아님).
 
+### BOM Tab에 Spool 서브탭 등록 (2026-07-06, 같은 날 후속)
+- BOM Tab에는 Spool이 아예 없었음(Piping/Fitting/Valve/Speciality/Others만 존재, `bom` 테이블 자체에 category='Spool' 행이 없음). 사용자에게 "spool_bom 별도 유지 vs bom 테이블에 category='Spool'로 통합" 중 선택하게 했고, **별도 유지**를 택함(bom 테이블 기반 공용 집계 로직에 영향 없음이 이유).
+- BOM Tab 탭바에 **SPOOL** 버튼 추가(SPECIALITY 다음, OTHERS 이전 — 최종 배치, 처음엔 OTHERS 다음이었다가 사용자 요청으로 이동). Vendor 탭과 동일 패턴(자체 filter-panel + data-panel + table + pagination, `#bomSpoolPanel`)으로 `spool_bom` 테이블을 직접 조회하는 완전히 독립된 패널 — 공용 `bomTable`(category 필터 기반)과는 무관.
+- 컬럼: Tag No/System/ISO Drawing/Line No/Description/Size/Mat1/Mat2/Rating/Unit/Design Qty. Search(Tag/ISO/Description) + System 필터 + Export Excel 지원. `renderActiveBomTab()`에 `_bomActiveTab === 'spool'` 분기 추가.
+- Playwright로 데이터 표시(529행/22페이지)·필터·Export(실제 xlsx 다운로드 확인)·다른 BOM 탭 회귀 없음까지 검증 완료.
+
 ## 관련 메모리 (Spool)
 - `project_spool_bom_reintroduction.md` — Spool BOM 삭제 이력, 재등록 경위, 현재 상태
 - `project_ipcs_control_joint_master.md` — ipcs-control 접속 정보, joint_master 스키마, Spool No 추출 로직
