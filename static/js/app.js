@@ -3559,7 +3559,7 @@ function renderActiveReceivingTab() {
         if (_recActiveTagTab === 'spool') initSpoolReceiving();
         else if (_recActiveTagTab === 'valve') renderTagValveTable();
         else if (_recActiveTagTab === 'speciality') renderTagSpecialityTable();
-        else if (_recActiveTagTab === 'support') renderSupportReceivingTable();
+        else if (_recActiveTagTab === 'support') { renderSupportReceivingTable(); renderSupportBulkTable(); }
     }
 }
 
@@ -3736,6 +3736,92 @@ async function renderSupportReceivingTable() {
     renderPagination('srecPagination', currentSrecPage, totalPages, '_srecGoPage');
 }
 window._srecGoPage = function(p) { currentSrecPage = p; renderSupportReceivingTable(); };
+
+// Support Tag가 없는 Bulk 구조재(Channel/H-Beam/Angle/Plate 등)를 Item+Matl+Size 단위로 집계해
+// BOM 수량(참고용)과 Received 수량을 함께 보여준다. Tag 매칭이 불가능한 항목이라 %는 계산하지 않는다.
+async function renderSupportBulkTable() {
+    const tbody = document.getElementById('srecBulkTbody');
+    if (!tbody) return;
+    if (!supabaseClient) return;
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:16px;color:#888;">Loading...</td></tr>';
+
+    const [bomRes, recRes] = await Promise.all([
+        supabaseClient.from('support_bom')
+            .select('item,matl,size_or_type,qty')
+            .or('support_tag.is.null,support_tag.eq.BULK')
+            .limit(2000),
+        supabaseClient.from('support_receiving')
+            .select('item,matl,size_or_type,qty,package_no,system')
+            .or('support_tag.is.null,support_tag.eq.BULK,support_tag.eq.-')
+            .limit(2000),
+    ]);
+
+    if (bomRes.error || recRes.error) {
+        tbody.innerHTML = `<tr><td colspan="6" style="color:red;text-align:center;">Error: ${(bomRes.error || recRes.error).message}</td></tr>`;
+        return;
+    }
+
+    const keyOf = r => `${r.item || '-'}::${r.matl || '-'}::${r.size_or_type || '-'}`;
+
+    const bomAgg = {}; // key -> { qty }
+    (bomRes.data || []).forEach(r => {
+        const k = keyOf(r);
+        if (!bomAgg[k]) bomAgg[k] = { qty: 0 };
+        bomAgg[k].qty += parseFloat(r.qty) || 0;
+    });
+
+    // pkgMap: pkgNo -> { qty, system } — System은 renderBulkPkgCell에서 참고 정보로만 노출
+    const recAgg = {}; // key -> { qty, pkgMap: { pkgNo: {qty, system} } }
+    (recRes.data || []).forEach(r => {
+        const k = keyOf(r);
+        if (!recAgg[k]) recAgg[k] = { qty: 0, pkgMap: {} };
+        const q = parseFloat(r.qty) || 0;
+        recAgg[k].qty += q;
+        if (r.package_no) {
+            const entry = recAgg[k].pkgMap[r.package_no] || { qty: 0, system: r.system };
+            entry.qty += q;
+            recAgg[k].pkgMap[r.package_no] = entry;
+        }
+    });
+
+    // renderPkgListCell({pkgNo: qty})과 같은 톤이지만, System을 참고용으로 괄호에 덧붙인다
+    function renderBulkPkgCell(pkgMap) {
+        const entries = Object.entries(pkgMap);
+        if (entries.length === 0) return '-';
+        return entries.sort((a, b) => a[0].localeCompare(b[0])).map(([pkgNo, info]) => {
+            const done = isPkgIssued(pkgNo);
+            const qtyStr = info.qty % 1 === 0 ? info.qty : info.qty.toFixed(2);
+            const label = done ? `Issued ${(_plUpdatesCache[pkgNo] || {}).issue_date || ''}` : 'Not Issued';
+            const sys = info.system ? `, ${info.system}` : '';
+            return `<div>${pkgNo} (${qtyStr} EA${sys}) — <span style="color:${done ? '#2e7d32' : '#999'};">${label}</span></div>`;
+        }).join('');
+    }
+
+    // key가 "item::matl::size" 형태라 문자열 정렬만으로 Item 우선 정렬이 됨
+    const allKeys = [...new Set([...Object.keys(bomAgg), ...Object.keys(recAgg)])].sort();
+
+    if (allKeys.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#888;padding:16px;">No bulk materials found.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = allKeys.map(k => {
+        const [kItem, kMatl, kSize] = k.split('::');
+        const b = bomAgg[k];
+        const rec = recAgg[k];
+        const bomQty = b ? b.qty : 0;
+        const recQty = rec ? rec.qty : 0;
+        const pkgCell = rec ? renderBulkPkgCell(rec.pkgMap) : '-';
+        return `<tr>
+            <td style="text-align:center;">${kItem}</td>
+            <td style="text-align:center;">${kMatl}</td>
+            <td style="text-align:center;">${kSize}</td>
+            <td style="text-align:center;">${bomQty || '-'}</td>
+            <td style="text-align:center;">${recQty || '-'}</td>
+            <td style="text-align:left;font-size:11px;line-height:1.6;">${pkgCell}</td>
+        </tr>`;
+    }).join('');
+}
 
 // --- 5. Material Issue (ISO/MR Table) ---
 let _isoBoreMapPromise = null; // Material Finding 탭 최초 진입 시에만 1회 지연 로딩(무거운 bom 전체 스캔)
