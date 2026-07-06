@@ -1510,7 +1510,7 @@ async function renderSpecialityStockTable() {
     renderPagination('stockSpecialityPagination', _stockPage, totalPages, '_stockGoPage');
 }
 
-let _msActiveTab = 'stock'; // 'stock' | 'shortage' | 'surplus'
+let _msActiveTab = 'stock'; // 'stock' | 'shortage' | 'surplus' | 'datahealth'
 let _msTabsInited = false;
 function initMaterialStatusTabs() {
     if (_msTabsInited) return;
@@ -1525,9 +1525,10 @@ function switchMaterialStatusTab(tab) {
         b.style.borderBottomColor = b.dataset.tab === tab ? '#0A2540' : 'transparent';
         b.style.color = b.dataset.tab === tab ? '#0A2540' : '#888';
     });
-    document.getElementById('msPanelStock').style.display    = tab === 'stock'    ? '' : 'none';
-    document.getElementById('msPanelShortage').style.display = tab === 'shortage' ? '' : 'none';
-    document.getElementById('msPanelSurplus').style.display  = tab === 'surplus'  ? '' : 'none';
+    document.getElementById('msPanelStock').style.display      = tab === 'stock'      ? '' : 'none';
+    document.getElementById('msPanelShortage').style.display   = tab === 'shortage'   ? '' : 'none';
+    document.getElementById('msPanelSurplus').style.display    = tab === 'surplus'    ? '' : 'none';
+    document.getElementById('msPanelDataHealth').style.display = tab === 'datahealth' ? '' : 'none';
 
     if (tab === 'stock') {
         initStockFilters();
@@ -1539,6 +1540,8 @@ function switchMaterialStatusTab(tab) {
         }
     } else if (tab === 'surplus') {
         renderSurplusTable();
+    } else if (tab === 'datahealth') {
+        if (typeof renderDataHealthCards === 'function') renderDataHealthCards();
     }
 
     if (tab !== 'shortage' && shortageRefreshTimer) {
