@@ -328,12 +328,14 @@ Spool BOM 기능은 최초 `dc9b83a`(2026-06-01)에서 탭·KPI·대시보드까
 - `.env`의 `SUPABASE_DB_URL`(direct Postgres, anon key 아님)을 `psycopg2`로 연결해 `ALTER TABLE spool_bom ADD COLUMN mat1/mat2/rating` 실행(anon key로는 DDL 불가) → 기존 574행 DELETE(사전 로컬 백업) → 신규 529행 INSERT, REST API로 카운트 검증(529행) 완료.
 - **UI(Spool 탭 KPI/BOM vs Received 비교/대시보드 통합)는 아직 미착수** — 사용자가 "DB 등록만 먼저" 진행하기로 결정. 복원 시 6/26 삭제 전 `dc9b83a` 커밋 구조(공유 KPI 카드 5개, ISO/Tag/Size 필터, 페이지네이션) 참고 가능.
 
-### 현재 상태 / 다음 할 일 (Spool 적용 사례 기준, 마지막 갱신: 2026-07-06)
-- [x] ipcs-control joint_master에서 Spool No 529개 추출, Raw File 채움
-- [x] spool_bom 테이블 mat1/mat2/rating 컬럼 추가 + 전체 재적재 (529행)
-- [ ] Spool 탭 UI 복원 (KPI 카드, BOM vs Received 비교, 필터) — 사용자 지시 대기
-- [ ] Dashboard Material Progress에 Spool 항목 재통합 — 사용자 지시 대기
-- [ ] 기존 spool_receiving(574행)과 새 spool_bom(529행) 간 Tag 불일치(overlap 385건) 영향 검토 — UI 복원 시 BOM vs Received 매칭률에 영향 줄 수 있음
+### UI 복원 완료 (2026-07-06, Subagent-Driven Development로 진행)
+
+설계: `docs/superpowers/specs/2026-07-06-spool-ui-restoration-design.md`, 계획: `docs/superpowers/plans/2026-07-06-spool-ui-restoration.md` (6 Task, 전부 task-reviewer 승인 + 최종 whole-branch 리뷰 "Ready to merge: Yes").
+
+- Spool 탭(`recTagSpool`) KPI 카드를 1개→3개로 확장: Overall Progress %(Tag 매칭 385/529≈72.8%) / Total Spool BOM(529 Tags) / Total Spool Received(574건, 기존 그대로). `spool_bom`/`spool_receiving`의 tag_no를 Set으로 매칭 — 두 테이블의 385/529 불일치는 그대로 반영(수정 안 함).
+- Dashboard KPI 그리드를 7카드→8카드로 확장(Spool 추가), Overall 평균을 6개→7개 카테고리 평균으로 재계산. `updateCategoryCharts()` 안의 죽은 코드(조회만 하고 안 쓰던 `spoolRecCount`)를 실제 계산으로 교체.
+- Bulk Progress Bars에는 추가 안 함(Valve와 동일 취급 — Tag당 QTY=1이라 부족/잉여 개념 희박), Issued/Stock KPI·미입고 Tag 상세 목록도 범위 밖으로 확정.
+- 잔여 사항(Minor, 블로커 아님): Dashboard `updateCategoryCharts()`의 `spool_bom`/`spool_receiving` fetch 실패 시 에러가 콘솔에도 안 뜸(기존 다른 카테고리 fetch들과 동일한 패턴이라 회귀 아님) — 향후 강화 여지.
 
 ## 관련 메모리 (Spool)
 - `project_spool_bom_reintroduction.md` — Spool BOM 삭제 이력, 재등록 경위, 현재 상태
