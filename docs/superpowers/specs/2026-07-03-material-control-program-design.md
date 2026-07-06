@@ -266,3 +266,50 @@ BOM 화면에서 Material 정보가 MAT1(재질 등급)/MAT2(실제 규격)로 �
 - `project_matcode_rules.md` — Valve matcode 할당 규칙 (TAG 있는 항목만, 단 신규 BOM 등록부터는 MatCode 자체를 생성하지 않는 것으로 정책 변경 — 2026-07-05)
 - `project_pgu_de_0072_recovery.md` — PGU-DE-0072 197건 복구 완료 확인됨 (2026-07-02)
 - `project_valve_bom_registration.md` — Valve List BOM DB 등록 + BOM/Material Summary/Material Status Tag 매칭 연결 작업 상세 (2026-07-05)
+
+## Support 적용 사례 (진행 중, 2026-07-06 시작)
+
+### 배경
+`Raw File/Support BOM.xlsx`(CRITICAL/GENERAL/SB 3개 시트, 총 14,084행)에 SYSTEM/ISO DWG NO.가 공란이었음.
+같은 사용자의 다른 모듈인 **ipcs-drawing 프로그램**(`C:\Users\PCLOVE\Downloads\ipcs-drawing`, 별도 Supabase 프로젝트 `wsvqeoufppcoeclbfbgz`, `drawing.support_master`/`support_latest` 테이블, 21,190건)을 **조회 전용**으로 참조해 SUPPORT TAG NO. 기준 매칭 후 채움. ipcs-material 모듈만 수정, ipcs-drawing 쪽은 손대지 않음.
+
+### 매칭 결과
+- CRITICAL: 3,389/3,447 (98.3%) 매칭, SYSTEM+ISO DWG NO. 채움
+- GENERAL: 7,024/10,418 (67.4%) 매칭 — 기존에 ISO DWG NO.가 이미 있었기 때문에, **사용자 지시로 "도면(drawing DB) 기준"으로 전체 덮어씀**(기존 값과 DB 값이 다른 235건 포함)
+- SB: 211/219 (96.3%) 매칭
+- 미매칭(고유 태그 기준: GENERAL 1,960개, SB 2개)은 drawing DB에 아직 없는 support tag — 공란 유지. 도면팀 확인 필요.
+
+### 중요 발견 — openpyxl 저장 버그 (데이터 유실 → 복구 완료)
+`Raw File/Support BOM.xlsx`를 openpyxl로 `load_workbook()` → `save()` 방식으로 **두 번** 수정하는 과정에서, SUPPORT TAG NO.가 placeholder 값(`BULK`, `-`, 공란)인 행이 저장 시 통째로 사라지는 버그를 발견함 (CRITICAL 58행 + GENERAL 245행 = 303행 유실). 원인은 특정되지 않았으나(최소 재현 코드로는 재현 안 됨, 이 특정 파일에서만 발생), 매 저장마다 진행 전/후 원본과 태그 Counter를 diff해서 확인하는 습관으로 발견함. 최초 원본 백업(`Support BOM_backup_20260706_054643.xlsx`)에서 새 Workbook을 만들어 값만 복사하는 방식(`scratch/rebuild_support_bom_clean.py`)으로 무손실 재작성해 복구함.
+**교훈: 이 파일(혹은 유사 구조의 대용량 xlsx)을 openpyxl로 in-place 수정할 때는 저장 전/후 행 수·태그 Counter를 반드시 diff 검증할 것.**
+
+### support_bom 테이블 재적재 (완료, 2026-07-06)
+- 기존 14,183행 전체 DELETE 후, 복구된 파일 기준 14,084행(3,447+10,418+219) 재적재 완료 (`scratch/import_support_bom_v2.py`)
+- 컬럼 매핑은 기존 스크립트(2026-07-02, `scratch/import_support_bom.py`, 이제 삭제됨)와 동일: system/iso_dwg_no/support_tag/type/part_no/id_no/item/matl/size_or_type/length_mm/qty
+- UI 반영 확인 완료: Dashboard Support KPI(`v_support_kpi` 뷰 — BOM 70,491 EA / Received 32,312 EA / 45.8%), Material Finding Mode B(Support Tag 검색, `fetchAndRenderSupportRows`)에서 새 SYSTEM/ISO DWG NO. 정상 표시
+- Material Finding Mode A(ISO Drawing 검색)는 해당 ISO에 일반 BOM(Pipe/Fitting 등)이 하나도 없으면 Support 섹션까지 조회하지 않고 조기 종료하는 기존 설계라(내가 만든 변경 아님), Support 전용 ISO는 Mode A로 확인 불가 — Mode B로 확인해야 함.
+
+### Bulk Materials 관리 설계 (설계 완료, 2026-07-06, 구현 대기)
+
+**배경**: GENERAL 시트에는 개별 Support Tag에 귀속되지 않는 Bulk 구조재(Channel/H-Beam/Angle/Plate/Anchor Bolt 등)가 246행 있음. SUPPORT TAG NO.가 `BULK`/`-`/공란으로 동일/의미없는 값이 반복돼 실제 Tag 매칭이 불가능함 (CRITICAL의 `HP #1-BULK-001`류는 그룹별 고유 Tag가 있어 기존 Tag 매칭 로직이 이미 정상 동작 — 이 설계 범위 아님). 소요량 산정이 어려운 자재라 "BOM 대비 %"가 아니라 **입고 물량을 참고용으로 집계**하는 방식으로 관리하기로 사용자와 합의.
+
+**데이터 식별 규칙**: 같은 Item 이름(CHANNEL/ANCHOR BOLT/EYE NUT 등)이 실제 Tag가 붙은 다른 Support 항목에서도 광범위하게 재사용되므로(예: GUIDE PLATE는 실제 Tag로 2,245건 존재), Item+Size만으로 조인하면 안 됨 — 반드시 양쪽 다 "Tag 없음"으로 표시된 행만 걸러서 그 안에서 Item+Matl+Size로 집계해야 함.
+- BOM(`support_bom`): `support_tag IS NULL OR support_tag = 'BULK'` (246행)
+- Received(`support_receiving`): `support_tag IS NULL OR support_tag IN ('BULK', '-')` (295행) — 입력 관행이 두 가지 섞여 있음: ①`support_tag='BULK'/'-'`(83건, System 값 있음), ②`support_tag=NULL`+`system='BULK'`(212건, System 자리에 'BULK' 리터럴). 둘 다 합쳐서 집계.
+- 집계 키: Item + Matl + Size_or_Type (System은 BOM 쪽에 아예 없어서 제외)
+
+**UI**: 기존 "Support" 탭(`support_receiving` 기반 화면) 안에 "Bulk Materials" 섹션 추가. 컬럼: Item / Matl / Size·Type / BOM Qty(참고용, %·색상 없음) / Received Qty / PKG 내역(`renderPkgListCell` 재사용, System은 참고 정보로만 노출). Item 오름차순 정렬, 필터는 미구현(246개 조합 정도라 스크롤로 충분).
+
+**Dashboard 영향**: `v_support_kpi` 뷰가 위 Bulk 항목(BOM 246행/Received 295행)을 제외하고 Tag성 항목만으로 재계산하도록 변경 필요 — 뷰 원본 SQL을 못 찾아서(과거 세션에 Supabase SQL Editor에서 직접 작성 추정) 재정의 시 이 규칙 반영해야 함. 지금 45.8%보다 다소 오를 수 있음.
+
+**Out of scope**: CRITICAL의 `{System} #n-BULK-{seq}` 항목(이미 정상), SB 시트(Bulk 없음), Bulk 소요량 재산정/부족경고/FIFO.
+
+### 현재 상태 / 다음 할 일 (Support 적용 사례 기준, 마지막 갱신: 2026-07-06)
+- [x] SYSTEM/ISO DWG NO. 채움 (ipcs-drawing DB 매칭)
+- [x] GENERAL 시트 ISO DWG NO. 도면 기준 전체 정합화 (235건 교정)
+- [x] openpyxl 저장 데이터 유실 버그 발견 및 복구
+- [x] support_bom 테이블 전체 재적재, UI(Dashboard/Material Finding) 반영 확인
+- [x] Bulk Materials 관리 설계 확정 (Item+Matl+Size 집계, KPI 제외)
+- [ ] `v_support_kpi` 뷰 재정의 (Bulk 제외, Supabase SQL Editor에서 직접 실행 필요)
+- [ ] Support 탭에 Bulk Materials 섹션 UI 구현
+- [ ] 미매칭 태그(GENERAL 1,960개 + SB 2개) 도면팀 확인 요청 (사용자 예정)
