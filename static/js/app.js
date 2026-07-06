@@ -6240,32 +6240,53 @@ document.addEventListener('DOMContentLoaded', () => {
 // Spool Receiving
 // ============================================================
 
+// spool_bom(tag_no)과 spool_receiving(tag_no)를 Tag 기준으로 매칭해 진행률 계산.
+// 두 테이블은 서로 다른 시점 데이터라 tag_no가 완전히 겹치지 않음(385/529) — 있는 그대로 반영.
 function updateSpoolKpis() {
     const recCount = (_srData || []).length;
     const pkgCount = new Set((_srData || []).map(r => r.pkg_no)).size;
     document.querySelectorAll('.spool-kpi-received').forEach(el => el.innerHTML = `${recCount} <span class="unit">EA</span>`);
     document.querySelectorAll('.spool-kpi-rec-sub').forEach(el => el.textContent = `${pkgCount} PKG`);
+
+    const bomTags = _spoolBomTags || new Set();
+    const recTagSet = new Set((_srData || []).map(r => (r.tag_no || '').trim()).filter(Boolean));
+    let matched = 0;
+    bomTags.forEach(t => { if (recTagSet.has(t)) matched++; });
+    const pct = bomTags.size > 0 ? (matched / bomTags.size * 100) : 0;
+
+    document.querySelectorAll('.spool-kpi-bom').forEach(el => el.innerHTML = `${bomTags.size} <span class="unit">Tags</span>`);
+    document.querySelectorAll('.spool-kpi-bom-sub').forEach(el => el.textContent = `${bomTags.size} Tags`);
+    document.querySelectorAll('.spool-kpi-progress').forEach(el => el.innerHTML = `${pct.toFixed(1)} <span class="unit">%</span>`);
+    document.querySelectorAll('.spool-kpi-prog-sub').forEach(el => el.textContent = `${matched} / ${bomTags.size} Tags matched`);
 }
 
 // --- Spool Receiving ---
 let _srData = null;
 let _srPage = 1;
+let _spoolBomTags = null;
 
 async function initSpoolReceiving() {
     if (_srData) { _initSrFilters(); renderSpoolReceiving(); return; }
     if (!supabaseClient) return;
-    const { data, error } = await supabaseClient
-        .from('spool_receiving')
-        .select('*')
-        .order('pkg_seq', { ascending: true })
-        .order('id',      { ascending: true })
-        .limit(10000);
-    if (error) {
+    const [recRes, bomRes] = await Promise.all([
+        supabaseClient
+            .from('spool_receiving')
+            .select('*')
+            .order('pkg_seq', { ascending: true })
+            .order('id',      { ascending: true })
+            .limit(10000),
+        supabaseClient
+            .from('spool_bom')
+            .select('tag_no')
+            .limit(2000)
+    ]);
+    if (recRes.error) {
         const tb = document.getElementById('srTbody');
-        if (tb) tb.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#c00;padding:40px;">Error: ${error.message}</td></tr>`;
+        if (tb) tb.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#c00;padding:40px;">Error: ${recRes.error.message}</td></tr>`;
         return;
     }
-    _srData = data || [];
+    _srData = recRes.data || [];
+    _spoolBomTags = new Set((bomRes.data || []).map(r => (r.tag_no || '').trim()).filter(Boolean));
     _initSrFilters();
     renderSpoolReceiving();
 }
