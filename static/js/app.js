@@ -2181,6 +2181,12 @@ function _enrichRow(matCode, bomMap, recMap, masterMap, mat12Map) {
     const desc = db.bomDesc[matCode] || (recMap[matCode]?.desc !== '-' ? recMap[matCode]?.desc : null) || mData.itemDesc || '-';
     const _itemMc = window.extractItemFromMatCode(matCode);
     const item = (_itemMc && _itemMc !== '-') ? _itemMc : window.extractItemFromDesc(desc);
+    // Pipe는 Item 필터 드롭다운이 여전히 'PIPE'(SMLS/WELDED 합산) 기준이라 필터 매칭용 item은 그대로 두고,
+    // 화면 표시용 itemDisplay만 MatCode 접두어(PIS/PIW)로 SMLS/WELDED를 구분
+    const _matPrefix = (matCode || '').split('-')[0].toUpperCase();
+    const itemDisplay = _matPrefix === 'PIS' ? 'PIPE SMLS'
+        : _matPrefix === 'PIW' ? 'PIPE WELDED'
+        : item;
     const _sc = window.extractSizeFromMatCode(matCode);
     const size = (_sc && _sc !== '-') ? _sc : (mData.size1 || '-');
     const cat  = mData.category || window.getCategory(mData.itemDesc || '', matCode);
@@ -2191,13 +2197,13 @@ function _enrichRow(matCode, bomMap, recMap, masterMap, mat12Map) {
     const unit = recMap[matCode]?.unit || bomMap[matCode]?.uom || 'EA';
     const bomQty = bomMap[matCode]?.qty ?? 0;
     const recQty = recMap[matCode]?.qty ?? 0;
-    return { matCode, cat, desc, item, mat1, mat2, size, rating, unit, bomQty, recQty };
+    return { matCode, cat, desc, item, itemDisplay, mat1, mat2, size, rating, unit, bomQty, recQty };
 }
 
-const _TABLE_ROW_TPL = ({ matCode, cat, item, mat1, mat2, size, rating, unit, bomQty, recQty, diffQty, diffColor }) => `<tr>
+const _TABLE_ROW_TPL = ({ matCode, cat, itemDisplay, mat1, mat2, size, rating, unit, bomQty, recQty, diffQty, diffColor }) => `<tr>
     <td style="text-align:center;"><strong>${cat}</strong></td>
     <td style="text-align:center;font-weight:600;color:var(--color-primary);white-space:nowrap;">${matCode}</td>
-    <td style="text-align:center;">${item}</td>
+    <td style="text-align:center;">${itemDisplay}</td>
     <td style="text-align:center;">${mat1}</td>
     <td style="text-align:center;">${mat2}</td>
     <td style="text-align:center;">${size}</td>
@@ -2339,7 +2345,7 @@ function _exportDiffList(list, sheetName, filenamePrefix) {
     const rows = list.map(r => ({
         'Category':      r.cat,
         'MatCode':       r.matCode,
-        'Item':          r.item,
+        'Item':          r.itemDisplay,
         'Mat 1':         r.mat1,
         'Mat 2':         r.mat2,
         'Size (Inch)':   r.size,
