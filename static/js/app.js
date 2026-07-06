@@ -616,6 +616,7 @@ function initNavigation() {
         rec_tag_valve:      { sec: 'tag',  tab: 'valve' },
         rec_tag_speciality: { sec: 'tag',  tab: 'speciality' },
         rec_tag_support:    { sec: 'tag',  tab: 'support' },
+        rec_tag_spare:      { sec: 'tag',  tab: 'spare' },
     };
 
     window.showSection = function(targetId) {
@@ -3893,10 +3894,11 @@ function refreshMat12RatingFilterOptions(cfg, agg, masterMap) {
 // 현재 활성 receiving 섹션/탭 상태
 let _recActiveSec = 'bulk'; // 'bulk' | 'tag'
 let _recActiveBulkTab = 'piping'; // 'piping' | 'others'
-let _recActiveTagTab  = 'spool';  // 'spool' | 'valve' | 'speciality' | 'support'
+let _recActiveTagTab  = 'spool';  // 'spool' | 'valve' | 'speciality' | 'support' | 'spare'
 let currentOthPage = 1;
 let currentValPage = 1;
 let currentSplPage = 1;
+let currentSprPage = 1;
 
 function renderReceivingTable() { renderBulkPipingTable(); }
 
@@ -4039,6 +4041,7 @@ function renderActiveReceivingTab() {
         else if (_recActiveTagTab === 'valve') renderTagValveTable();
         else if (_recActiveTagTab === 'speciality') renderTagSpecialityTable();
         else if (_recActiveTagTab === 'support') { renderSupportReceivingTable(); renderSupportBulkTable(); }
+        else if (_recActiveTagTab === 'spare') renderTagSpareTable();
     }
 }
 
@@ -4064,10 +4067,12 @@ function switchReceivingTab(sec, tab) {
         const vl = document.getElementById('recTagValve');
         const sl = document.getElementById('recTagSpeciality');
         const su = document.getElementById('recTagSupport');
+        const sr = document.getElementById('recTagSpare');
         if (sp) sp.style.display = tab === 'spool'      ? '' : 'none';
         if (vl) vl.style.display = tab === 'valve'      ? '' : 'none';
         if (sl) sl.style.display = tab === 'speciality' ? '' : 'none';
         if (su) su.style.display = tab === 'support'    ? '' : 'none';
+        if (sr) sr.style.display = tab === 'spare'      ? '' : 'none';
     }
 
     renderActiveReceivingTab();
@@ -4118,6 +4123,7 @@ function initReceivingTabs() {
             document.getElementById('recTagValve').style.display      = _recActiveTagTab === 'valve'      ? '' : 'none';
             document.getElementById('recTagSpeciality').style.display = _recActiveTagTab === 'speciality' ? '' : 'none';
             document.getElementById('recTagSupport').style.display    = _recActiveTagTab === 'support'    ? '' : 'none';
+            document.getElementById('recTagSpare').style.display      = _recActiveTagTab === 'spare'      ? '' : 'none';
             renderActiveReceivingTab();
         });
     });
@@ -4128,6 +4134,7 @@ function initReceivingTabs() {
     document.getElementById('btnFilterOth')?.addEventListener('click', () => { currentOthPage = 1; renderBulkOthersTable(); });
     document.getElementById('btnFilterVal')?.addEventListener('click', () => { currentValPage = 1; renderTagValveTable(); });
     document.getElementById('btnFilterSpl')?.addEventListener('click', () => { currentSplPage = 1; renderTagSpecialityTable(); });
+    document.getElementById('btnFilterSpr')?.addEventListener('click', () => { currentSprPage = 1; renderTagSpareTable(); });
 }
 
 window._plGoPage  = function(p) { currentPlPage  = p; renderBulkPipingTable(); };
@@ -4135,6 +4142,7 @@ window._fitGoPage = function(p) { currentFitPage = p; renderBulkFittingTable(); 
 window._othGoPage = function(p) { currentOthPage = p; renderBulkOthersTable(); };
 window._valGoPage = function(p) { currentValPage = p; renderTagValveTable(); };
 window._splGoPage = function(p) { currentSplPage = p; renderTagSpecialityTable(); };
+window._sprGoPage = function(p) { currentSprPage = p; renderTagSpareTable(); };
 
 async function renderSupportReceivingTable() {
     const tbody = document.querySelector('#srecTable tbody');
