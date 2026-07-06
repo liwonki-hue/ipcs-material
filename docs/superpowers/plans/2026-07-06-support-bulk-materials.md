@@ -226,60 +226,47 @@ git commit -m "feat: Support 탭에 Bulk Materials(Tag 없는 벌크 자재) 집
 
 ---
 
-### Task 3: `v_support_kpi` 뷰 수정 (Dashboard Support % 에서 Bulk 제외) — 사용자 입력 필요
+### Task 3: `v_support_kpi` 뷰 수정 (Dashboard Support % 에서 Bulk 제외) — 완료 (2026-07-06)
 
-**배경:** Dashboard의 Support KPI(`v_support_kpi` 뷰)가 실제로 무엇을 계산하는지 anon key로는 확인할 수 없었다. 검증 결과 뷰의 `total_bom` 값(70,491)은 `support_bom.qty` 합계(56,632)가 아니라 `support_receiving.qty` 합계(70,491)와 정확히 일치했고, `total_received`(32,312)는 Preparing/Shipping 제외 필터로도 재현되지 않았다 — 즉 뷰가 실제로 무엇을 반영하는지 이 세션에서는 특정하지 못했다. 이 뷰는 anon key로 정의(SQL)를 읽거나 수정할 수 없어 Supabase SQL Editor 접근 권한이 있는 사용자가 직접 조회/실행해야 한다.
-
-**Files:**
-- Supabase SQL Editor에서 직접 실행 (레포에는 파일 없음 — 실행한 SQL은 `scratch/`에 기록해 둘 것)
-
-- [ ] **Step 1: 사용자에게 현재 뷰 정의 요청**
-
-사용자에게 Supabase SQL Editor(ipcs-material 프로젝트: `ognhvfvlboqblueuldlm`)에서 아래 쿼리를 실행하고 결과를 공유해달라고 요청한다:
+**배경:** 사용자가 Supabase SQL Editor에서 `SELECT pg_get_viewdef('public.v_support_kpi'::regclass, true);`를 실행해 실제 정의를 확인해줬다. 결과, 이 뷰는 **`support_bom`을 전혀 참조하지 않고 `support_receiving`만으로 계산**되고 있었다:
 
 ```sql
-SELECT pg_get_viewdef('public.v_support_kpi'::regclass, true);
+SELECT COALESCE(sum(qty), 0::bigint) AS total_bom,
+    COALESCE(sum(
+        CASE
+            WHEN package_no IS NOT NULL THEN qty
+            ELSE 0
+        END), 0::bigint) AS total_received
+   FROM support_receiving;
 ```
 
-- [ ] **Step 2: 반환된 SQL을 바탕으로 Bulk 제외 조건 추가**
+즉 `total_bom`은 실제로는 "support_receiving 전체 입고 수량 합계"(BOM 수요가 아님), `total_received`는 "그중 package_no가 배정된 수량"이다. 이름과 Dashboard 라벨("BOM"/"On-Site PKG")이 실제 계산과 다르지만, 이번 범위는 Bulk 제외에 한정하고 이 명칭 문제 자체는 건드리지 않기로 함.
 
-반환된 뷰 정의를 확인해서, `support_bom`을 참조하는 서브쿼리/집계에는
-`AND (support_tag IS NOT NULL AND support_tag <> 'BULK')`,
-`support_receiving`을 참조하는 서브쿼리/집계에는
-`AND (support_tag IS NOT NULL AND support_tag NOT IN ('BULK', '-'))`
-조건을 추가한 `CREATE OR REPLACE VIEW public.v_support_kpi AS ...` 문을 작성한다. (뷰가 이 두 테이블을 참조하지 않고 전혀 다른 방식으로 계산되고 있다면, 이 단계에서 계산 로직을 사용자와 다시 확인한다 — Step 1의 발견 때문에 가능성이 있음.)
+- [x] **Step 1: 사용자에게 현재 뷰 정의 요청** — 완료, 사용자가 위 SQL 결과 공유함
 
-- [ ] **Step 3: 새 SQL을 사용자에게 전달해 SQL Editor에서 실행 요청**
+- [x] **Step 2: Bulk 제외 조건 추가** — 뷰가 `support_receiving`만 참조하므로, 그 테이블에 `support_tag IS NOT NULL AND support_tag NOT IN ('BULK', '-')` 조건을 추가:
 
-작성한 `CREATE OR REPLACE VIEW` 문을 사용자에게 제시하고, Supabase SQL Editor에서 실행해달라고 요청한다 (anon key로는 뷰 생성/수정 불가).
-
-- [ ] **Step 4: 실행 후 REST로 재확인**
-
-```bash
-python -c "
-import requests
-url='https://ognhvfvlboqblueuldlm.supabase.co'
-key='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9nbmh2ZnZsYm9xYmx1ZXVsZGxtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3MzY2NTUsImV4cCI6MjA4ODMxMjY1NX0.paO5jr16M7yTySUAp9LgberoatDds9rTNa_eCU_ET_I'
-headers={'apikey':key,'Authorization':f'Bearer {key}'}
-r = requests.get(url+'/rest/v1/v_support_kpi', headers=headers, params={'select':'*'})
-print(r.json())
-"
+```sql
+CREATE OR REPLACE VIEW public.v_support_kpi AS
+SELECT
+    COALESCE(sum(qty), 0::bigint) AS total_bom,
+    COALESCE(sum(
+        CASE
+            WHEN package_no IS NOT NULL THEN qty
+            ELSE 0
+        END), 0::bigint) AS total_received
+FROM support_receiving
+WHERE support_tag IS NOT NULL
+  AND support_tag NOT IN ('BULK', '-');
 ```
 
-기존 `total_bom=70491`에서 Bulk 제외분(BOM 31,963 또는 Received 8,873, Step 2에서 어느 쪽 테이블 기준인지에 따라 다름)만큼 줄어들었는지 확인한다.
+- [x] **Step 3: 사용자가 Supabase SQL Editor에서 실행 완료**
 
-- [ ] **Step 5: Playwright로 Dashboard 재확인**
+- [x] **Step 4: REST로 재확인** — `{"total_bom": 61618, "total_received": 23457}` (사전 예측치와 정확히 일치)
 
-로컬 서버 기동 후 Dashboard 진입 → Support KPI 카드의 %/BOM/Received 숫자가 바뀐 값으로 표시되는지 확인.
+- [x] **Step 5: Playwright로 Dashboard 재확인** — Support KPI 카드가 `38.1%`, `23,457 / 61,618 EA`로 표시됨을 확인 (기존 45.8%, 70,491/32,312에서 변경)
 
-- [ ] **Step 6: Commit**
-
-이 태스크는 DB 쪽 변경이라 레포에 커밋할 코드 변경이 없다. 실행한 최종 SQL을 기록용으로 `scratch/v_support_kpi_bulk_exclusion.sql`에 저장하고 커밋한다:
-
-```bash
-git add scratch/v_support_kpi_bulk_exclusion.sql
-git commit -m "docs: v_support_kpi Bulk 제외 SQL 기록"
-```
+- [x] **Step 6: Commit** — `scratch/v_support_kpi_bulk_exclusion.sql`에 실행한 SQL과 전/후 수치 기록, 커밋 완료
 
 ---
 
