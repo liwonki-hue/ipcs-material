@@ -41,7 +41,7 @@
 오늘 실제로 발견된 문제: Pipe MatCode 접두어(PIS/PIW)를 SMLS/WELDED로 구분하는 로직이 Receiving 리스트 렌더링(원래 위치)과 Shortage/Surplus(`_enrichRow`, 오늘 추가)에 각각 따로 들어가 있었다. `ITEM_PREFIX_MAP`(item→prefix)과 `extractItemFromMatCode`의 내부 MAP(prefix→item)도 서로 반대 방향으로 손으로 관리되는 중복 데이터다. 이런 구조에서는 새 예외 규칙이 생길 때마다 여러 곳에 나눠 적용해야 하고, 하나를 빠뜨리면 오늘 같은 버그가 반복된다.
 
 ### 리팩토링
-- 순수 파싱 함수 5개 + 데이터 테이블 1개를 `static/js/app.js`에서 분리해 새 파일 `static/js/matching.js`로 이동:
+- 순수 파싱 함수 5개 + 데이터 테이블 2개를 `static/js/app.js`에서 분리해 새 파일 `static/js/matching.js`로 이동:
   - `extractItemFromMatCode`
   - `extractSizeFromMatCode`
   - `extractSizeLengthFromMatCode`
@@ -49,8 +49,8 @@
   - `extractItemFromDesc`
   - `ITEM_PREFIX_MAP`
 - 이 함수들은 외부 상태(`db`, `window.parseSpecialityDesc` 등)에 의존하지 않는 순수 함수라 분리 가능함을 확인함
-- `ITEM_PREFIX_MAP`(item→prefix)과 `extractItemFromMatCode`의 내부 MAP(prefix→item)을 하나의 canonical 테이블에서 파생하도록 통합 — 두 방향을 손으로 따로 유지하지 않음
-- 신규 함수 `extractItemDisplayFromMatCode(matCode)` 추가: PIS→'PIPE SMLS', PIW→'PIPE WELDED', 그 외에는 `extractItemFromMatCode`와 동일값 반환. 지금 2곳(Receiving 리스트, Shortage/Surplus `_enrichRow`)에 중복된 3항연산자 블록을 이 함수 호출 하나로 교체
+- **(설계 수정, 2026-07-06)** 당초 `ITEM_PREFIX_MAP`(item→prefix)과 `extractItemFromMatCode`의 내부 MAP(prefix→item)을 하나의 canonical 테이블에서 파생시키려 했으나, 실제 대조 결과 두 테이블은 완전한 역함수 관계가 아님을 확인함 — `ITEM_PREFIX_MAP`은 `'SAFETY VALVE':['PSV','PRV']`처럼 필터링 목적으로 두 prefix를 하나로 묶고 `'VALVE':[...]`같은 반대쪽에 대응 항목이 없는 상위 그룹까지 포함하는 반면, `extractItemFromMatCode`는 PSV/PRV를 별개 표시 항목('SAFETY VALVE'/'RELIEF VALVE')으로 다룸. 강제로 통합하면 BOM 탭의 기존 필터 동작(예: "Safety Valve" 선택 시 PSV+PRV 둘 다 검색)이 조용히 깨질 위험이 있어, **두 테이블은 지금 형태 그대로 유지**하고 물리적으로 같은 파일로 옮기는 것으로만 범위를 좁힘(파일 분리는 여전히 진행 — 파편화 해소 효과는 유지)
+- 신규 함수 `extractItemDisplayFromMatCode(matCode)` 추가: PIS→'PIPE SMLS', PIW→'PIPE WELDED', 그 외에는 `extractItemFromMatCode`와 동일값 반환. 지금 2곳(Receiving 리스트, Shortage/Surplus `_enrichRow`)에 완전히 동일하게 중복된 3항연산자 블록만 이 함수 호출 하나로 교체 — 이 케이스는 두 위치가 서로 다른 의도 없이 우연히 중복된 것이 확인됐으므로 안전하게 통합 가능
 - `matching.js`는 `templates/index.html`에서 `app.js`보다 먼저 로드되는 일반 `<script>` — 클래식 스크립트는 같은 문서 내에서 top-level `const`/`function`을 공유하므로 app.js 쪽 코드 변경 없이 그대로 참조 가능
 - 파일 맨 아래에 `if (typeof module !== 'undefined') module.exports = {...}` 형태의 조건부 export를 추가해 브라우저 동작에 영향 없이 Node에서도 `require` 가능하게 함
 
