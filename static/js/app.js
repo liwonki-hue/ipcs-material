@@ -4108,12 +4108,6 @@ function renderTagSpareTable() {
         const pkgStatus  = (_plUpdatesCache[r.plNo] || {}).status || '';
         const isOnSite   = pkgStatus === 'On-Site';
         const statusColor = pkgStatus === 'On-Site' ? '#2e7d32' : pkgStatus === 'Shipping' ? '#1565c0' : pkgStatus === 'Preparing' ? '#888' : '#bbb';
-        const purposeOpts = PURPOSE_OPTS.map(v =>
-            `<option value="${v}"${r.purpose === v ? ' selected' : ''}>${v || '—'}</option>`
-        ).join('');
-        const purposeSel = `<select class="pl-purpose-sel" data-recv-id="${r.id}"
-            style="width:100%;border:1px solid #dde3ee;border-radius:4px;padding:3px 6px;font-size:12px;background:#fff;color:#0A2540;text-align:center;">
-            ${purposeOpts}</select>`;
         return `<tr${isOnSite ? '' : ' style="color:#999;"'}>
             <td style="text-align:center;white-space:nowrap;">${r.docNo}</td>
             <td style="text-align:center;white-space:nowrap;">${r.plNo}</td>
@@ -4128,7 +4122,6 @@ function renderTagSpareTable() {
             <td style="white-space:nowrap;text-align:center;">${r.unit || 'EA'}</td>
             <td style="white-space:nowrap;text-align:center;">${Math.round(r.qty).toLocaleString()}</td>
             <td style="text-align:center;white-space:nowrap;font-weight:600;color:${statusColor};">${pkgStatus || '—'}</td>
-            <td style="text-align:center;padding:3px;">${purposeSel}</td>
         </tr>`;
     });
     tbody.innerHTML = rows.join('');
@@ -5073,7 +5066,6 @@ function attachEventListeners() {
                 'Unit':    r.unit || 'EA',
                 'Qty':     r.qty || 0,
                 'Status':  pkgStatus,
-                'Purpose': r.purpose || '-',
             };
         });
     }
