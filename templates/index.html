@@ -96,8 +96,8 @@
                      </div>
                  </div>
                  
-                 <!-- KPI Cards — Category % Progress -->
-                 <div class="kpi-grid" style="grid-template-columns:repeat(8,1fr);">
+                 <!-- KPI Cards — 카테고리별 % 대신 "주목해야 할 것" 중심 요약 (카테고리별 %는 아래 Material Progress 막대그래프에서 확인) -->
+                 <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
                      <div class="kpi-card">
                          <div class="kpi-info" style="flex:1;">
                              <div class="kpi-title" style="display:flex;align-items:center;gap:5px;">
@@ -112,78 +112,34 @@
                      <div class="kpi-card">
                          <div class="kpi-info" style="flex:1;">
                              <div class="kpi-title" style="display:flex;align-items:center;gap:5px;">
-                                 <i class="fas fa-stream" style="color:#1565c0;font-size:10px;"></i> Pipe
-                                 <span style="font-size:10px;color:#aaa;font-weight:400;">(M)</span>
+                                 <i class="fas fa-check-circle" style="color:#2e7d32;font-size:10px;"></i> Categories On Track
+                                 <span style="font-size:10px;color:#aaa;font-weight:400;">(≥90%)</span>
                              </div>
-                             <div class="kpi-value" id="kpi-pipe-pct">—</div>
-                             <div style="font-size:10px;color:#888;margin-top:1px;">Received / BOM</div>
-                             <div class="kpi-desc" id="kpi-pipe-sub" style="margin-top:2px;">— M / — M</div>
+                             <div class="kpi-value" id="kpi-ontrack-count">—</div>
+                             <div style="font-size:10px;color:#888;margin-top:1px;">of 7 Categories</div>
+                             <div class="kpi-desc" id="kpi-ontrack-sub" style="margin-top:2px;">—</div>
                          </div>
                      </div>
                      <div class="kpi-card">
                          <div class="kpi-info" style="flex:1;">
                              <div class="kpi-title" style="display:flex;align-items:center;gap:5px;">
-                                 <i class="fas fa-puzzle-piece" style="color:#6a1b9a;font-size:10px;"></i> Fitting
-                                 <span style="font-size:10px;color:#aaa;font-weight:400;">(EA)</span>
+                                 <i class="fas fa-clipboard-list" style="color:#e65100;font-size:10px;"></i> Items Pending
+                                 <span style="font-size:10px;color:#aaa;font-weight:400;">(Pipe/Fitting)</span>
                              </div>
-                             <div class="kpi-value" id="kpi-fit-pct">—</div>
-                             <div style="font-size:10px;color:#888;margin-top:1px;">Received / BOM</div>
-                             <div class="kpi-desc" id="kpi-fit-sub" style="margin-top:2px;">— EA / — EA</div>
+                             <div class="kpi-value" id="kpi-pending-count">—</div>
+                             <div style="font-size:10px;color:#888;margin-top:1px;">Item+Size below BOM</div>
+                             <div class="kpi-desc" id="kpi-pending-sub" style="margin-top:2px;">—</div>
                          </div>
                      </div>
                      <div class="kpi-card">
                          <div class="kpi-info" style="flex:1;">
                              <div class="kpi-title" style="display:flex;align-items:center;gap:5px;">
-                                 <i class="fas fa-wrench" style="color:#00838f;font-size:10px;"></i> Valve
-                                 <span style="font-size:10px;color:#aaa;font-weight:400;">(EA)</span>
+                                 <i class="fas fa-exclamation-triangle" style="color:#c62828;font-size:10px;"></i> ISO Critical
+                                 <span style="font-size:10px;color:#aaa;font-weight:400;">(Drawings)</span>
                              </div>
-                             <div class="kpi-value" id="kpi-valve-pct">—</div>
-                             <div style="font-size:10px;color:#888;margin-top:1px;">Received / BOM</div>
-                             <div class="kpi-desc" id="kpi-valve-sub" style="margin-top:2px;">— EA / — EA</div>
-                         </div>
-                     </div>
-                     <div class="kpi-card">
-                         <div class="kpi-info" style="flex:1;">
-                             <div class="kpi-title" style="display:flex;align-items:center;gap:5px;">
-                                 <i class="fas fa-star" style="color:#ad1457;font-size:10px;"></i> Speciality
-                                 <span style="font-size:10px;color:#aaa;font-weight:400;">(EA)</span>
-                             </div>
-                             <div class="kpi-value" id="kpi-spc-pct">—</div>
-                             <div style="font-size:10px;color:#888;margin-top:1px;">Received / BOM</div>
-                             <div class="kpi-desc" id="kpi-spc-sub" style="margin-top:2px;">— EA / — EA</div>
-                         </div>
-                     </div>
-                     <div class="kpi-card">
-                         <div class="kpi-info" style="flex:1;">
-                             <div class="kpi-title" style="display:flex;align-items:center;gap:5px;">
-                                 <i class="fas fa-bolt" style="color:#e65100;font-size:10px;"></i> Others
-                                 <span style="font-size:10px;color:#aaa;font-weight:400;">(EA)</span>
-                             </div>
-                             <div class="kpi-value" id="kpi-oth-pct">—</div>
-                             <div style="font-size:10px;color:#888;margin-top:1px;">Received / BOM</div>
-                             <div class="kpi-desc" id="kpi-oth-sub" style="margin-top:2px;">— EA / — EA</div>
-                         </div>
-                     </div>
-                     <div class="kpi-card">
-                         <div class="kpi-info" style="flex:1;">
-                             <div class="kpi-title" style="display:flex;align-items:center;gap:5px;">
-                                 <i class="fas fa-tools" style="color:#2e7d32;font-size:10px;"></i> Support
-                                 <span style="font-size:10px;color:#aaa;font-weight:400;">(EA)</span>
-                             </div>
-                             <div class="kpi-value" id="kpi-sup-pct">—</div>
-                             <div style="font-size:10px;color:#888;margin-top:1px;">On-Site PKG / BOM</div>
-                             <div class="kpi-desc" id="kpi-sup-sub" style="margin-top:2px;">— EA / — EA</div>
-                         </div>
-                     </div>
-                     <div class="kpi-card">
-                         <div class="kpi-info" style="flex:1;">
-                             <div class="kpi-title" style="display:flex;align-items:center;gap:5px;">
-                                 <i class="fas fa-circle-notch" style="color:#5d4037;font-size:10px;"></i> Spool
-                                 <span style="font-size:10px;color:#aaa;font-weight:400;">(EA)</span>
-                             </div>
-                             <div class="kpi-value" id="kpi-spool-pct">—</div>
-                             <div style="font-size:10px;color:#888;margin-top:1px;">Received / BOM</div>
-                             <div class="kpi-desc" id="kpi-spool-sub" style="margin-top:2px;">— EA / — EA</div>
+                             <div class="kpi-value" id="kpi-critical-count">—</div>
+                             <div style="font-size:10px;color:#888;margin-top:1px;">Erection/Spool Readiness Low</div>
+                             <div class="kpi-desc" id="kpi-critical-sub" style="margin-top:2px;">—</div>
                          </div>
                      </div>
                  </div>

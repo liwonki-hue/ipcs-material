@@ -688,6 +688,12 @@ function updateDashboard() {
             else critical++;
         });
 
+        // KPI 카드 ④: Critical ISO Drawing 개수 (도넛차트와 동일한 기준값 재사용)
+        const elCritical = document.getElementById('kpi-critical-count');
+        if (elCritical) elCritical.textContent = critical;
+        const elCriticalSub = document.getElementById('kpi-critical-sub');
+        if (elCriticalSub) elCriticalSub.textContent = `of ${data.length} ISO Drawings`;
+
         // Donut chart — 4 stage segments
         if (window.isoChart) window.isoChart.destroy();
         const ctx = document.getElementById('isoReadinessChart');
@@ -771,6 +777,14 @@ async function renderPendingItemsList() {
     const withPct = rows
         .filter(r => r.bom > 0 && r.rec < r.bom)
         .map(r => ({ ...r, pct: r.rec / r.bom * 100 }));
+
+    // KPI 카드 ③: 실제 부족 Item+Size 전체 개수(아래 목록은 대표 Top 10만 표시하므로 별도 집계)
+    const pipeShortCount = withPct.filter(r => r.category === 'Pipe').length;
+    const fitShortCount  = withPct.filter(r => r.category === 'Fitting').length;
+    const elPending = document.getElementById('kpi-pending-count');
+    if (elPending) elPending.textContent = withPct.length;
+    const elPendingSub = document.getElementById('kpi-pending-sub');
+    if (elPendingSub) elPendingSub.textContent = `Pipe ${pipeShortCount} / Fitting ${fitShortCount}`;
 
     // Pipe: 대표 Size 2개(부족 수량이 가장 큰 순) — 소구경이 후순위로 밀리는 경향 확인용
     const pipeRows = withPct
@@ -923,7 +937,16 @@ function updateCategoryCharts() {
         const elOverall = document.getElementById('kpi-overall-pct');
         if (elOverall) { elOverall.textContent = overallPct.toFixed(1) + '%'; elOverall.style.color = overallColor; }
 
-        // Bulk Material Progress Bars (Pipe / Fitting / Valve / Speciality / Others / Support)
+        // KPI 카드 ②: 90% 이상인 카테고리 수 — 카드별 %는 아래 막대그래프에서 확인 가능하므로
+        // KPI 자리에는 "몇 개나 정상 진행 중인지" 요약만 표시(중복 방지)
+        const catPcts = [pctPipe, pctFit, pctValve, pctSpc, pctOth, pctSup, pctSpool];
+        const onTrackCount = catPcts.filter(p => p >= 90).length;
+        const elOnTrack = document.getElementById('kpi-ontrack-count');
+        if (elOnTrack) elOnTrack.textContent = onTrackCount;
+        const elOnTrackSub = document.getElementById('kpi-ontrack-sub');
+        if (elOnTrackSub) elOnTrackSub.textContent = `${catPcts.length - onTrackCount} below 90%`;
+
+        // Bulk Material Progress Bars (Pipe / Fitting / Valve / Speciality / Others / Support / Spool)
         renderBulkProgressBars([
             { label: 'Pipe',       unit: 'M',  bom: bomDataArr[0], rec: recDataArr[0] },
             { label: 'Fitting',    unit: 'EA', bom: bomDataArr[1], rec: recDataArr[1] },
@@ -931,6 +954,7 @@ function updateCategoryCharts() {
             { label: 'Speciality', unit: 'EA', bom: bomDataArr[3], rec: recDataArr[3] },
             { label: 'Others',     unit: 'EA', bom: bomDataArr[5], rec: recDataArr[5] },
             { label: 'Support',    unit: 'EA', bom: supportBom,    rec: supportRec    },
+            { label: 'Spool',      unit: 'EA', bom: spoolBomTagSet.size, rec: spoolMatched },
         ]);
 
     });
