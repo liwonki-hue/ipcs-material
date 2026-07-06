@@ -52,6 +52,7 @@
                  <div class="nav-item" data-target="rec_tag_speciality"><i class="fas fa-star"></i> Speciality</div>
                  <div class="nav-item" data-target="rec_tag_spool"><i class="fas fa-circle-notch"></i> Spool</div>
                  <div class="nav-item" data-target="rec_tag_support"><i class="fas fa-tools"></i> Support</div>
+                 <div class="nav-item" data-target="rec_tag_spare"><i class="fas fa-box-archive"></i> Spare</div>
 
                  <div class="section-title">Material Status</div>
                  <div class="nav-item" data-target="material_status"><i class="fas fa-warehouse"></i> Material Status</div>
@@ -1153,6 +1154,89 @@
                             </div>
                         </div>
                     </div><!-- end recTagSupport -->
+
+                    <!-- Spare tab -->
+                    <div id="recTagSpare" style="display:none;">
+                        <div class="panel filter-panel" style="margin-bottom:20px;">
+                            <div style="display:flex;align-items:flex-end;justify-content:space-between;width:100%;gap:10px;flex-wrap:nowrap;">
+                                <div style="display:flex;align-items:flex-end;gap:10px;flex:1;min-width:0;">
+                                    <div class="form-group" style="flex:2;min-width:0;margin-bottom:0;">
+                                        <label>Search</label>
+                                        <input type="text" id="sprItemSearch" class="form-control" style="width:100%;" placeholder="Search by Item, Description...">
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                        <label>PKG</label>
+                                        <select id="sprDocFilter" class="form-control" style="width:100%;"><option value="All">All DOCs</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                        <label>PKG NO</label>
+                                        <select id="sprPkgFilter" class="form-control" style="width:100%;"><option value="All">All PKGs</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                        <label>Operation Type</label>
+                                        <select id="sprOpTypeFilter" class="form-control" style="width:100%;"><option value="All">All Op. Types</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                        <label>Item</label>
+                                        <select id="sprItemFilter" class="form-control" style="width:100%;"><option value="All">All Items</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                        <label>Mat 1</label>
+                                        <select id="sprMat1Filter" class="form-control" style="width:100%;"><option value="All">All Mat 1</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                        <label>Mat 2</label>
+                                        <select id="sprMat2Filter" class="form-control" style="width:100%;"><option value="All">All Mat 2</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                        <label>Size</label>
+                                        <select id="sprSizeFilter" class="form-control" style="width:100%;"><option value="All">All Sizes</option></select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;min-width:0;">
+                                        <label>Status</label>
+                                        <select id="sprStatusFilter" class="form-control" style="width:100%;">
+                                            <option value="All">All Status</option>
+                                            <option value="Preparing">Preparing</option>
+                                            <option value="Shipping">Shipping</option>
+                                            <option value="On-Site">On-Site</option>
+                                        </select>
+                                    </div>
+                                    <div style="padding-bottom:1px;flex-shrink:0;">
+                                        <button class="btn btn-primary" id="btnFilterSpr" style="white-space:nowrap;"><i class="fas fa-search"></i> Search</button>
+                                    </div>
+                                </div>
+                                <div style="display:flex;gap:8px;align-items:flex-end;padding-bottom:1px;">
+                                    <button class="btn btn-outline" id="btnExportSpr" style="white-space:nowrap;display:flex;align-items:center;gap:6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export Excel</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="panel data-panel">
+                            <div class="panel-header"><h3>Spare Receiving</h3></div>
+                            <div class="table-responsive">
+                                <table class="data-table" id="sprTable">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:120px;">PKG</th><th style="width:220px;">PKG NO</th>
+                                            <th style="width:170px;">TAG NO</th>
+                                            <th style="width:90px;">Operation Type</th>
+                                            <th style="width:190px;">Valve Type</th>
+                                            <th style="width:120px;">Item</th>
+                                            <th style="width:90px;">Mat 1</th>
+                                            <th style="width:100px;">Mat 2</th>
+                                            <th style="width:65px;">Size</th>
+                                            <th style="width:70px;">Rating</th>
+                                            <th style="width:60px;">Unit</th>
+                                            <th style="width:60px;">Qty</th>
+                                            <th style="width:80px;">Status</th>
+                                            <th style="width:110px;">Purpose</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                            <div id="sprPagination"></div>
+                        </div>
+                    </div><!-- end recTagSpare -->
                 </div><!-- end recSecTag -->
             </section>
 
