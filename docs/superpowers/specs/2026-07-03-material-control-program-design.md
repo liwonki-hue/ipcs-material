@@ -13,7 +13,7 @@
 | Piping/Fitting/Others | Tag 없음 | 자체 **MatCode Master** (`ITEM-MATL-SIZE-SCH-ET` 형식) |
 | Support | 대부분 Bulk Item(Tag 없음) | MatCode 또는 별도 처리 (Piping과 유사한 문제) |
 | Valve/Speciality | Tag(기기번호) 있음 | **Tag 자체**를 매칭 키로 사용 |
-| Spool | (추후 검토) | (추후 검토) |
+| Spool | Tag(Spool No) 있음 | **Spool No 자체**를 매칭 키로 사용 (2026-07-06 확정, "Spool 적용 사례" 참고) |
 
 **원칙: 매칭은 항상 Tag(또는 MatCode) 같은 고유 코드로만 하고, Description은 표시용으로만 쓴다.** Description은 단계마다 달라도 문제없어야 한다. 코드가 없는 자재(부속품/소모품/공구 등)는 **재고/부족자재 관리 대상이 아니라 참고 정보**로만 다룬다 — 이 구분(관리 대상 vs 참고 정보)도 카테고리 공통 원칙이다.
 
@@ -313,3 +313,28 @@ BOM 화면에서 Material 정보가 MAT1(재질 등급)/MAT2(실제 규격)로 �
 - [x] `v_support_kpi` 뷰 재정의 완료 (Bulk 제외, 2026-07-06) — **뷰가 실은 `support_bom`이 아니라 `support_receiving`만으로 계산되고 있었음이 확인됨**(total_bom=전체 입고량, total_received=package_no 배정량). Dashboard Support KPI가 45.8%(70,491/32,312)→38.1%(61,618/23,457)로 변경. 상세: `scratch/v_support_kpi_bulk_exclusion.sql`, `docs/superpowers/plans/2026-07-06-support-bulk-materials.md` Task 3
 - [x] Support 탭에 Bulk Materials 섹션 UI 구현 완료 (2026-07-06, Subagent-Driven Development로 진행, 최종 리뷰 Ready to merge — 계획: `docs/superpowers/plans/2026-07-06-support-bulk-materials.md`)
 - [ ] 미매칭 태그(GENERAL 1,960개 + SB 2개) 도면팀 확인 요청 (사용자 예정)
+
+## Spool 적용 사례 (2026-07-06 시작, DB 등록만 완료 — UI 미착수)
+
+### 배경
+Spool BOM 기능은 최초 `dc9b83a`(2026-06-01)에서 탭·KPI·대시보드까지 구현됐었으나 `aacaaac`(2026-06-26)에서 "Support BOM / Spool BOM 탭 및 데이터 완전 삭제"로 UI가 통째로 삭제됨. 다만 Supabase `spool_bom`/`spool_receiving` 테이블 자체는 지워지지 않고 574행이 고아 상태(app.js 참조 0건)로 남아있었음. 0번 원칙 표에서도 Spool은 "추후 검토"로 미정 상태였음.
+
+2026-07-06 사용자가 같은 사용자의 다른 모듈 **ipcs-control**(`C:\Users\PCLOVE\Downloads\ipcs-control`, 같은 Supabase 프로젝트 `ognhvfvlboqblueuldlm`이지만 `construction` 스키마, `joint_master` 테이블)의 System=HP/LP 조인트 5,616건에서 Spool No 529개(HP 276/LP 253)를 추출해 `Raw File/Spool BOM.xlsx`의 SYSTM/ISO DRAWING/LINE NO/SPOOL TAG/MAT1을 채우고, 사용자가 ITEM("HP SPOOL"/"LP SPOOL")/MAT2/SIZE/RATING/QTY(항상 1)를 직접 채워 완성하며 이 결정을 뒤집음.
+
+**Spool 데이터 모델의 특성**: joint_master는 조인트(용접 이음부) 단위 기록이라 ITEM/SIZE/RATING/QTY 개념이 없고, 하나의 Spool 안에도 사이즈가 제각각(메인+브랜치)이라 SIZE를 단일값으로 못 채움 — 그래서 **1행 = 1 Spool(제작 조립체 단위), QTY는 항상 1**로 설계함. Piping/Fitting처럼 개별 자재로 분해하지 않음(0번 원칙표의 "고유 코드 매칭" 자체는 Spool No로 성립하되, MatCode 같은 자재 단위 분해는 하지 않는 것이 Spool의 특징).
+
+### DB 재등록 (완료, 2026-07-06)
+- 기존 고아 테이블 `spool_bom`(574행, mat1/mat2/rating 컬럼 없음)과 신규 Excel(529행)을 Tag 기준 비교 → 겹침 385건, DB에만 189건, Excel에만 144건(서로 다른 소스, 출처 불명의 기존 574행 vs joint_master 파생 529행) → 사용자가 **전체 교체** 결정.
+- `.env`의 `SUPABASE_DB_URL`(direct Postgres, anon key 아님)을 `psycopg2`로 연결해 `ALTER TABLE spool_bom ADD COLUMN mat1/mat2/rating` 실행(anon key로는 DDL 불가) → 기존 574행 DELETE(사전 로컬 백업) → 신규 529행 INSERT, REST API로 카운트 검증(529행) 완료.
+- **UI(Spool 탭 KPI/BOM vs Received 비교/대시보드 통합)는 아직 미착수** — 사용자가 "DB 등록만 먼저" 진행하기로 결정. 복원 시 6/26 삭제 전 `dc9b83a` 커밋 구조(공유 KPI 카드 5개, ISO/Tag/Size 필터, 페이지네이션) 참고 가능.
+
+### 현재 상태 / 다음 할 일 (Spool 적용 사례 기준, 마지막 갱신: 2026-07-06)
+- [x] ipcs-control joint_master에서 Spool No 529개 추출, Raw File 채움
+- [x] spool_bom 테이블 mat1/mat2/rating 컬럼 추가 + 전체 재적재 (529행)
+- [ ] Spool 탭 UI 복원 (KPI 카드, BOM vs Received 비교, 필터) — 사용자 지시 대기
+- [ ] Dashboard Material Progress에 Spool 항목 재통합 — 사용자 지시 대기
+- [ ] 기존 spool_receiving(574행)과 새 spool_bom(529행) 간 Tag 불일치(overlap 385건) 영향 검토 — UI 복원 시 BOM vs Received 매칭률에 영향 줄 수 있음
+
+## 관련 메모리 (Spool)
+- `project_spool_bom_reintroduction.md` — Spool BOM 삭제 이력, 재등록 경위, 현재 상태
+- `project_ipcs_control_joint_master.md` — ipcs-control 접속 정보, joint_master 스키마, Spool No 추출 로직
