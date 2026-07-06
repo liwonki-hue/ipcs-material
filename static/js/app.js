@@ -1203,6 +1203,11 @@ function renderStockTable(forcedCats, hideMatCode) {
     const recDescMap = {};
     db.receiving.forEach(r => { if (r.matCode && !recDescMap[r.matCode]) recDescMap[r.matCode] = r.desc; });
 
+    // pre-build Valve MatCode → 실제 TAG 카테고리 fallback map (O(n) 1회, bom 우선 → receiving)
+    const valveTagCatMap = {};
+    db.bom.forEach(b => { if (b.matCode && b.category !== 'BULK' && b.category !== 'Valve' && !(b.matCode in valveTagCatMap)) valveTagCatMap[b.matCode] = b.category; });
+    db.receiving.forEach(r => { if (r.matCode && r.category !== 'BULK' && r.category !== 'Valve' && !(r.matCode in valveTagCatMap)) valveTagCatMap[r.matCode] = r.category; });
+
     // Apply remaining filters
     const filtered = activeCodes.filter(key => {
         const { matCode, sizeOverride } = window.parseStockKey(key);
@@ -1240,11 +1245,7 @@ function renderStockTable(forcedCats, hideMatCode) {
 
         const mData = masterMap[matCode] || { category: '-', itemDesc: '-', size1: '-' };
         let cat = mData.category && mData.category !== '-' ? mData.category : window.getCategory(mData.itemDesc, matCode);
-        if (cat === 'Valve') {
-            const tagItem = db.bom.find(b => b.matCode === matCode && b.category !== 'BULK' && b.category !== 'Valve')
-                         || db.receiving.find(r => r.matCode === matCode && r.category !== 'BULK' && r.category !== 'Valve');
-            if (tagItem) cat = tagItem.category;
-        }
+        if (cat === 'Valve' && valveTagCatMap[matCode]) cat = valveTagCatMap[matCode];
         const item    = mData.itemDesc || '-';
         const matl    = (matCode.split('-')[1]) || '-';
         const fullDesc = db.bomDesc[matCode] || recDescMap[matCode] || '-';
@@ -1330,34 +1331,38 @@ function renderActiveStockTab() {
     }
 }
 
-// --- Stock (Valve — Tag 기준, MatCode 없음) ---
-let _valveStockBomCache = null;
-async function loadValveStockBom() {
-    if (_valveStockBomCache) return _valveStockBomCache;
+// --- Stock (Valve/Speciality — Tag 기준, MatCode 없음) ---
+// category별 bom_detail 조회/집계 공용 함수 (Valve/Speciality Stock·Material Summary 탭 공용)
+const _tagStockBomCache = {};
+async function loadTagStockBom(category) {
+    if (_tagStockBomCache[category]) return _tagStockBomCache[category];
     let all = [];
     let from = 0;
     const step = 2000;
     while (true) {
         const { data, error } = await supabaseClient.from('bom_detail')
             .select('tag, system, iso_dwg_no, line_no, full_description, mat1, mat2, qty')
-            .eq('category', 'Valve')
+            .eq('category', category)
             .range(from, from + step - 1);
-        if (error) { console.error('loadValveStockBom 조회 실패:', error); break; }
+        if (error) { console.error(`loadTagStockBom(${category}) 조회 실패:`, error); break; }
         if (!data || data.length === 0) break;
         all = all.concat(data);
         if (data.length < step) break;
         from += step;
     }
-    _valveStockBomCache = all;
+    _tagStockBomCache[category] = all;
     return all;
 }
 
-// Tag별 Received/Issued 집계 — MatCode 대신 Tag로 직접 매칭 (Stock/Material Summary Valve 탭 공용)
-function buildValveRecvMaps() {
+// Tag별 Received/Issued 집계 — MatCode 대신 Tag로 직접 매칭.
+// BOM Tag와 정확히 일치하는 항목만 집계 — PKG 통짜 Tag(부속품/스페어파트 등 BOM에 없는 Tag)는 자동 제외
+function buildTagRecvMaps(category, bomRows) {
+    const bomTagSet = new Set((bomRows || []).map(b => b.tag));
     const recMap = {}, issMap = {};
     db.receiving.forEach(r => {
-        if (r.category !== 'Valve' || !r.tag || r.tag === '-') return;
+        if (r.category !== category || !r.tag || r.tag === '-') return;
         if (!isReceivingActive(r.plNo)) return;
+        if (!bomTagSet.has(r.tag)) return;
         recMap[r.tag] = (recMap[r.tag] || 0) + (r.qty || 0);
         if (isPkgIssued(r.plNo)) issMap[r.tag] = (issMap[r.tag] || 0) + (r.qty || 0);
     });
@@ -1394,8 +1399,8 @@ async function renderValveStockTable() {
     if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
 
-    const bomRows = await loadValveStockBom();
-    const { recMap, issMap } = buildValveRecvMaps();
+    const bomRows = await loadTagStockBom('Valve');
+    const { recMap, issMap } = buildTagRecvMaps('Valve', bomRows);
 
     const search   = (document.getElementById('stockValveSearch')?.value || '').trim().toUpperCase();
     const itemF    = document.getElementById('stockValveItemFilter')?.value || 'All';
@@ -1442,42 +1447,7 @@ async function renderValveStockTable() {
     renderPagination('stockValvePagination', _stockPage, totalPages, '_stockGoPage');
 }
 
-// --- Stock (Speciality — Tag 기준, MatCode 없음) — Valve와 동일 패턴 ---
-let _specialityStockBomCache = null;
-async function loadSpecialityStockBom() {
-    if (_specialityStockBomCache) return _specialityStockBomCache;
-    let all = [];
-    let from = 0;
-    const step = 2000;
-    while (true) {
-        const { data, error } = await supabaseClient.from('bom_detail')
-            .select('tag, system, iso_dwg_no, line_no, full_description, mat1, mat2, qty')
-            .eq('category', 'Speciality')
-            .range(from, from + step - 1);
-        if (error) { console.error('loadSpecialityStockBom 조회 실패:', error); break; }
-        if (!data || data.length === 0) break;
-        all = all.concat(data);
-        if (data.length < step) break;
-        from += step;
-    }
-    _specialityStockBomCache = all;
-    return all;
-}
-
-function buildSpecialityRecvMaps(bomRows) {
-    const bomTagSet = new Set((bomRows || []).map(b => b.tag));
-    const recMap = {}, issMap = {};
-    db.receiving.forEach(r => {
-        if (r.category !== 'Speciality' || !r.tag || r.tag === '-') return;
-        if (!isReceivingActive(r.plNo)) return;
-        // BOM Tag와 정확히 일치하는 항목만 집계 — PKG 통짜 Tag(부속품/스페어파트)는 BOM에 없는 Tag라 자동 제외됨
-        if (!bomTagSet.has(r.tag)) return;
-        recMap[r.tag] = (recMap[r.tag] || 0) + (r.qty || 0);
-        if (isPkgIssued(r.plNo)) issMap[r.tag] = (issMap[r.tag] || 0) + (r.qty || 0);
-    });
-    return { recMap, issMap };
-}
-
+// --- Stock (Speciality — Tag 기준, MatCode 없음) — loadTagStockBom/buildTagRecvMaps 공용 사용 ---
 let _stockSpecialityFiltersInited = false;
 function initStockSpecialityFilters() {
     const itemEl = document.getElementById('stockSpecialityItemFilter');
@@ -1488,7 +1458,7 @@ function initStockSpecialityFilters() {
     }
     const ratingEl = document.getElementById('stockSpecialityRatingFilter');
     if (ratingEl && ratingEl.dataset.filled !== '1') {
-        loadSpecialityStockBom().then(bomRows => {
+        loadTagStockBom('Speciality').then(bomRows => {
             const ratings = [...new Set(bomRows.map(b => window.parseSpecialityDesc(b.full_description).rating).filter(v => v && v !== '-'))].sort();
             ratingEl.innerHTML = '<option value="All">All Ratings</option>'
                 + ratings.map(r => `<option value="${r.replace(/"/g, '&quot;')}">${r}</option>`).join('');
@@ -1512,8 +1482,8 @@ async function renderSpecialityStockTable() {
     if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
 
-    const bomRows = await loadSpecialityStockBom();
-    const { recMap, issMap } = buildSpecialityRecvMaps(bomRows);
+    const bomRows = await loadTagStockBom('Speciality');
+    const { recMap, issMap } = buildTagRecvMaps('Speciality', bomRows);
 
     const search  = (document.getElementById('stockSpecialitySearch')?.value || '').trim().toUpperCase();
     const itemF   = document.getElementById('stockSpecialityItemFilter')?.value || 'All';
@@ -1800,7 +1770,7 @@ function initMssValveFilters() {
     const mat2El = document.getElementById('mssValveMat2Filter');
     const sizeEl = document.getElementById('mssValveSizeFilter');
     if ((mat1El && mat1El.dataset.filled !== '1') || (mat2El && mat2El.dataset.filled !== '1') || (sizeEl && sizeEl.dataset.filled !== '1')) {
-        loadValveStockBom().then(bomRows => {
+        loadTagStockBom('Valve').then(bomRows => {
             const keys = bomRows.map(_valveAggKey);
             if (mat1El && mat1El.dataset.filled !== '1') {
                 const vals = [...new Set(keys.map(k => k.mat1).filter(v => v && v !== '-'))].sort();
@@ -1840,8 +1810,8 @@ async function renderMssValveTable() {
     if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
 
-    const bomRows = await loadValveStockBom();
-    const { recMap, issMap } = buildValveRecvMaps();
+    const bomRows = await loadTagStockBom('Valve');
+    const { recMap, issMap } = buildTagRecvMaps('Valve', bomRows);
 
     // Tag 단위 BOM을 Item/Mat1/Mat2/Size/Rating 기준으로 집계 — System/ISO/Line은 이 탭에서 다루지 않음
     const agg = {};
@@ -1922,7 +1892,7 @@ function initMssSpecialityFilters() {
     const ratingEl = document.getElementById('mssSpecialityRatingFilter');
     if ((mat1El && mat1El.dataset.filled !== '1') || (mat2El && mat2El.dataset.filled !== '1')
         || (sizeEl && sizeEl.dataset.filled !== '1') || (ratingEl && ratingEl.dataset.filled !== '1')) {
-        loadSpecialityStockBom().then(bomRows => {
+        loadTagStockBom('Speciality').then(bomRows => {
             const keys = bomRows.map(_specialityAggKey);
             if (mat1El && mat1El.dataset.filled !== '1') {
                 const vals = [...new Set(keys.map(k => k.mat1).filter(v => v && v !== '-'))].sort();
@@ -1967,8 +1937,8 @@ async function renderMssSpecialityTable() {
     if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
 
-    const bomRows = await loadSpecialityStockBom();
-    const { recMap, issMap } = buildSpecialityRecvMaps(bomRows);
+    const bomRows = await loadTagStockBom('Speciality');
+    const { recMap, issMap } = buildTagRecvMaps('Speciality', bomRows);
 
     const agg = {};
     bomRows.forEach(b => {
@@ -3356,7 +3326,8 @@ async function initVendorFilters() {
     if (_vendorFiltersInited) return;
     _vendorFiltersInited = true;
 
-    const { data } = await supabaseClient.from('vendor').select('system, mat_code, mat1').limit(10000);
+    const { data, error } = await supabaseClient.from('vendor').select('system, mat_code, mat1').limit(10000);
+    if (error) console.error('initVendorFilters vendor 조회 실패:', error);
     if (data) {
         const systems = [...new Set(data.map(r => r.system).filter(Boolean))].sort();
         const mat1s = [...new Set(data.map(r => r.mat1).filter(Boolean))].sort();
@@ -4444,7 +4415,8 @@ async function loadSupportTagDatalist() {
     if (_supportTagDatalistLoaded) return;
     const dl = document.getElementById('mfSupportTagDatalist');
     if (!dl || !supabaseClient) return;
-    const { data } = await supabaseClient.from('support_bom').select('support_tag').limit(20000);
+    const { data, error } = await supabaseClient.from('support_bom').select('support_tag').limit(20000);
+    if (error) { console.error('loadSupportTagDatalist failed:', error); return; }
     const tags = [...new Set((data || []).map(r => r.support_tag).filter(Boolean))].sort();
     dl.innerHTML = tags.map(t => `<option value="${t.replace(/"/g, '&quot;')}">`).join('');
     _supportTagDatalistLoaded = true;
@@ -4627,7 +4599,8 @@ function attachEventListeners() {
             // Also delete rows with null/no iso (if any in upload)
             const hasNullIso = bomUploadRows.some(r => !r.iso_dwg_no);
             if (hasNullIso) {
-                await supabaseClient.from('bom').delete().is('iso_dwg_no', null);
+                const { error } = await supabaseClient.from('bom').delete().is('iso_dwg_no', null);
+                if (error) throw error;
             }
 
             // Insert in batches of 300
@@ -5383,7 +5356,8 @@ function attachEventListeners() {
     let _tagOverridesLoaded = false;
     async function loadTagOverrides() {
         if (_tagOverridesLoaded || !supabaseClient) return;
-        const { data } = await supabaseClient.from('tag_overrides').select('tag, iso_dwg_no, line_no');
+        const { data, error } = await supabaseClient.from('tag_overrides').select('tag, iso_dwg_no, line_no');
+        if (error) { console.error('loadTagOverrides failed:', error); return; }
         (data || []).forEach(r => { _tagOverrides[(r.tag || '').toUpperCase()] = r; });
         _tagOverridesLoaded = true;
     }
