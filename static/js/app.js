@@ -2179,6 +2179,181 @@ function _sortByCatItemSize(list) {
     });
 }
 
+// Data Health Card ①: db.bomTagMap(Valve/Speciality Tag 전체, bom_detail 기준)에는 있는데
+// db.receiving에는 없는(=아직 입고 안 됐거나 Tag 불일치) 것을 찾는다.
+function computeValveTagMismatch() {
+    const bomTags = Object.keys(db.bomTagMap);
+    const recTagSet = new Set(
+        db.receiving
+            .filter(r => (r.category === 'Valve' || r.category === 'Speciality') && isKpiReceiving(r))
+            .map(r => r.tag.toUpperCase())
+    );
+    const unmatchedRows = [];
+    bomTags.forEach(tag => {
+        if (recTagSet.has(tag)) return;
+        const info = db.bomTagMap[tag];
+        unmatchedRows.push({
+            tag,
+            category: window.getCategory(info.fullDescription, info.matCode),
+            item: window.extractItemFromDesc(info.fullDescription),
+            iso: info.iso_dwg_no || '-'
+        });
+    });
+    return { totalBomTags: bomTags.length, unmatchedRows };
+}
+
+// Data Health Card ④: bom.mat_code에 'NEW-MAT'가 포함된 건 = matcode_master에 정식 등록되지 않고
+// 화면에서 자동 생성된 임시 코드 (BOM 탭 배지 warn 처리와 동일 기준, app.js:2961 참고)
+function computeNewMatUnregistered() {
+    const rows = db.bom
+        .filter(b => b.matCode.includes('NEW-MAT'))
+        .map(b => ({
+            matCode: b.matCode,
+            category: b.category,
+            desc: db.bomDesc[b.matCode] || '-',
+            qty: b.qty
+        }));
+    return { rows };
+}
+
+// Data Health Card ③: 2026-07-02에 한 번 수정 완료된 "통짜 Tag" 문제(project_valve_bucket_tag_fix)가
+// 새 데이터 업로드로 재발했는지 감시. 수정 후에는 tag가 {parent_tag}-{일련번호}로 바뀌므로,
+// 정확히 아래 리터럴 값과 일치하는 tag가 있다면 아직 처리 전(=회귀)이라는 뜻.
+// Speciality의 NULL tag는 db.receiving 매핑 시 '-'로 대체되므로 '-'도 같은 방식으로 감지한다.
+const BUCKET_TAG_LITERALS = new Set([
+    'TOOL', 'COMMISSIONING', 'STEAM BLOW TOOL', 'HYDRO TEST TOOL', 'HP TBS D-TUBE', 'LP TBS D-TUBE', '-'
+]);
+function computeBucketTagRegression() {
+    const rows = db.receiving
+        .filter(r => (r.category === 'Valve' || r.category === 'Speciality') && BUCKET_TAG_LITERALS.has((r.tag || '').toUpperCase()))
+        .map(r => ({ tag: r.tag, category: r.category, plNo: r.plNo, desc: r.desc }));
+    return { rows };
+}
+
+// Data Health Card ②: support_bom에 System/ISO DWG NO.가 공란인 Tag = 도면 DB(ipcs-drawing)에
+// 매칭되지 않아 남아있는 항목 (project_support_bom_openpyxl_dataloss / Support 적용 사례 참고)
+async function computeSupportUnmatched() {
+    const { data, error } = await supabaseClient
+        .from('support_bom')
+        .select('support_tag, item, matl, size_or_type, qty')
+        .or('system.is.null,iso_dwg_no.is.null')
+        .not('support_tag', 'is', null)
+        .limit(5000);
+    if (error) {
+        console.error('computeSupportUnmatched 조회 실패:', error);
+        return { rows: [] };
+    }
+    const rows = data.map(r => ({
+        supportTag: r.support_tag,
+        item: r.item || '-',
+        matl: r.matl || '-',
+        sizeOrType: r.size_or_type || '-',
+        qty: r.qty || 0
+    }));
+    return { rows };
+}
+
+// Data Health 상세 리스트 공용 Export — _exportDiffList와 같은 패턴이지만 컬럼을 인자로 받아 범용화
+function exportHealthList(rows, columns, sheetName, filenamePrefix) {
+    const excelRows = rows.map(r => {
+        const o = {};
+        columns.forEach(c => { o[c.header] = r[c.key]; });
+        return o;
+    });
+    const ws = XLSX.utils.json_to_sheet(excelRows);
+    ws['!cols'] = columns.map(() => ({ wch: 18 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    const today = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, `${filenamePrefix}_Export_${today}.xlsx`);
+}
+
+let _dhRows = { valve: [], support: [], bucket: [], newmat: [] };
+let _dhInited = false;
+
+function _dhSetCard(key, count, subText) {
+    const pctEl = document.getElementById(`dhCard-${key}-pct`);
+    const subEl = document.getElementById(`dhCard-${key}-sub`);
+    if (pctEl) {
+        pctEl.textContent = count;
+        pctEl.style.color = count > 0 ? '#c62828' : '#2e7d32';
+    }
+    if (subEl) subEl.textContent = subText;
+}
+
+function _dhRenderTable(key, columns) {
+    const tbody = document.querySelector(`#dhTable-${key} tbody`);
+    if (!tbody) return;
+    const rows = _dhRows[key];
+    if (rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="${columns.length}" style="text-align:center;color:#666;padding:16px;">No issues found.</td></tr>`;
+        return;
+    }
+    tbody.innerHTML = rows.map(r =>
+        `<tr>${columns.map(c => `<td style="text-align:center;">${r[c.key]}</td>`).join('')}</tr>`
+    ).join('');
+}
+
+function _dhToggle(key, columns) {
+    const panel = document.getElementById(`dhDetail-${key}`);
+    const isOpen = panel.style.display !== 'none';
+    // 다른 상세 패널은 닫고 클릭한 것만 토글 (아코디언)
+    ['valve', 'support', 'bucket', 'newmat'].forEach(k => {
+        document.getElementById(`dhDetail-${k}`).style.display = 'none';
+    });
+    if (!isOpen) {
+        panel.style.display = '';
+        _dhRenderTable(key, columns);
+    }
+}
+
+const DH_COLUMNS = {
+    valve:   [{header:'Tag',key:'tag'},{header:'Category',key:'category'},{header:'Item',key:'item'},{header:'ISO Drawing',key:'iso'}],
+    support: [{header:'Support Tag',key:'supportTag'},{header:'Item',key:'item'},{header:'Matl',key:'matl'},{header:'Size/Type',key:'sizeOrType'},{header:'Qty',key:'qty'}],
+    bucket:  [{header:'Tag',key:'tag'},{header:'Category',key:'category'},{header:'PKG NO',key:'plNo'},{header:'Description',key:'desc'}],
+    newmat:  [{header:'MatCode',key:'matCode'},{header:'Category',key:'category'},{header:'Description',key:'desc'},{header:'Qty',key:'qty'}]
+};
+
+async function renderDataHealthCards() {
+    const valveResult  = computeValveTagMismatch();
+    const bucketResult = computeBucketTagRegression();
+    const newmatResult = computeNewMatUnregistered();
+    const supportResult = await computeSupportUnmatched();
+
+    _dhRows.valve   = valveResult.unmatchedRows;
+    _dhRows.bucket  = bucketResult.rows;
+    _dhRows.newmat  = newmatResult.rows;
+    _dhRows.support = supportResult.rows;
+
+    _dhSetCard('valve', _dhRows.valve.length,
+        `${_dhRows.valve.length} of ${valveResult.totalBomTags} BOM Tags unmatched`);
+    _dhSetCard('support', _dhRows.support.length,
+        `${_dhRows.support.length} Support Tags missing System/ISO`);
+    _dhSetCard('bucket', _dhRows.bucket.length,
+        _dhRows.bucket.length > 0 ? `${_dhRows.bucket.length} bucket-tag rows found` : 'No regression detected');
+    _dhSetCard('newmat', _dhRows.newmat.length,
+        `${_dhRows.newmat.length} unregistered MatCode`);
+
+    // 열려있는 상세 패널이 있으면 새 데이터로 다시 그림
+    ['valve', 'support', 'bucket', 'newmat'].forEach(key => {
+        const panel = document.getElementById(`dhDetail-${key}`);
+        if (panel && panel.style.display !== 'none') _dhRenderTable(key, DH_COLUMNS[key]);
+    });
+
+    if (!_dhInited) {
+        _dhInited = true;
+        document.getElementById('dhCard-valve').addEventListener('click', () => _dhToggle('valve', DH_COLUMNS.valve));
+        document.getElementById('dhCard-support').addEventListener('click', () => _dhToggle('support', DH_COLUMNS.support));
+        document.getElementById('dhCard-bucket').addEventListener('click', () => _dhToggle('bucket', DH_COLUMNS.bucket));
+        document.getElementById('dhCard-newmat').addEventListener('click', () => _dhToggle('newmat', DH_COLUMNS.newmat));
+
+        document.getElementById('dhExport-valve').addEventListener('click', () => exportHealthList(_dhRows.valve, DH_COLUMNS.valve, 'Valve Tag Mismatch', 'DataHealth_ValveTag'));
+        document.getElementById('dhExport-support').addEventListener('click', () => exportHealthList(_dhRows.support, DH_COLUMNS.support, 'Support Unmatched', 'DataHealth_Support'));
+        document.getElementById('dhExport-bucket').addEventListener('click', () => exportHealthList(_dhRows.bucket, DH_COLUMNS.bucket, 'Bucket Tag Regression', 'DataHealth_BucketTag'));
+        document.getElementById('dhExport-newmat').addEventListener('click', () => exportHealthList(_dhRows.newmat, DH_COLUMNS.newmat, 'Unregistered MatCode', 'DataHealth_NewMat'));
+    }
+}
+
 function _enrichRow(matCode, bomMap, recMap, masterMap, mat12Map) {
     const mData = masterMap[matCode] || {};
     const desc = db.bomDesc[matCode] || (recMap[matCode]?.desc !== '-' ? recMap[matCode]?.desc : null) || mData.itemDesc || '-';
