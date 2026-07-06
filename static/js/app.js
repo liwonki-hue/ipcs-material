@@ -96,6 +96,18 @@ const ITEM_PREFIX_MAP = {
     'UNION':['UNI'], 'PLUG':['PLG'], 'BUSHING':['BUS'],
 };
 
+// Valve/Speciality 부속품/스페어파트 판별 정규식 — updateCategoryCharts()의 Speciality 집계와
+// Spare 탭 분류에서 공유 (2026-07-06 모듈 top-level로 승격)
+const ACCESSORY_RE = /STUD BOLT|SUTD BOLT|NUT |GASKET|FLANGE|BODY |PACKING SET|PACKING GUIDE|STEM PACKING|SPARE PARTS|SPECIAL TOOLS|BLIND FLANGE|BONNET GASKET|TRIM PARTS|SCREW|WASHER|SLEEVE|SPACER|O-RING|PLUG M|SPRING |SEAT COVER|COVER HOLDER|SLOTTED NUT|LOCK WASHER|STUD :|PIPE |B16\.5|GASKET KIT|PRESSURE SEAL|STEM GUIDE|BALANCE SEAL|PISTON RING|WAVE SPRING|DUMMY BONNET|DUMMY CAGE|DUMMY SEAT|FLUSHING|HYDRO TEST|EYE BOLT|BLOW OUT|BLOW THROUGH|TEST PRESSURE|HINGE PIN|SEAL RING| RING FOR|PIN RING/;
+
+// Valve/Speciality Receiving 중 "SPARE" 합성 태그가 붙은 예비 밸브/기기 본체 판별
+// (Accessory/Fitting 부속품은 false — 기존 탭 제외 필터 및 Spare 탭 분류에서 공유)
+function isSpareBodyRow(r) {
+    if (r.category !== 'Valve' && r.category !== 'Speciality') return false;
+    if (!/SPARE/i.test(r.tag || '')) return false;
+    return !ACCESSORY_RE.test((r.desc || '').toUpperCase());
+}
+
 // 공통 페이지네이터 렌더러 — Previous 1/2/3 ... Next 형식
 function renderPagination(containerId, page, totalPages, gotoFnName) {
     const container = document.getElementById(containerId);
@@ -887,8 +899,6 @@ function updateCategoryCharts() {
 
         // Valve/Speciality: DB 직접 쿼리 (Tag Item만)
         // Speciality: B0/B1/B2- 형식 tag만 + 부속 아이템(플랜지/볼트/가스켓 등) 제외
-        // 부속품/스페어파트 정규식 (단일 pass로 모든 키워드 검사)
-        const ACCESSORY_RE = /STUD BOLT|SUTD BOLT|NUT |GASKET|FLANGE|BODY |PACKING SET|PACKING GUIDE|STEM PACKING|SPARE PARTS|SPECIAL TOOLS|BLIND FLANGE|BONNET GASKET|TRIM PARTS|SCREW|WASHER|SLEEVE|SPACER|O-RING|PLUG M|SPRING |SEAT COVER|COVER HOLDER|SLOTTED NUT|LOCK WASHER|STUD :|PIPE |B16\.5|GASKET KIT|PRESSURE SEAL|STEM GUIDE|BALANCE SEAL|PISTON RING|WAVE SPRING|DUMMY BONNET|DUMMY CAGE|DUMMY SEAT|FLUSHING|HYDRO TEST|EYE BOLT|BLOW OUT|BLOW THROUGH|TEST PRESSURE|HINGE PIN|SEAL RING| RING FOR|PIN RING/;
 
         // Speciality는 QTY 합계 대신 "받은 Tag 개수" 기준 — Orifice 등 일부 품목은 조립품 1개가
         // Packing List에는 여러 Item으로 쪼개져 기재되어 QTY 합계만으로는 입고율이 왜곡됨(사용자 확인, 2026-07-06)
