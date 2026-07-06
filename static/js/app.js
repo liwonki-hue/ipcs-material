@@ -376,6 +376,20 @@ const TABLES_WITH_ID = new Set(['receiving', 'issued', 'bom']);
 const CAT_BADGE = { Pipe:'info', Fitting:'ok', Valve:'warn', Speciality:'warn', Spool:'info', Support:'ok', Others:'ok' };
 const getCatBadge = cat => CAT_BADGE[cat] || 'ok';
 
+// Supabase 쿼리가 일시적 DB statement timeout(57014) 등으로 실패할 때 재시도하는 공용 래퍼.
+// fetchIsoBoreMap()에서 이미 검증된 "최대 3회 재시도" 패턴을 공용화한 것.
+// queryFactory는 호출할 때마다 새 쿼리를 만들어야 함(같은 쿼리 객체를 재사용하면 안 됨).
+async function fetchWithRetry(queryFactory, label, maxAttempts = 3) {
+    let data = null, error = null;
+    for (let attempt = 0; attempt < maxAttempts && !data; attempt++) {
+        const res = await queryFactory();
+        data = res.data; error = res.error;
+        if (error) console.warn(`${label} retry (attempt ${attempt + 1}):`, error.message);
+    }
+    if (error && !data) console.error(`${label} gave up after ${maxAttempts} attempts:`, error);
+    return { data, error };
+}
+
 async function fetchAllRows(tableName) {
     let allData = [];
     let from = 0;
@@ -383,15 +397,17 @@ async function fetchAllRows(tableName) {
     let hasMore = true;
 
     while (hasMore) {
-        let q = supabaseClient.from(tableName).select('*');
-        if (TABLES_WITH_ID.has(tableName)) q = q.order('id', { ascending: true });
-        const { data, error } = await q.range(from, from + step - 1);
-        
-        if (error) {
-            console.error(`❌ Error fetching ${tableName}:`, error);
+        const rangeFrom = from, rangeTo = from + step - 1;
+        const { data, error } = await fetchWithRetry(() => {
+            let q = supabaseClient.from(tableName).select('*');
+            if (TABLES_WITH_ID.has(tableName)) q = q.order('id', { ascending: true });
+            return q.range(rangeFrom, rangeTo);
+        }, `fetchAllRows(${tableName}) offset ${rangeFrom}`);
+
+        if (error && !data) {
             break;
         }
-        
+
         if (data && data.length > 0) {
             allData = allData.concat(data);
             from += step;
@@ -439,12 +455,12 @@ async function syncFromSupabase() {
     try {
         const [matMasterRaw, bomRaw, bomIsoRaw, recvRaw, bomDescRaw, specialityRaw, bomTagRaw] = await Promise.all([
             fetchAllRows('matcode_master'),
-            supabaseClient.from('bom_agg').select('*').limit(10000).then(r => r.data || []),
-            supabaseClient.from('bom_iso_list').select('*').limit(10000).then(r => r.data || []),
+            fetchWithRetry(() => supabaseClient.from('bom_agg').select('*').limit(10000), 'bom_agg').then(r => r.data || []),
+            fetchWithRetry(() => supabaseClient.from('bom_iso_list').select('*').limit(10000), 'bom_iso_list').then(r => r.data || []),
             fetchAllRows('receiving'),
-            supabaseClient.from('bom_desc').select('mat_code,full_description').limit(10000).then(r => r.data || []),
-            supabaseClient.from('bom_detail').select('full_description').eq('category', 'Speciality').not('full_description', 'is', null).limit(1000).then(r => r.data || []),
-            supabaseClient.from('bom_detail').select('tag,mat_code,full_description,line_no,iso_dwg_no').not('tag', 'is', null).limit(10000).then(r => r.data || [])
+            fetchWithRetry(() => supabaseClient.from('bom_desc').select('mat_code,full_description').limit(10000), 'bom_desc').then(r => r.data || []),
+            fetchWithRetry(() => supabaseClient.from('bom_detail').select('full_description').eq('category', 'Speciality').not('full_description', 'is', null).limit(1000), 'bom_detail(Speciality desc)').then(r => r.data || []),
+            fetchWithRetry(() => supabaseClient.from('bom_detail').select('tag,mat_code,full_description,line_no,iso_dwg_no').not('tag', 'is', null).limit(10000), 'bom_detail(tag map)').then(r => r.data || [])
         ]);
         // isoBoreMap은 bom 테이블 전체 스캔이 필요해 무거움 — Material Finding 탭 진입 시 지연 로딩(loadIsoBoreMapOnce)
 
@@ -673,8 +689,8 @@ function updateDashboard() {
     if (typeof updateCategoryCharts === 'function') updateCategoryCharts();
     if (typeof renderPendingItemsList === 'function') renderPendingItemsList();
 
-    supabaseClient.from('v_iso_stage_status').select('*').limit(10000).then(({ data, error }) => {
-        if (error) { console.error('v_iso_stage_status error:', error); return; }
+    fetchWithRetry(() => supabaseClient.from('v_iso_stage_status').select('*').limit(10000), 'v_iso_stage_status').then(({ data, error }) => {
+        if (error && !data) return;
         if (!data || data.length === 0) return;
 
         // Count by stage
@@ -833,13 +849,14 @@ function updateCategoryCharts() {
     if (!supabaseClient) return;
 
     // Fetch category summary + Valve/Speciality tag-based receiving + Spool BOM/Received tag 목록 + Support
+    // (일시적 DB statement timeout에 대비해 각 쿼리를 fetchWithRetry로 감쌈)
     Promise.all([
-        supabaseClient.from('v_category_readiness').select('*'),
-        supabaseClient.from('receiving').select('category, qty, tag, full_description, pkg_no').not('tag', 'is', null).in('category', ['Valve', 'Speciality']).limit(10000),
-        supabaseClient.from('spool_bom').select('tag_no').limit(2000),
-        supabaseClient.from('spool_receiving').select('tag_no').limit(2000),
-        supabaseClient.from('v_support_kpi').select('total_bom, total_received').single(),
-        supabaseClient.from('bom').select('tag', { count: 'exact', head: true }).eq('category', 'Speciality'),
+        fetchWithRetry(() => supabaseClient.from('v_category_readiness').select('*'), 'v_category_readiness'),
+        fetchWithRetry(() => supabaseClient.from('receiving').select('category, qty, tag, full_description, pkg_no').not('tag', 'is', null).in('category', ['Valve', 'Speciality']).limit(10000), 'receiving(Valve/Speciality tag)'),
+        fetchWithRetry(() => supabaseClient.from('spool_bom').select('tag_no').limit(2000), 'spool_bom(tag_no)'),
+        fetchWithRetry(() => supabaseClient.from('spool_receiving').select('tag_no').limit(2000), 'spool_receiving(tag_no)'),
+        fetchWithRetry(() => supabaseClient.from('v_support_kpi').select('total_bom, total_received').single(), 'v_support_kpi'),
+        fetchWithRetry(() => supabaseClient.from('bom').select('tag', { count: 'exact', head: true }).eq('category', 'Speciality'), 'bom(Speciality tag count)'),
     ]).then(([catRes, tagRecRes, spoolBomRes, spoolRecRes, suppKpiRes, splTagCountRes]) => {
         const data = catRes.data;
         if (catRes.error || !data) {
