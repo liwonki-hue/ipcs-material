@@ -3761,6 +3761,7 @@ async function _renderRecvCore(cfg) {
     }
 
     const data = db.receiving.filter(r => {
+        if (isSpareBodyRow(r)) return false; // Spare 예비 본체는 별도 Spare 탭에서 관리
         const matchSearch  = !search || (r.matCode||'').toUpperCase().includes(search) || r.plNo.toUpperCase().includes(search) || (r.category||'').toUpperCase().includes(search) || r.desc.toUpperCase().includes(search);
         const matchDoc     = doc  === 'All' || r.docNo === doc;
         const matchPkg     = pkg  === 'All' || r.plNo  === pkg;
@@ -3964,6 +3965,7 @@ function renderTagValveTable() {
 
     const data = db.receiving.filter(r => {
         if (r.category !== 'Valve') return false;
+        if (isSpareBodyRow(r)) return false; // Spare 예비 밸브 본체는 별도 Spare 탭에서 관리
         const item = window.extractItemFromDesc(r.valveType);
         const matchSearch = !search
             || (r.tag || '').toUpperCase().includes(search)
