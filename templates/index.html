@@ -1099,6 +1099,28 @@
                                 </table>
                             </div>
                             <div id="srecPagination"></div>
+                        <div class="panel data-panel" style="margin-top:20px;">
+                            <div class="panel-header"><h3>Bulk Materials (No Support Tag)</h3></div>
+                            <p style="font-size:11px;color:#888;margin:0 0 10px;padding:0 15px;">
+                                Structural bulk stock (Channel, H-Beam, Angle, Plate, Anchor Bolt, etc.) not tied to a specific Support Tag.
+                                BOM Qty is shown for reference only — no % or shortage/surplus indicator.
+                            </p>
+                            <div class="table-responsive">
+                                <table class="data-table" id="srecBulkTable" style="font-size:0.82em;">
+                                    <thead>
+                                        <tr>
+                                            <th style="text-align:center;min-width:150px;">ITEM</th>
+                                            <th style="text-align:center;">MATL</th>
+                                            <th style="text-align:center;min-width:120px;">SIZE OR TYPE</th>
+                                            <th style="text-align:center;">BOM QTY</th>
+                                            <th style="text-align:center;">RECEIVED QTY</th>
+                                            <th style="text-align:left;min-width:220px;">PKG DETAILS</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="srecBulkTbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
                         </div>
                     </div><!-- end recTagSupport -->
                 </div><!-- end recSecTag -->
