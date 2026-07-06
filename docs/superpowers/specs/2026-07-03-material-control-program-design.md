@@ -311,5 +311,5 @@ BOM 화면에서 Material 정보가 MAT1(재질 등급)/MAT2(실제 규격)로 �
 - [x] support_bom 테이블 전체 재적재, UI(Dashboard/Material Finding) 반영 확인
 - [x] Bulk Materials 관리 설계 확정 (Item+Matl+Size 집계, KPI 제외)
 - [x] `v_support_kpi` 뷰 재정의 완료 (Bulk 제외, 2026-07-06) — **뷰가 실은 `support_bom`이 아니라 `support_receiving`만으로 계산되고 있었음이 확인됨**(total_bom=전체 입고량, total_received=package_no 배정량). Dashboard Support KPI가 45.8%(70,491/32,312)→38.1%(61,618/23,457)로 변경. 상세: `scratch/v_support_kpi_bulk_exclusion.sql`, `docs/superpowers/plans/2026-07-06-support-bulk-materials.md` Task 3
-- [ ] Support 탭에 Bulk Materials 섹션 UI 구현 (계획: `docs/superpowers/plans/2026-07-06-support-bulk-materials.md` Task 1-2)
+- [x] Support 탭에 Bulk Materials 섹션 UI 구현 완료 (2026-07-06, Subagent-Driven Development로 진행, 최종 리뷰 Ready to merge — 계획: `docs/superpowers/plans/2026-07-06-support-bulk-materials.md`)
 - [ ] 미매칭 태그(GENERAL 1,960개 + SB 2개) 도면팀 확인 요청 (사용자 예정)
