@@ -3177,6 +3177,42 @@ function initFilterOptions() {
             + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
     }
 
+    // Spare Filters — Valve/Speciality의 SPARE 합성 태그 예비 본체만 별도 집계
+    const spareRows = db.receiving.filter(r => isReceivingActive(r.plNo) && isSpareBodyRow(r));
+    const sprDoc = document.getElementById('sprDocFilter'), sprPkg = document.getElementById('sprPkgFilter');
+    if (sprDoc && sprPkg) setDocPkg(sprDoc, sprPkg, spareRows);
+    const sprItemEl = document.getElementById('sprItemFilter');
+    if (sprItemEl) {
+        const items = [...new Set(spareRows.map(r => window.extractItemFromDesc(r.valveType)).filter(v => v && v !== '-'))].sort();
+        sprItemEl.innerHTML = '<option value="All">All Items</option>'
+            + items.map(i => `<option value="${i.replace(/"/g,'&quot;')}">${i}</option>`).join('');
+    }
+    const sprSizeEl = document.getElementById('sprSizeFilter');
+    if (sprSizeEl) {
+        const sizes = [...new Set(spareRows.map(r => r.size).filter(v => v && v !== '-'))]
+            .sort((a, b) => parseFloat(a) - parseFloat(b));
+        sprSizeEl.innerHTML = '<option value="All">All Sizes</option>'
+            + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
+    }
+    const sprOpTypeEl = document.getElementById('sprOpTypeFilter');
+    if (sprOpTypeEl) {
+        const opTypes = [...new Set(spareRows.map(r => r.opType).filter(v => v && v !== '-'))].sort();
+        sprOpTypeEl.innerHTML = '<option value="All">All Op. Types</option>'
+            + opTypes.map(o => `<option value="${o.replace(/"/g,'&quot;')}">${o}</option>`).join('');
+    }
+    const sprMat1El = document.getElementById('sprMat1Filter');
+    if (sprMat1El) {
+        const mat1s = [...new Set(spareRows.map(r => r.mat1).filter(v => v && v !== '-'))].sort();
+        sprMat1El.innerHTML = '<option value="All">All Mat 1</option>'
+            + mat1s.map(m => `<option value="${m.replace(/"/g,'&quot;')}">${m}</option>`).join('');
+    }
+    const sprMat2El = document.getElementById('sprMat2Filter');
+    if (sprMat2El) {
+        const mat2s = [...new Set(spareRows.map(r => r.mat2).filter(v => v && v !== '-'))].sort();
+        sprMat2El.innerHTML = '<option value="All">All Mat 2</option>'
+            + mat2s.map(m => `<option value="${m.replace(/"/g,'&quot;')}">${m}</option>`).join('');
+    }
+
 }
 
 
@@ -4029,6 +4065,73 @@ function renderTagSpecialityTable() {
         getPage: () => currentSplPage,
         paginationId: 'splPagination', goPageFn: '_splGoPage'
     });
+}
+
+// Spare Receiving — Valve/Speciality의 SPARE 합성 태그 예비 밸브/기기 본체만 모아서 별도 관리.
+// TAG NO 컬럼은 실제 합성 태그 대신 고정 텍스트 "Spare"로 표시한다.
+function renderTagSpareTable() {
+    const tbody = document.querySelector('#sprTable tbody');
+    if (!tbody) return;
+
+    const search   = (document.getElementById('sprItemSearch')?.value || '').trim().toUpperCase();
+    const doc      = document.getElementById('sprDocFilter')?.value    || 'All';
+    const pkg      = document.getElementById('sprPkgFilter')?.value    || 'All';
+    const opTypeF  = document.getElementById('sprOpTypeFilter')?.value || 'All';
+    const itemF    = document.getElementById('sprItemFilter')?.value   || 'All';
+    const mat1F    = document.getElementById('sprMat1Filter')?.value   || 'All';
+    const mat2F    = document.getElementById('sprMat2Filter')?.value   || 'All';
+    const sizeF    = document.getElementById('sprSizeFilter')?.value   || 'All';
+    const statusF  = document.getElementById('sprStatusFilter')?.value || 'All';
+
+    const data = db.receiving.filter(r => {
+        if (!isSpareBodyRow(r)) return false;
+        const item = window.extractItemFromDesc(r.valveType);
+        const matchSearch = !search
+            || (r.valveType || '').toUpperCase().includes(search)
+            || (r.desc || '').toUpperCase().includes(search);
+        const matchDoc    = doc === 'All' || r.docNo === doc;
+        const matchPkg    = pkg === 'All' || r.plNo  === pkg;
+        const matchOpType = opTypeF === 'All' || r.opType === opTypeF;
+        const matchItemF  = itemF === 'All' || item === itemF;
+        const matchMat1F  = mat1F === 'All' || r.mat1 === mat1F;
+        const matchMat2F  = mat2F === 'All' || r.mat2 === mat2F;
+        const matchSizeF  = sizeF === 'All' || r.size === sizeF;
+        const pkgSt       = (_plUpdatesCache[r.plNo] || {}).status || '';
+        const matchStatusF = statusF === 'All' || pkgSt === statusF;
+        return matchSearch && matchDoc && matchPkg && matchOpType && matchItemF && matchMat1F && matchMat2F && matchSizeF && matchStatusF;
+    }).sort((a, b) => a.docNo.localeCompare(b.docNo) || a.plNo.localeCompare(b.plNo));
+
+    const page = currentSprPage;
+    const rows = data.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map(r => {
+        const item = window.extractItemFromDesc(r.valveType);
+        const pkgStatus  = (_plUpdatesCache[r.plNo] || {}).status || '';
+        const isOnSite   = pkgStatus === 'On-Site';
+        const statusColor = pkgStatus === 'On-Site' ? '#2e7d32' : pkgStatus === 'Shipping' ? '#1565c0' : pkgStatus === 'Preparing' ? '#888' : '#bbb';
+        const purposeOpts = PURPOSE_OPTS.map(v =>
+            `<option value="${v}"${r.purpose === v ? ' selected' : ''}>${v || '—'}</option>`
+        ).join('');
+        const purposeSel = `<select class="pl-purpose-sel" data-recv-id="${r.id}"
+            style="width:100%;border:1px solid #dde3ee;border-radius:4px;padding:3px 6px;font-size:12px;background:#fff;color:#0A2540;text-align:center;">
+            ${purposeOpts}</select>`;
+        return `<tr${isOnSite ? '' : ' style="color:#999;"'}>
+            <td style="text-align:center;white-space:nowrap;">${r.docNo}</td>
+            <td style="text-align:center;white-space:nowrap;">${r.plNo}</td>
+            <td style="text-align:center;">Spare</td>
+            <td style="text-align:center;white-space:nowrap;">${r.opType}</td>
+            <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.valveType || ''}">${r.valveType}</td>
+            <td style="text-align:center;font-weight:600;white-space:nowrap;">${item}</td>
+            <td style="text-align:center;">${r.mat1}</td>
+            <td style="text-align:center;">${r.mat2}</td>
+            <td style="text-align:center;font-weight:600;">${r.size}</td>
+            <td style="text-align:center;">${r.rating}</td>
+            <td style="white-space:nowrap;text-align:center;">${r.unit || 'EA'}</td>
+            <td style="white-space:nowrap;text-align:center;">${Math.round(r.qty).toLocaleString()}</td>
+            <td style="text-align:center;white-space:nowrap;font-weight:600;color:${statusColor};">${pkgStatus || '—'}</td>
+            <td style="text-align:center;padding:3px;">${purposeSel}</td>
+        </tr>`;
+    });
+    tbody.innerHTML = rows.join('');
+    renderPagination('sprPagination', page, Math.max(1, Math.ceil(data.length / PAGE_SIZE)), '_sprGoPage');
 }
 
 function renderActiveReceivingTab() {
