@@ -5052,6 +5052,37 @@ function attachEventListeners() {
         });
     }
 
+    // Spare는 MatCode가 없고 표시 컬럼(Operation Type/Valve Type/Mat 1/Mat 2)이 Valve 화면과 동일하므로
+    // MatCode 기반 _buildTagRecvExportRows 대신 화면 표시값을 그대로 내보낸다.
+    function _buildSpareExportRows() {
+        return db.receiving.filter(r => isSpareBodyRow(r)).map(r => {
+            const pkgStatus = (_plUpdatesCache[r.plNo] || {}).status || '-';
+            return {
+                'PKG':     r.docNo || '-',
+                'PKG NO':  r.plNo  || '-',
+                'TAG NO':  'Spare',
+                'Operation Type': r.opType || '-',
+                'Valve Type': r.valveType || '-',
+                'Item':    window.extractItemFromDesc(r.valveType),
+                'Mat 1':   r.mat1 || '-',
+                'Mat 2':   r.mat2 || '-',
+                'Size':    r.size || '-',
+                'Rating':  r.rating || '-',
+                'Unit':    r.unit || 'EA',
+                'Qty':     r.qty || 0,
+                'Status':  pkgStatus,
+                'Purpose': r.purpose || '-',
+            };
+        });
+    }
+
+    const btnExportSpr = document.getElementById('btnExportSpr');
+    if (btnExportSpr) {
+        btnExportSpr.addEventListener('click', () => {
+            _exportTagRecvRows(_buildSpareExportRows(), 'Spare', 'Spare_Receiving');
+        });
+    }
+
     const btnExportSpl = document.getElementById('btnExportSpl');
     if (btnExportSpl) {
         btnExportSpl.addEventListener('click', () => {
