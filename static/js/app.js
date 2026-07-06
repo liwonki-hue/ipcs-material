@@ -818,21 +818,27 @@ async function renderPendingItemsList() {
 function updateCategoryCharts() {
     if (!supabaseClient) return;
 
-    // Fetch category summary + Valve/Speciality tag-based receiving + Spool counts + Support
+    // Fetch category summary + Valve/Speciality tag-based receiving + Spool BOM/Received tag 목록 + Support
     Promise.all([
         supabaseClient.from('v_category_readiness').select('*'),
         supabaseClient.from('receiving').select('category, qty, tag, full_description, pkg_no').not('tag', 'is', null).in('category', ['Valve', 'Speciality']).limit(10000),
-        supabaseClient.from('spool_receiving').select('id', { count: 'exact', head: true }),
+        supabaseClient.from('spool_bom').select('tag_no').limit(2000),
+        supabaseClient.from('spool_receiving').select('tag_no').limit(2000),
         supabaseClient.from('v_support_kpi').select('total_bom, total_received').single(),
         supabaseClient.from('bom').select('tag', { count: 'exact', head: true }).eq('category', 'Speciality'),
-    ]).then(([catRes, tagRecRes, spoolRecRes, suppKpiRes, splTagCountRes]) => {
+    ]).then(([catRes, tagRecRes, spoolBomRes, spoolRecRes, suppKpiRes, splTagCountRes]) => {
         const data = catRes.data;
         if (catRes.error || !data) {
             console.error("❌ Chart Sync Error:", catRes.error);
             return;
         }
 
-        const spoolRecCount = spoolRecRes.count || 0;
+        // Spool: spool_bom/spool_receiving 모두 Tag 목록만 가져와 클라이언트에서 매칭
+        // (두 테이블은 서로 다른 시점 데이터라 완전히 겹치지 않음 — project_spool_bom_reintroduction 메모리 참고)
+        const spoolBomTagSet = new Set((spoolBomRes.data || []).map(r => (r.tag_no || '').trim()).filter(Boolean));
+        const spoolRecTagSet = new Set((spoolRecRes.data || []).map(r => (r.tag_no || '').trim()).filter(Boolean));
+        let spoolMatched = 0;
+        spoolBomTagSet.forEach(t => { if (spoolRecTagSet.has(t)) spoolMatched++; });
 
         const catLabels = ['Pipe', 'Fitting', 'Valve', 'Speciality', 'Support', 'Others'];
         const bomDataArr = catLabels.map(l => {
@@ -907,9 +913,12 @@ function updateCategoryCharts() {
         const supportRec = parseFloat(suppKpiRes.data?.total_received || 0);
         const pctSup = setCatKpi('kpi-sup-pct', 'kpi-sup-sub', supportBom, supportRec, 'EA');
 
-        // Overall — 6개 카테고리(Pipe/Fitting/Valve/Speciality/Others/Support) 진행률 단순 평균
+        // Spool: Tag 매칭 개수를 "받은 수량"으로 취급 (Valve/Speciality와 동일한 방식)
+        const pctSpool = setCatKpi('kpi-spool-pct', 'kpi-spool-sub', spoolBomTagSet.size, spoolMatched, 'EA');
+
+        // Overall — 7개 카테고리(Pipe/Fitting/Valve/Speciality/Others/Support/Spool) 진행률 단순 평균
         // (단위가 서로 달라 수량 합산 대신 %를 평균 — 카드별 표시값과 일관성 유지)
-        const overallPct = (pctPipe + pctFit + pctValve + pctSpc + pctOth + pctSup) / 6;
+        const overallPct = (pctPipe + pctFit + pctValve + pctSpc + pctOth + pctSup + pctSpool) / 7;
         const overallColor = overallPct >= 90 ? '#66bb6a' : '#42a5f5';
         const elOverall = document.getElementById('kpi-overall-pct');
         if (elOverall) { elOverall.textContent = overallPct.toFixed(1) + '%'; elOverall.style.color = overallColor; }
