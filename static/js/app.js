@@ -6285,6 +6285,9 @@ async function initSpoolReceiving() {
         if (tb) tb.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#c00;padding:40px;">Error: ${recRes.error.message}</td></tr>`;
         return;
     }
+    if (bomRes.error) {
+        console.error('spool_bom fetch error:', bomRes.error);
+    }
     _srData = recRes.data || [];
     _spoolBomTags = new Set((bomRes.data || []).map(r => (r.tag_no || '').trim()).filter(Boolean));
     _initSrFilters();
