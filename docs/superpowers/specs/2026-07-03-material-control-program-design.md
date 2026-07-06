@@ -334,8 +334,9 @@ Spool BOM 기능은 최초 `dc9b83a`(2026-06-01)에서 탭·KPI·대시보드까
 
 - Spool 탭(`recTagSpool`) KPI 카드를 1개→3개로 확장: Overall Progress %(Tag 매칭 385/529≈72.8%) / Total Spool BOM(529 Tags) / Total Spool Received(574건, 기존 그대로). `spool_bom`/`spool_receiving`의 tag_no를 Set으로 매칭 — 두 테이블의 385/529 불일치는 그대로 반영(수정 안 함).
 - Dashboard KPI 그리드를 7카드→8카드로 확장(Spool 추가), Overall 평균을 6개→7개 카테고리 평균으로 재계산. `updateCategoryCharts()` 안의 죽은 코드(조회만 하고 안 쓰던 `spoolRecCount`)를 실제 계산으로 교체.
-- Bulk Progress Bars에는 추가 안 함(Valve와 동일 취급 — Tag당 QTY=1이라 부족/잉여 개념 희박), Issued/Stock KPI·미입고 Tag 상세 목록도 범위 밖으로 확정.
-- 잔여 사항(Minor, 블로커 아님): Dashboard `updateCategoryCharts()`의 `spool_bom`/`spool_receiving` fetch 실패 시 에러가 콘솔에도 안 뜸(기존 다른 카테고리 fetch들과 동일한 패턴이라 회귀 아님) — 향후 강화 여지.
+- Issued/Stock KPI·미입고 Tag 상세 목록은 범위 밖으로 확정.
+- **후속 변경(2026-07-06, 같은 날)**: 사용자가 대시보드를 직접 보고 "Bulk Progress Bars에도 Spool 추가" 요청 — 확인해보니 Valve/Speciality는 이미 막대그래프에 포함되어 있었음(과거 메모리 기록 "Valve 미포함"이 틀렸던 것으로 판명, 정정함). 같은 기준으로 Spool도 추가. 동시에 Dashboard 상단 KPI 카드 8개(카테고리별 %)가 막대그래프와 완전히 중복이라는 지적을 받아, KPI를 Overall/Categories On Track(≥90% 카테고리 수)/Items Pending(Pipe·Fitting 부족 Item+Size 개수)/ISO Critical(도넛차트와 동일 기준)로 재구성 — 4카드, 카테고리별 %는 막대그래프에서만 확인.
+- 잔여 사항(Minor, 블로커 아님): Dashboard `updateCategoryCharts()`의 `spool_bom`/`spool_receiving` fetch 실패 시 에러가 콘솔에도 안 뜸(기존 다른 카테고리 fetch들과 동일한 패턴이라 회귀 아님) — 향후 강화 여지. 별도로, `bom_desc`/`bom_iso_list`/`bom_detail`/`v_iso_stage_status`/`v_category_readiness` 등 조회가 간헐적으로 `57014 statement timeout`을 일으키는 걸 확인함(오늘 작업과 무관한 기존 이슈, `fetchAllRows()`/`syncFromSupabase()`에 재시도 로직 없음) — 재현됨, 별도 과제로 남김.
 
 ## 관련 메모리 (Spool)
 - `project_spool_bom_reintroduction.md` — Spool BOM 삭제 이력, 재등록 경위, 현재 상태
