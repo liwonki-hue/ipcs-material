@@ -1377,6 +1377,7 @@
                      <button class="ms-tab-btn" data-tab="stock" style="padding:8px 24px;border:none;border-bottom:3px solid #0A2540;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#0A2540;margin-bottom:-2px;letter-spacing:0.5px;">STOCK</button>
                      <button class="ms-tab-btn" data-tab="shortage" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">SHORTAGE</button>
                      <button class="ms-tab-btn" data-tab="surplus" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">SURPLUS</button>
+                     <button class="ms-tab-btn" data-tab="datahealth" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">DATA HEALTH</button>
                  </div>
 
                  <div id="msPanelStock">
@@ -1814,6 +1815,99 @@
                     </div>
                     <div id="surplusPagination"></div>
                 </div>
+                 </div>
+
+                 <div id="msPanelDataHealth" style="display:none;">
+                     <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
+                         <div class="kpi-card" id="dhCard-valve" style="cursor:pointer;">
+                             <div class="kpi-info" style="flex:1;">
+                                 <div class="kpi-title" style="display:flex;align-items:center;gap:5px;">
+                                     <i class="fas fa-faucet" style="color:#00838f;font-size:10px;"></i> Valve/Speciality Tag Match
+                                 </div>
+                                 <div class="kpi-value" id="dhCard-valve-pct">—</div>
+                                 <div class="kpi-desc" id="dhCard-valve-sub" style="margin-top:2px;">Loading...</div>
+                             </div>
+                         </div>
+                         <div class="kpi-card" id="dhCard-support" style="cursor:pointer;">
+                             <div class="kpi-info" style="flex:1;">
+                                 <div class="kpi-title" style="display:flex;align-items:center;gap:5px;">
+                                     <i class="fas fa-tools" style="color:#455a64;font-size:10px;"></i> Support Unmatched
+                                 </div>
+                                 <div class="kpi-value" id="dhCard-support-pct">—</div>
+                                 <div class="kpi-desc" id="dhCard-support-sub" style="margin-top:2px;">Loading...</div>
+                             </div>
+                         </div>
+                         <div class="kpi-card" id="dhCard-bucket" style="cursor:pointer;">
+                             <div class="kpi-info" style="flex:1;">
+                                 <div class="kpi-title" style="display:flex;align-items:center;gap:5px;">
+                                     <i class="fas fa-exclamation-triangle" style="color:#f57f17;font-size:10px;"></i> Bucket-Tag Regression
+                                 </div>
+                                 <div class="kpi-value" id="dhCard-bucket-pct">—</div>
+                                 <div class="kpi-desc" id="dhCard-bucket-sub" style="margin-top:2px;">Loading...</div>
+                             </div>
+                         </div>
+                         <div class="kpi-card" id="dhCard-newmat" style="cursor:pointer;">
+                             <div class="kpi-info" style="flex:1;">
+                                 <div class="kpi-title" style="display:flex;align-items:center;gap:5px;">
+                                     <i class="fas fa-barcode" style="color:#6a1b9a;font-size:10px;"></i> Unregistered MatCode
+                                 </div>
+                                 <div class="kpi-value" id="dhCard-newmat-pct">—</div>
+                                 <div class="kpi-desc" id="dhCard-newmat-sub" style="margin-top:2px;">Loading...</div>
+                             </div>
+                         </div>
+                     </div>
+
+                     <div id="dhDetail-valve" class="panel data-panel" style="display:none;margin-top:16px;">
+                         <div class="panel-header">
+                             <h3><i class="fas fa-faucet"></i> Valve/Speciality Tags without Receiving</h3>
+                             <button class="btn btn-outline" id="dhExport-valve" style="height:32px;font-size:12px;display:flex;align-items:center;gap:6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export</button>
+                         </div>
+                         <div class="table-responsive">
+                             <table class="data-table" id="dhTable-valve">
+                                 <thead><tr><th style="text-align:center;">Tag</th><th style="text-align:center;">Category</th><th style="text-align:center;">Item</th><th style="text-align:center;">ISO Drawing</th></tr></thead>
+                                 <tbody></tbody>
+                             </table>
+                         </div>
+                     </div>
+
+                     <div id="dhDetail-support" class="panel data-panel" style="display:none;margin-top:16px;">
+                         <div class="panel-header">
+                             <h3><i class="fas fa-tools"></i> Support Tags Missing System/ISO (not in Drawing DB)</h3>
+                             <button class="btn btn-outline" id="dhExport-support" style="height:32px;font-size:12px;display:flex;align-items:center;gap:6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export</button>
+                         </div>
+                         <div class="table-responsive">
+                             <table class="data-table" id="dhTable-support">
+                                 <thead><tr><th style="text-align:center;">Support Tag</th><th style="text-align:center;">Item</th><th style="text-align:center;">Matl</th><th style="text-align:center;">Size/Type</th><th style="text-align:center;">Qty</th></tr></thead>
+                                 <tbody></tbody>
+                             </table>
+                         </div>
+                     </div>
+
+                     <div id="dhDetail-bucket" class="panel data-panel" style="display:none;margin-top:16px;">
+                         <div class="panel-header">
+                             <h3><i class="fas fa-exclamation-triangle"></i> Bucket-Tag Regression (should be 0)</h3>
+                             <button class="btn btn-outline" id="dhExport-bucket" style="height:32px;font-size:12px;display:flex;align-items:center;gap:6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export</button>
+                         </div>
+                         <div class="table-responsive">
+                             <table class="data-table" id="dhTable-bucket">
+                                 <thead><tr><th style="text-align:center;">Tag</th><th style="text-align:center;">Category</th><th style="text-align:center;">PKG NO</th><th style="text-align:center;">Description</th></tr></thead>
+                                 <tbody></tbody>
+                             </table>
+                         </div>
+                     </div>
+
+                     <div id="dhDetail-newmat" class="panel data-panel" style="display:none;margin-top:16px;">
+                         <div class="panel-header">
+                             <h3><i class="fas fa-barcode"></i> Unregistered MatCode (NEW-MAT)</h3>
+                             <button class="btn btn-outline" id="dhExport-newmat" style="height:32px;font-size:12px;display:flex;align-items:center;gap:6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export</button>
+                         </div>
+                         <div class="table-responsive">
+                             <table class="data-table" id="dhTable-newmat">
+                                 <thead><tr><th style="text-align:center;">MatCode</th><th style="text-align:center;">Category</th><th style="text-align:center;">Description</th><th style="text-align:center;">Qty</th></tr></thead>
+                                 <tbody></tbody>
+                             </table>
+                         </div>
+                     </div>
                  </div>
             </section>
 
