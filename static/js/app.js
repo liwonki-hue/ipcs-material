@@ -4291,6 +4291,7 @@ function renderTagValveTable() {
             <td style="text-align:center;">${r.tag && r.tag !== '-' ? r.tag : '-'}</td>
             <td style="text-align:center;white-space:nowrap;">${r.opType}</td>
             <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.valveType || ''}">${r.valveType}</td>
+            <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.desc || ''}">${r.desc || '-'}</td>
             <td style="text-align:center;font-weight:600;white-space:nowrap;">${item}</td>
             <td style="text-align:center;">${r.mat1}</td>
             <td style="text-align:center;">${r.mat2}</td>
@@ -4364,6 +4365,7 @@ function renderTagSpareTable() {
             <td style="text-align:center;">Spare</td>
             <td style="text-align:center;white-space:nowrap;">${r.opType}</td>
             <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.valveType || ''}">${r.valveType}</td>
+            <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.desc || ''}">${r.desc || '-'}</td>
             <td style="text-align:center;font-weight:600;white-space:nowrap;">${item}</td>
             <td style="text-align:center;">${r.mat1}</td>
             <td style="text-align:center;">${r.mat2}</td>
@@ -5224,6 +5226,7 @@ function attachEventListeners() {
                 'TAG NO':  r.tag && r.tag !== '-' ? r.tag : '-',
                 'Operation Type': r.opType || '-',
                 'Valve Type': r.valveType || '-',
+                'Description': r.desc || '-',
                 'Item':    window.extractItemFromDesc(r.valveType),
                 'Mat 1':   r.mat1 || '-',
                 'Mat 2':   r.mat2 || '-',
@@ -5238,7 +5241,7 @@ function attachEventListeners() {
 
     function _exportTagRecvRows(rows, sheetName, filenamePrefix) {
         const ws = XLSX.utils.json_to_sheet(rows);
-        ws['!cols'] = [10, 18, 12, 22, 16, 14, 10, 10, 8, 8, 10, 14].map(w => ({ wch: w }));
+        ws['!cols'] = [10, 18, 12, 22, 16, 30, 14, 10, 10, 8, 8, 10, 14].map(w => ({ wch: w }));
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, sheetName);
         const today = new Date().toISOString().split('T')[0];
@@ -5263,6 +5266,7 @@ function attachEventListeners() {
                 'TAG NO':  'Spare',
                 'Operation Type': r.opType || '-',
                 'Valve Type': r.valveType || '-',
+                'Description': r.desc || '-',
                 'Item':    window.extractItemFromDesc(r.valveType),
                 'Mat 1':   r.mat1 || '-',
                 'Mat 2':   r.mat2 || '-',
