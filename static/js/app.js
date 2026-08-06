@@ -38,34 +38,47 @@ async function syncShortageData() {
             fetchAllRows('receiving')
         ]);
         if (bomRaw.length > 0) {
-            db.bom = bomRaw.map(b => ({
-                matCode: (b.mat_code || '').trim().toUpperCase(),
-                category: b.category || '-',
-                system: b.system, tag: b.tag || '-',
-                uom: b.uom || 'EA',
-                qty: parseFloat(b.total_qty || b.qty) || 0
-            })).filter(b => b.qty > 0 && b.matCode);
+            db.bom = bomRaw.map(b => {
+                const matCode = (b.mat_code || '').trim().toUpperCase();
+                const tag = (b.tag || '').trim().toUpperCase();
+                // Valve/Speciality는 mat_code가 없어(Tag가 고유 키) matCode 대신 tag를 key로 사용
+                return {
+                    matCode, tag, key: matCode || tag,
+                    category: b.category || '-',
+                    system: b.system,
+                    uom: b.uom || 'EA',
+                    qty: parseFloat(b.total_qty || b.qty) || 0
+                };
+            }).filter(b => b.qty > 0 && b.key);
             _knownSystems = new Set(db.bom.map(b => b.system).filter(Boolean).map(s => s.toUpperCase()));
         }
         if (recvRaw.length > 0) {
-            db.receiving = recvRaw.map(r => ({
-                id:       r.id,
-                matCode:  (r.mat_code || '').trim().toUpperCase(),
-                category: r.category || '-',
-                docNo:    r.doc_no || '-',
-                plNo:     r.pkg_no || '-',
-                desc:     r.full_description || '-',
-                unit:     r.unit || 'EA',
-                qty:      parseFloat(r.qty) || 0,
-                tag:      r.tag || '-',
-                purpose:  r.purpose || '',
-                opType:   r.op_type || '-',
-                valveType: r.valve_type || '-',
-                mat1:     r.mat1 || '-',
-                mat2:     r.mat2 || '-',
-                size:     r.size || '-',
-                rating:   r.rating || '-',
-            })).filter(r => r.qty > 0);
+            db.receiving = recvRaw.map(r => {
+                const matCode = (r.mat_code || '').trim().toUpperCase();
+                const tagRaw = r.tag || '-';
+                const tag = tagRaw.trim().toUpperCase();
+                // Untagged Items(부속품/공구, {PKG NO}-ACC-nnn / -SPARE-nnn 합성 Tag)는 BOM에
+                // 대응 항목이 없어 key로 쓰면 Surplus에 대량 오탐이 생김 — 매칭 키에서 제외
+                const isSynthetic = /-ACC-\d|-SPARE-\d/i.test(tagRaw);
+                return {
+                    id:       r.id,
+                    matCode,  tag: tagRaw,
+                    key:      matCode || (isSynthetic ? '' : tag),
+                    category: r.category || '-',
+                    docNo:    r.doc_no || '-',
+                    plNo:     r.pkg_no || '-',
+                    desc:     r.full_description || '-',
+                    unit:     r.unit || 'EA',
+                    qty:      parseFloat(r.qty) || 0,
+                    purpose:  r.purpose || '',
+                    opType:   r.op_type || '-',
+                    valveType: r.valve_type || '-',
+                    mat1:     r.mat1 || '-',
+                    mat2:     r.mat2 || '-',
+                    size:     r.size || '-',
+                    rating:   r.rating || '-',
+                };
+            }).filter(r => r.qty > 0);
             invalidateRecvPurposeMap();
         }
         renderShortageTable();
@@ -474,7 +487,7 @@ async function syncFromSupabase() {
             fetchAllRows('receiving'),
             fetchWithRetry(() => supabaseClient.from('bom_desc').select('mat_code,full_description').limit(10000), 'bom_desc').then(r => r.data || []),
             fetchWithRetry(() => supabaseClient.from('bom_detail').select('full_description').eq('category', 'Speciality').not('full_description', 'is', null).limit(1000), 'bom_detail(Speciality desc)').then(r => r.data || []),
-            fetchWithRetry(() => supabaseClient.from('bom_detail').select('tag,mat_code,full_description,line_no,iso_dwg_no').not('tag', 'is', null).limit(10000), 'bom_detail(tag map)').then(r => r.data || [])
+            fetchWithRetry(() => supabaseClient.from('bom_detail').select('tag,mat_code,full_description,line_no,iso_dwg_no,mat1,mat2').not('tag', 'is', null).limit(10000), 'bom_detail(tag map)').then(r => r.data || [])
         ]);
         // isoBoreMap은 bom 테이블 전체 스캔이 필요해 무거움 — Material Finding 탭 진입 시 지연 로딩(loadIsoBoreMapOnce)
 
@@ -490,15 +503,20 @@ async function syncFromSupabase() {
                 etDesc: m.et_desc || '-'
             }));
         }
-        
+
         if (bomRaw.length > 0) {
-            db.bom = bomRaw.map(b => ({
-                matCode: (b.mat_code || '').trim().toUpperCase(),
-                category: b.category || '-',
-                system: b.system, tag: b.tag || '-',
-                uom: b.uom || 'EA',
-                qty: parseFloat(b.total_qty || b.qty) || 0
-            })).filter(b => b.qty > 0 && b.matCode);
+            db.bom = bomRaw.map(b => {
+                const matCode = (b.mat_code || '').trim().toUpperCase();
+                const tag = (b.tag || '').trim().toUpperCase();
+                // Valve/Speciality는 mat_code가 없어(Tag가 고유 키) matCode 대신 tag를 key로 사용
+                return {
+                    matCode, tag, key: matCode || tag,
+                    category: b.category || '-',
+                    system: b.system,
+                    uom: b.uom || 'EA',
+                    qty: parseFloat(b.total_qty || b.qty) || 0
+                };
+            }).filter(b => b.qty > 0 && b.key);
         }
         bomDescRaw.forEach(b => {
             if (b.mat_code && b.full_description) {
@@ -514,7 +532,9 @@ async function syncFromSupabase() {
                     matCode: b.mat_code ? b.mat_code.trim().toUpperCase() : '',
                     fullDescription: b.full_description || '',
                     lineNo: b.line_no || '',
-                    iso_dwg_no: b.iso_dwg_no || ''
+                    iso_dwg_no: b.iso_dwg_no || '',
+                    mat1: b.mat1 || '',
+                    mat2: b.mat2 || ''
                 };
             }
         });
@@ -527,24 +547,32 @@ async function syncFromSupabase() {
         })).filter(r => r.iso !== '-');
         
         if (recvRaw.length > 0) {
-            db.receiving = recvRaw.map(r => ({
-                id:       r.id,
-                matCode:  (r.mat_code || '').trim().toUpperCase(),
-                category: r.category || '-',
-                docNo:    r.doc_no || '-',
-                plNo:     r.pkg_no || '-',
-                desc:     r.full_description || '-',
-                unit:     r.unit || 'EA',
-                qty:      parseFloat(r.qty) || 0,
-                tag:      r.tag || '-',
-                purpose:  r.purpose || '',
-                opType:   r.op_type || '-',
-                valveType: r.valve_type || '-',
-                mat1:     r.mat1 || '-',
-                mat2:     r.mat2 || '-',
-                size:     r.size || '-',
-                rating:   r.rating || '-',
-            })).filter(r => r.qty > 0);
+            db.receiving = recvRaw.map(r => {
+                const matCode = (r.mat_code || '').trim().toUpperCase();
+                const tagRaw = r.tag || '-';
+                const tag = tagRaw.trim().toUpperCase();
+                // Untagged Items(부속품/공구, {PKG NO}-ACC-nnn / -SPARE-nnn 합성 Tag)는 BOM에
+                // 대응 항목이 없어 key로 쓰면 Surplus에 대량 오탐이 생김 — 매칭 키에서 제외
+                const isSynthetic = /-ACC-\d|-SPARE-\d/i.test(tagRaw);
+                return {
+                    id:       r.id,
+                    matCode,  tag: tagRaw,
+                    key:      matCode || (isSynthetic ? '' : tag),
+                    category: r.category || '-',
+                    docNo:    r.doc_no || '-',
+                    plNo:     r.pkg_no || '-',
+                    desc:     r.full_description || '-',
+                    unit:     r.unit || 'EA',
+                    qty:      parseFloat(r.qty) || 0,
+                    purpose:  r.purpose || '',
+                    opType:   r.op_type || '-',
+                    valveType: r.valve_type || '-',
+                    mat1:     r.mat1 || '-',
+                    mat2:     r.mat2 || '-',
+                    size:     r.size || '-',
+                    rating:   r.rating || '-',
+                };
+            }).filter(r => r.qty > 0);
             invalidateRecvPurposeMap();
         }
 
@@ -2385,12 +2413,13 @@ function initMssFilters() {
 // --- Material Shortage / Surplus 공용 ---
 const CAT_ORDER = { 'Pipe': 0, 'Fitting': 1, 'Valve': 2, 'Spool': 3, 'Support': 4, 'Others': 5, 'Speciality': 6 };
 
+// key = MatCode(Pipe/Fitting/Others) 또는 Tag(Valve/Speciality, mat_code가 없어 Tag가 고유 키)
 function _buildBomMap() {
     const m = {};
     db.bom.forEach(b => {
-        if (!b.matCode) return;
-        if (!m[b.matCode]) m[b.matCode] = { qty: 0, uom: b.uom };
-        m[b.matCode].qty += b.qty;
+        if (!b.key) return;
+        if (!m[b.key]) m[b.key] = { qty: 0, uom: b.uom, category: b.category };
+        m[b.key].qty += b.qty;
     });
     return m;
 }
@@ -2400,11 +2429,9 @@ function _buildRecMap() {
     db.receiving
         .filter(r => (r.purpose === 'Permanent' || r.purpose === '') && isReceivingActive(r.plNo))
         .forEach(r => {
-            const tagInfo = db.bomTagMap[(r.tag || '').toUpperCase()];
-            const effMat = r.matCode || (tagInfo ? tagInfo.matCode : '');
-            if (!effMat) return;
-            if (!m[effMat]) m[effMat] = { qty: 0, desc: r.desc, unit: r.unit };
-            m[effMat].qty += r.qty;
+            if (!r.key) return;
+            if (!m[r.key]) m[r.key] = { qty: 0, desc: r.desc, unit: r.unit, category: r.category };
+            m[r.key].qty += r.qty;
         });
     return m;
 }
@@ -2735,7 +2762,30 @@ async function renderDataHealthCards() {
     }
 }
 
-function _enrichRow(matCode, bomMap, recMap, masterMap, mat12Map) {
+function _enrichRow(key, bomMap, recMap, masterMap, mat12Map) {
+    const bomEntry = bomMap[key] || {};
+    const recEntry = recMap[key] || {};
+    const cat = bomEntry.category || recEntry.category || '-';
+
+    // Valve/Speciality — key는 MatCode가 아니라 Tag(mat_code가 없어 Tag가 고유 키).
+    // db.bomTagMap(bom_detail 기준, mat1/mat2/full_description 보유)에서 정보를 가져온다.
+    if (cat === 'Valve' || cat === 'Speciality') {
+        const tagInfo = db.bomTagMap[key] || {};
+        const desc = tagInfo.fullDescription || (recEntry.desc !== '-' ? recEntry.desc : null) || '-';
+        const item = window.extractItemFromDesc(desc);
+        const size = cat === 'Speciality'
+            ? (window.parseSpecialityDesc(desc).size || '-')
+            : (window.extractDnSizeFromDesc(desc) || '-');
+        const rating = getRatingForMatCode(null, null, desc);
+        const mat1 = tagInfo.mat1 || '-';
+        const mat2 = tagInfo.mat2 || '-';
+        const unit = recEntry.unit || bomEntry.uom || 'EA';
+        const bomQty = bomEntry.qty ?? 0;
+        const recQty = recEntry.qty ?? 0;
+        return { matCode: key, cat, desc, item, itemDisplay: item, mat1, mat2, size, rating, unit, bomQty, recQty };
+    }
+
+    const matCode = key;
     const mData = masterMap[matCode] || {};
     const desc = db.bomDesc[matCode] || (recMap[matCode]?.desc !== '-' ? recMap[matCode]?.desc : null) || mData.itemDesc || '-';
     const _itemMc = window.extractItemFromMatCode(matCode);
@@ -2748,7 +2798,7 @@ function _enrichRow(matCode, bomMap, recMap, masterMap, mat12Map) {
         : item;
     const _sc = window.extractSizeFromMatCode(matCode);
     const size = (_sc && _sc !== '-') ? _sc : (mData.size1 || '-');
-    const cat  = mData.category || window.getCategory(mData.itemDesc || '', matCode);
+    const finalCat = mData.category || window.getCategory(mData.itemDesc || '', matCode);
     const m12  = (mat12Map && mat12Map[matCode]) || {};
     const mat1 = m12.mat1 || '-';
     const mat2 = m12.mat2 || '-';
@@ -2756,7 +2806,7 @@ function _enrichRow(matCode, bomMap, recMap, masterMap, mat12Map) {
     const unit = recMap[matCode]?.unit || bomMap[matCode]?.uom || 'EA';
     const bomQty = bomMap[matCode]?.qty ?? 0;
     const recQty = recMap[matCode]?.qty ?? 0;
-    return { matCode, cat, desc, item, itemDisplay, mat1, mat2, size, rating, unit, bomQty, recQty };
+    return { matCode, cat: finalCat, desc, item, itemDisplay, mat1, mat2, size, rating, unit, bomQty, recQty };
 }
 
 const _TABLE_ROW_TPL = ({ matCode, cat, itemDisplay, mat1, mat2, size, rating, unit, bomQty, recQty, diffQty, diffColor }) => `<tr>
@@ -2801,7 +2851,7 @@ async function renderShortageTable() {
         const row = _enrichRow(matCode, bomMap, recMap, masterMap, mat12Map);
         const diffQty = row.bomQty - row.recQty;
         if (diffQty <= 0.01) return;
-        if (!['Pipe', 'Fitting', 'Others'].includes(row.cat)) return;
+        if (!['Pipe', 'Fitting', 'Others', 'Valve', 'Speciality'].includes(row.cat)) return;
         if (catFilter    !== 'ALL' && row.cat    !== catFilter)    return;
         if (itemFilter   !== 'ALL' && row.item   !== itemFilter)   return;
         if (mat1Filter   !== 'ALL' && row.mat1   !== mat1Filter)   return;
@@ -2865,7 +2915,7 @@ async function renderSurplusTable() {
         const row = _enrichRow(matCode, bomMap, recMap, masterMap, mat12Map);
         const diffQty = row.recQty - row.bomQty;
         if (diffQty <= 0.01) return;
-        if (!['Pipe', 'Fitting', 'Others'].includes(row.cat)) return;
+        if (!['Pipe', 'Fitting', 'Others', 'Valve', 'Speciality'].includes(row.cat)) return;
         if (catFilter    !== 'ALL' && row.cat    !== catFilter)    return;
         if (itemFilter   !== 'ALL' && row.item   !== itemFilter)   return;
         if (mat1Filter   !== 'ALL' && row.mat1   !== mat1Filter)   return;
@@ -2903,11 +2953,11 @@ function goSurplusPage(p) {
 function _exportDiffList(list, sheetName, filenamePrefix) {
     const rows = list.map(r => ({
         'Category':      r.cat,
-        'MatCode':       r.matCode,
+        'MatCode / Tag': r.matCode,
         'Item':          r.itemDisplay,
         'Mat 1':         r.mat1,
         'Mat 2':         r.mat2,
-        'Size (Inch)':   r.size,
+        'Size':          r.size,
         'Rating':        r.rating,
         'Unit':          r.unit,
         'BOM QTY':       Math.round(r.bomQty),
@@ -3251,8 +3301,26 @@ function initFilterOptions() {
         if (!itemEl) return;
         setupCatItemSize(catEl, itemEl, sizeEl, getBomItemsForCat, getBomSizesForCatItem, allVal);
         const refreshMatl = async () => {
-            const TAB_CAT = { ALL: 'ALL', Pipe: 'Pipe', Fitting: 'Fitting', Others: 'Others' };
-            const cat = catEl ? (TAB_CAT[catEl.value] || 'ALL') : 'ALL';
+            const cat = catEl ? (catEl.value || 'ALL') : 'ALL';
+
+            // Valve/Speciality는 mat_code가 없어 loadMssItemAgg()(MatCode 기준) 대상이 아님 —
+            // db.bomTagMap(Tag→mat1/mat2/full_description)에서 직접 집계
+            if (cat === 'Valve' || cat === 'Speciality') {
+                const vals1 = new Set(), vals2 = new Set(), ratings = new Set();
+                db.bom.forEach(b => {
+                    if (b.category !== cat || b.matCode) return;
+                    const info = db.bomTagMap[b.key] || {};
+                    if (info.mat1) vals1.add(info.mat1);
+                    if (info.mat2) vals2.add(info.mat2);
+                    const rt = getRatingForMatCode(null, null, info.fullDescription);
+                    if (rt && rt !== '-') ratings.add(rt);
+                });
+                if (mat1El) mat1El.innerHTML = `<option value="${allVal}">All Mat 1</option>` + [...vals1].sort().map(v => `<option value="${v}">${v}</option>`).join('');
+                if (mat2El) mat2El.innerHTML = `<option value="${allVal}">All Mat 2</option>` + [...vals2].sort().map(v => `<option value="${v}">${v}</option>`).join('');
+                if (ratingEl) ratingEl.innerHTML = `<option value="${allVal}">All Ratings</option>` + [...ratings].sort().map(v => `<option value="${v}">${v}</option>`).join('');
+                return;
+            }
+
             const agg = (await loadMssItemAgg()).filter(r => cat === 'ALL' || r.category === cat);
 
             if (mat1El) {
