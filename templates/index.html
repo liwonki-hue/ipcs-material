@@ -55,8 +55,10 @@
                  <div class="nav-item" data-target="rec_tag_spare"><i class="fas fa-box-archive"></i> Spare</div>
 
                  <div class="section-title">Material Status</div>
-                 <div class="nav-item" data-target="material_status"><i class="fas fa-warehouse"></i> Material Status</div>
                  <div class="nav-item" data-target="material_summary"><i class="fas fa-list-check"></i> Material Summary</div>
+                 <div class="nav-item" data-target="material_stock"><i class="fas fa-warehouse"></i> Material Stock</div>
+                 <div class="nav-item" data-target="material_shortage"><i class="fas fa-exclamation-triangle"></i> Material Shortage</div>
+                 <div class="nav-item" data-target="material_surplus"><i class="fas fa-boxes"></i> Material Surplus</div>
 
                  <div class="section-title">Logistics</div>
                  <div class="nav-item" data-target="shipping"><i class="fas fa-ship"></i> Shipping / Custom Clearance</div>
@@ -1483,16 +1485,14 @@
             <section id="material_status" class="view-section">
                 <div class="page-header">
                      <div>
-                         <h1>Material Status</h1>
-                         <p class="subtitle">BOM vs Received/Issued/Stock status, shortage and surplus materials.</p>
+                         <h1 id="msPageTitle">Material Stock</h1>
+                         <p class="subtitle" id="msPageSubtitle">BOM vs Received/Issued/Stock status.</p>
                      </div>
                  </div>
 
-                 <!-- Material Status Tab bar -->
-                 <div style="display:flex;gap:0;border-bottom:2px solid #c8cfe0;margin-bottom:16px;">
+                 <!-- Material Status Tab bar (Stock/Data Health만 — Shortage/Surplus는 별도 사이드바 항목으로 분리됨) -->
+                 <div id="msTabBar" style="display:flex;gap:0;border-bottom:2px solid #c8cfe0;margin-bottom:16px;">
                      <button class="ms-tab-btn" data-tab="stock" style="padding:8px 24px;border:none;border-bottom:3px solid #0A2540;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#0A2540;margin-bottom:-2px;letter-spacing:0.5px;">STOCK</button>
-                     <button class="ms-tab-btn" data-tab="shortage" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">SHORTAGE</button>
-                     <button class="ms-tab-btn" data-tab="surplus" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">SURPLUS</button>
                      <button class="ms-tab-btn" data-tab="datahealth" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">DATA HEALTH</button>
                  </div>
 

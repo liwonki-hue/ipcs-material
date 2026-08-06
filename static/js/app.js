@@ -619,6 +619,14 @@ function initNavigation() {
         rec_tag_spare:      { sec: 'tag',  tab: 'spare' },
     };
 
+    // Material Status 계열 — Shortage/Surplus를 별도 사이드바 항목으로 분리(2026-08-07)하면서도
+    // 물리적으로는 하나의 #material_status 섹션을 공유(receiving 섹션의 REC_TAB_MAP과 동일 패턴)
+    const MS_TAB_MAP = {
+        material_stock:    'stock',
+        material_shortage: 'shortage',
+        material_surplus:  'surplus',
+    };
+
     window.showSection = function(targetId) {
         navItems.forEach(n => n.classList.remove('active'));
         sections.forEach(s => s.classList.remove('active'));
@@ -634,6 +642,13 @@ function initNavigation() {
             return;
         }
 
+        if (MS_TAB_MAP[targetId]) {
+            document.getElementById('material_status').classList.add('active');
+            initMaterialStatusTabs();
+            switchMaterialStatusTab(MS_TAB_MAP[targetId]);
+            return;
+        }
+
         const section = document.getElementById(targetId);
         if (section) section.classList.add('active');
 
@@ -641,11 +656,10 @@ function initNavigation() {
         if(targetId === 'issue') renderIssueOptions();
         if(targetId === 'piping_bom') { initBomTabs(); renderActiveBomTab(); }
         if(targetId === 'receiving') { initReceivingTabs(); renderActiveReceivingTab(); }
-        if(targetId === 'material_status') { initMaterialStatusTabs(); switchMaterialStatusTab(_msActiveTab); }
         if(targetId === 'material_summary') initMssTabs();
         if(targetId === 'shipping') initShipping();
 
-        if (targetId !== 'material_status' && shortageRefreshTimer) {
+        if (shortageRefreshTimer) {
             clearInterval(shortageRefreshTimer);
             shortageRefreshTimer = null;
         }
@@ -1553,6 +1567,14 @@ function initMaterialStatusTabs() {
         btn.addEventListener('click', () => switchMaterialStatusTab(btn.dataset.tab));
     });
 }
+// Shortage/Surplus는 별도 사이드바 항목(2026-08-07)이라 STOCK/DATA HEALTH 탭바를 숨기고
+// 페이지 제목도 진입 경로에 맞게 바꿔준다 — 물리적으로는 #material_status 섹션 하나를 공유.
+const MS_PAGE_INFO = {
+    stock:      { title: 'Material Stock',    sub: 'BOM vs Received/Issued/Stock status.', showTabBar: true },
+    datahealth: { title: 'Material Stock',    sub: 'Data quality checks — Tag matching, bucket-tag regression, unregistered MatCode.', showTabBar: true },
+    shortage:   { title: 'Material Shortage', sub: 'Items where Received quantity falls short of BOM.', showTabBar: false },
+    surplus:    { title: 'Material Surplus',  sub: 'Items where Received quantity exceeds BOM.', showTabBar: false },
+};
 function switchMaterialStatusTab(tab) {
     _msActiveTab = tab;
     document.querySelectorAll('.ms-tab-btn').forEach(b => {
@@ -1563,6 +1585,14 @@ function switchMaterialStatusTab(tab) {
     document.getElementById('msPanelShortage').style.display   = tab === 'shortage'   ? '' : 'none';
     document.getElementById('msPanelSurplus').style.display    = tab === 'surplus'    ? '' : 'none';
     document.getElementById('msPanelDataHealth').style.display = tab === 'datahealth' ? '' : 'none';
+
+    const info = MS_PAGE_INFO[tab] || MS_PAGE_INFO.stock;
+    const titleEl = document.getElementById('msPageTitle');
+    const subEl   = document.getElementById('msPageSubtitle');
+    const tabBar  = document.getElementById('msTabBar');
+    if (titleEl) titleEl.textContent = info.title;
+    if (subEl)   subEl.textContent   = info.sub;
+    if (tabBar)  tabBar.style.display = info.showTabBar ? '' : 'none';
 
     if (tab === 'stock') {
         initStockFilters();
@@ -4769,7 +4799,7 @@ function attachEventListeners() {
                     if (bomInput) bomInput.value = term;
                     renderBomTable();
                 } else {
-                    showSection('material_status');
+                    showSection('material_stock');
                 }
             }
         });
