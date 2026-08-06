@@ -247,7 +247,37 @@ BOM 화면에서 Material 정보가 MAT1(재질 등급)/MAT2(실제 규격)로 �
 - [ ] 구현 (신규 탭 HTML + `renderMaterialSummaryTable()` 등 app.js 로직)
 - [ ] 스모크 테스트: Piping/Fitting/Others 서브탭 전환, 필터, 페이지네이션, Export 확인
 
-## 현재 상태 / 다음 할 일 (Valve 적용 사례 기준, 마지막 갱신: 2026-07-05)
+## 9. Valve (Receiving) 재적재 v3 — 신규 Valves/Untagged Items 포맷 (완료, 2026-08-07)
+
+사용자가 `Raw File/Valve (Receiving)_Format_Template.xlsx`를 최종 포맷(Valves 2,640행 + Untagged Items 1,545행, 총 4,185행)으로 직접 완성. 기존 `receiving` category='Valve' 4,541행 전체 삭제 후 신규 데이터로 교체(`scratch/reload_valve_receiving_v3.py`, `.env`의 `SUPABASE_DB_URL`로 직접 연결해 RLS 우회).
+
+### 최종 포맷 (이전 5시트 설계보다 단순화됨)
+- `Valves`: `PKG/PKG NO/TAG NO/OP TYPE/TYPE/MAT 1/MAT 2/SIZE/RATING/CONN./UNIT/QTY` (ISO DWG NO/LINE NO는 이번 파일에 없음 — receiving은 애초에 BOM 쪽에만 있는 정보라 문제 없음)
+- `Untagged Items`: `PKG/PKG NO/TAG NO(참조)/SEQ NO/ITEM/DESCRIPTION/UNIT/QTY` (MAT/SIZE 없음 — 부속품/공구는 재질·규격 추적 대상이 아니므로 정상)
+
+### 데이터 이슈 발견 및 처리 (전부 사용자 확인 완료)
+1. **Tag 중복 2건**: `B1-MV-29109`/`B2-MV-29109`가 `PGU-DE-0454`(정본으로 유지)와 `PGU-DE-0593`에 서로 다른 Valve Type(Gate vs Globe)으로 중복 등장. 사용자 지시대로 `PGU-DE-0593` 쪽만 `-01`/`-02` 접미사 부여(`parent_tag`에 원래 Tag 보존, 추후 확인 후 변경 예정).
+2. **TAG NO 공란 2건**(`PGU-DE-0125-MOV-BFV-007`): 사용자 확인 후 `{PKG NO}-01`/`-02` 임시 Tag 부여해 Valves(관리 대상)에 유지, `parent_tag=PKG NO`로 표시해 추후 실제 Tag 확인 필요함을 추적 가능하게 함.
+3. **Untagged Items 완전 중복 행 542건**(SPARE 품목 71건은 정상 — 예비 밸브 완제품 개별 추적 관례와 일치; SPARE 외 471건은 9개 패키지에서 Steam Blow Tool/Hydro Test Tool/Packing/Gasket 세트가 2~12회 반복된 것으로 복붙 실수 추정) → **사용자 확인: 원본 그대로 업로드(수정하지 않음)**.
+4. **MAT1/MAT2 공란 40건**(`PGU-DE-0542-BOP-VLV-002`, 전부 Manual Globe): 별도 확인 없이 기존 확립된 "BOM 우선 원칙"(아래)으로 자동 해소됨.
+
+### BOM 우선 원칙 재적용 (project_valve_bom_registration의 2026-07-05 관례 그대로)
+`bom`(category='Valve') tag→{mat1,mat2} 참조맵을 만들어 raw tag(접미사 붙이기 전)가 일치하면 Mat1/Mat2를 BOM 값으로 덮어씀 — 2,638개 유효 Tag 중 **2,345건(88.9%, 기존 81.9%보다 개선)** 보정됨.
+
+### Untagged Items를 receiving에 통합하는 방식 (신규 설계, 별도 탭 만들지 않음)
+0번 원칙(Tag 없는 항목=비관리, 참고용)에 따라 별도 재고 계산에는 넣지 않되, **기존 Valve Receiving 화면에서 검색으로 조회 가능하도록 `receiving`에 함께 적재**하는 방식을 택함(2026-07-06에 완제품 Spare만 별도 "Spare" 탭으로 분리했던 것과 같은 전례 — 그 외 부속품은 원래도 메인 Valve 리스트에 섞여 검색으로만 찾던 방식이었음). 2026-07-29에 이미 `desc`(full_description) 컬럼이 Valve/Spare Receiving 화면에 추가되어 있어(Operation Type/Valve Type/Mat이 없는 부속 항목의 실제 내용을 보여주기 위한 용도로 커밋됨) 이번 데이터가 그 컬럼을 그대로 활용함.
+- Tag 유니크화: `{PKG NO}-ACC-{일련번호:03d}`(일반 부속품) / `{PKG NO}-SPARE-{일련번호:03d}`(ITEM='SPARE'인 경우만 — 기존 `isSpareBodyRow()`가 tag에 "SPARE" 포함 여부로 판별하므로 이 패턴을 유지해야 Spare 탭 분류가 계속 정상 동작함).
+- `parent_tag` = TAG NO(참조)가 있으면 그 값, 없으면 PKG NO.
+- `valve_type` = ITEM, `full_description` = DESCRIPTION, `op_type`/`mat1`/`mat2`/`size`/`rating`은 NULL(화면에 "-"로 표시, 정상).
+
+### 검증 결과 (Playwright)
+- 최종 4,185행, Tag 100% 유니크 확인.
+- Valve Receiving 탭: 정상 표시, Description 컬럼에 원본 값 노출 확인.
+- 검색창에 Untagged Item Description으로 검색 시 정상 조회됨(`{PKG NO}-ACC-001` 형태로 표시).
+- Spare 탭: SPARE 품목 76건 계속 정상 분류·표시됨(회귀 없음).
+- Material Status Stock(Valve) 탭: BOM 매칭 Tag의 Received/Stock 수치 정상 표시, 콘솔 에러 없음(favicon 404 제외).
+
+## 현재 상태 / 다음 할 일 (Valve 적용 사례 기준, 마지막 갱신: 2026-08-07)
 
 - [x] 통짜/NULL tag 버그 수정 및 검증 완료 (DB 반영됨, 1,117건)
 - [x] Valve (Receiving) 신규 포맷 설계 완료, Excel 템플릿 작성 (`Raw File/Valve (Receiving)_Format_Template.xlsx`)
@@ -256,6 +286,8 @@ BOM 화면에서 Material 정보가 MAT1(재질 등급)/MAT2(실제 규격)로 �
 - [x] **설계팀 Valve List BOM(`Raw File/Valve List.xlsx`) 확보 및 `bom` 테이블 등록 완료 (2026-07-05, 2,747행, MatCode 없이 Tag 키만 사용)**
 - [x] **BOM 탭에 VALVE 서브탭 추가 완료 (Fitting 다음, Others 이전)**
 - [x] **Material Status Stock 탭 + Material Summary에 Valve(Tag 기준) 서브탭 추가 완료 — Shortage/Surplus는 범위 제외로 확정**
+- [x] **Valve (Receiving) v3 전체 재적재 완료 (2026-08-07, 4,185행) — 위 "9. Valve (Receiving) 재적재 v3" 섹션**
+- [ ] `PGU-DE-0593`의 `B1-MV-29109-01`/`B2-MV-29109-02`, `PGU-DE-125-MOV-BFV-007-01`/`-02` — 실제 Tag 확인 후 정정 필요(사용자 예정)
 - [ ] Material Finding "설치 시 필요 부속품/공구" 서브 섹션 구현 (미착수)
 - [ ] Dashboard Valve KPI 카드 추가 검토 (미착수)
 - [ ] 926개 System/ISO Drawing 공란 Tag 후속 데이터 업로드 (사용자 예정)
