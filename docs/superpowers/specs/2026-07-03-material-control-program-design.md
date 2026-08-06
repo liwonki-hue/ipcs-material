@@ -277,6 +277,24 @@ BOM 화면에서 Material 정보가 MAT1(재질 등급)/MAT2(실제 규격)로 �
 - Spare 탭: SPARE 품목 76건 계속 정상 분류·표시됨(회귀 없음).
 - Material Status Stock(Valve) 탭: BOM 매칭 Tag의 Received/Stock 수치 정상 표시, 콘솔 에러 없음(favicon 404 제외).
 
+## 10. Valve BOM 누락분(MOV/Control/Bypass/Safety Valve) 보강 (완료, 2026-08-07)
+
+기존 `bom`(category='Valve')은 설계팀 Manual Valve List만 등록되어 있어 OPERATION TYPE이 전량 MANUAL이었음 — MOV/Control Valve(CV)/Bypass Valve/Safety Valve(PSV)는 BOM 자체가 없었음. 사용자 확인: "이미 입고 완료된 Valve이므로 공급된 Valve를 BOM에 형식에 맞춰 추가". `receiving`(op_type IN MOV/CV/BYPASS/PSV) 중 BOM에 없는 270건(MOV 127/CV 52/BYPASS 48/PSV 43)을 `bom`에 추가(2,747→3,017행). SIZE 표기 이슈(Inlet/Outlet 이중 표기, `34"` 오타 의심)는 사용자 확인 후 각각 "DN/DN 둘 다 보존" / "원본 그대로 유지"로 처리. 상세: [[project_valve_bom_gap_and_speciality_template]] (메모리).
+
+## 11. Speciality도 Valve와 동일한 Tagged/Untagged Item 포맷으로 전환 예정 (템플릿만 완료, 2026-08-07)
+
+Valve Receiving v3(위 9번)와 동일한 원칙을 Speciality에도 적용하기로 함. 이번엔 분류용 Excel 템플릿만 생성 — DB 재적재는 사용자가 파일을 채운 후 진행 예정.
+
+파일: `Raw File/Speciality (Receiving)_Format_Template.xlsx` (Speciality/Untagged Items/Instructions 3시트), 기존 `receiving`(category='Speciality') 748건으로 사전 채움.
+- `parent_tag IS NULL`인 414건 → Speciality 시트(관리 대상, ITEM/MAT1/MAT2/SIZE/RATING/CONN.은 공란, REFERENCE 열에 원본 Description).
+- `parent_tag IS NOT NULL`인 334건(2026-07-02 통짜 tag 수정으로 유니크화된 부속품) → Untagged Items 시트.
+
+Valve와 달리 Speciality는 "원래부터 정상 Tag였던 행"의 parent_tag가 NULL(Valve는 이런 행도 parent_tag=tag로 채워져 있었음) — 재사용 시 분류 기준이 다르다는 점 주의.
+
+### 다음 할 일 (Speciality)
+- [ ] 사용자가 템플릿을 채운 후 `receiving` category='Speciality' 재적재 (Valve v3 스크립트 패턴 재사용 예상)
+- [ ] Speciality BOM(423행) vs Receiving(748행) 매칭 갭 확인 — Valve처럼 BOM 누락 카테고리(Tag 종류)가 있을 가능성
+
 ## 현재 상태 / 다음 할 일 (Valve 적용 사례 기준, 마지막 갱신: 2026-08-07)
 
 - [x] 통짜/NULL tag 버그 수정 및 검증 완료 (DB 반영됨, 1,117건)
