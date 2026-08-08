@@ -23,8 +23,6 @@ let db = {
     receiving: []
 };
 
-let _knownSystems = new Set(); // db.bom 로드 후 갱신, 전역 검색 시스템 매칭용
-
 // Material Shortage 탭 자동 갱신 타이머
 let shortageRefreshTimer = null;
 const SHORTAGE_REFRESH_INTERVAL_MS = 60 * 1000; // 60초
@@ -50,7 +48,6 @@ async function syncShortageData() {
                     qty: parseFloat(b.total_qty || b.qty) || 0
                 };
             }).filter(b => b.qty > 0 && b.key);
-            _knownSystems = new Set(db.bom.map(b => b.system).filter(Boolean).map(s => s.toUpperCase()));
         }
         if (recvRaw.length > 0) {
             db.receiving = recvRaw.map(r => {
@@ -577,7 +574,6 @@ async function syncFromSupabase() {
         }
 
         await loadPlUpdates();
-        _knownSystems = new Set(db.bom.map(b => b.system).filter(Boolean).map(s => s.toUpperCase()));
         // Shipping 캐시 무효화 — 전역 동기화 후 다음 탭 진입 시 재빌드
         _shippingData         = null;
         _spoolShippingCache   = null;
@@ -4836,49 +4832,7 @@ async function loadSupportTagDatalist() {
     _supportTagDatalistLoaded = true;
 }
 
-// The action of clicking Search ISO BOM
 function attachEventListeners() {
-    // Global Search
-    const globalSearchInput = document.getElementById('globalSearchInput');
-    if (globalSearchInput) {
-        globalSearchInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                const term = e.target.value.trim().toUpperCase();
-                if (!term) return;
-                
-                // Switch view and set search term
-                if (term.includes('PGU-DE') || term.includes('PL-')) {
-                    showSection('receiving');
-                    const plInput = document.getElementById('plItemSearch');
-                    if (plInput) plInput.value = term;
-                    renderReceivingTable();
-                } else if (_knownSystems.has(term)) {
-                    // System 정확 매칭 검색: ST, HP, LS, CH 등
-                    showSection('piping_bom');
-                    const sysEl = document.getElementById('bomSystemFilter');
-                    if (sysEl) {
-                        const match = [...sysEl.options].find(o => o.value.toUpperCase() === term);
-                        if (match) sysEl.value = match.value;
-                    }
-                    const bomInput = document.getElementById('bomIsoSearch');
-                    if (bomInput) bomInput.value = '';
-                    renderBomTable();
-                } else if (/^B\d/i.test(term) || term.includes('B0-') || term.includes('B1-') || term.includes('B2-') || term.includes('VLV')) {
-                    // ISO Drawing like 검색: B126, B0-ST, B227-HP 등
-                    showSection('piping_bom');
-                    const bomInput = document.getElementById('bomIsoSearch');
-                    if (bomInput) bomInput.value = term;
-                    renderBomTable();
-                } else {
-                    showSection('material_stock');
-                }
-            }
-        });
-    }
-
-    // Sync Button
-    const btnSync = document.getElementById('btnSyncData');
-    if (btnSync) btnSync.addEventListener('click', syncFromSupabase);
 
     // ── BOM Upload & Update ──────────────────────────────────────────
     let bomUploadRows = [];
@@ -5955,11 +5909,6 @@ function attachEventListeners() {
         bomCancelBtn.addEventListener('click', () => {
             document.getElementById('bomFormPanel').style.display = 'none';
         });
-    }
-
-    const btnResetData = document.getElementById('btnResetData');
-    if(btnResetData) {
-        btnResetData.addEventListener('click', () => location.reload());
     }
 
 
