@@ -2430,7 +2430,7 @@ function _buildRecMap() {
         .filter(r => (r.purpose === 'Permanent' || r.purpose === '') && isReceivingActive(r.plNo))
         .forEach(r => {
             if (!r.key) return;
-            if (!m[r.key]) m[r.key] = { qty: 0, desc: r.desc, unit: r.unit, category: r.category };
+            if (!m[r.key]) m[r.key] = { qty: 0, desc: r.desc, unit: r.unit, category: r.category, mat1: r.mat1, mat2: r.mat2, size: r.size, rating: r.rating };
             m[r.key].qty += r.qty;
         });
     return m;
@@ -2773,12 +2773,15 @@ function _enrichRow(key, bomMap, recMap, masterMap, mat12Map) {
         const tagInfo = db.bomTagMap[key] || {};
         const desc = tagInfo.fullDescription || (recEntry.desc !== '-' ? recEntry.desc : null) || '-';
         const item = window.extractItemFromDesc(desc);
-        const size = cat === 'Speciality'
+        // BOM(Tag) 매칭이 없는 항목(=Surplus 전용)은 desc에서 뽑을 게 없으므로 receiving 원본 컬럼으로 폴백
+        const descSize = cat === 'Speciality'
             ? (window.parseSpecialityDesc(desc).size || '-')
             : (window.extractDnSizeFromDesc(desc) || '-');
-        const rating = getRatingForMatCode(null, null, desc);
-        const mat1 = tagInfo.mat1 || '-';
-        const mat2 = tagInfo.mat2 || '-';
+        const size = (descSize !== '-') ? descSize : (recEntry.size || '-');
+        const descRating = getRatingForMatCode(null, null, desc);
+        const rating = (descRating !== '-') ? descRating : (recEntry.rating || '-');
+        const mat1 = tagInfo.mat1 || recEntry.mat1 || '-';
+        const mat2 = tagInfo.mat2 || recEntry.mat2 || '-';
         const unit = recEntry.unit || bomEntry.uom || 'EA';
         const bomQty = bomEntry.qty ?? 0;
         const recQty = recEntry.qty ?? 0;
