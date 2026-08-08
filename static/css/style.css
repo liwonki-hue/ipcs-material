@@ -49,10 +49,6 @@ ul { list-style: none; }
 
 /* Header */
 .top-header { height: 60px; background-color: var(--bg-panel); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; padding: 0 20px; box-shadow: var(--shadow-sm); z-index: 50; }
-.search-bar { display: flex; align-items: center; background-color: var(--bg-main); border-radius: 6px; padding: 6px 12px; width: 350px; border: 1px solid var(--border-color); }
-.search-bar i { color: var(--text-secondary); }
-.search-bar input { border: none; background: transparent; outline: none; padding: 6px; margin-left: 8px; width: 100%; font-family: var(--font-family); font-size: 16px; }
-.header-actions { display: flex; align-items: center; gap: 15px; }
 
 /* Views */
 .view-section { display: none; flex: 1; min-height: 0; padding: 14px 20px; overflow-y: auto; }
