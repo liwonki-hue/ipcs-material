@@ -1363,18 +1363,19 @@ async function loadTagStockBom(category) {
     let all = [];
     let from = 0;
     const step = 2000;
+    let ok = true;
     while (true) {
         const { data, error } = await supabaseClient.from('bom_detail')
             .select('tag, system, iso_dwg_no, line_no, full_description, mat1, mat2, qty')
             .eq('category', category)
             .range(from, from + step - 1);
-        if (error) { console.error(`loadTagStockBom(${category}) 조회 실패:`, error); break; }
+        if (error) { console.error(`loadTagStockBom(${category}) 조회 실패:`, error); ok = false; break; }
         if (!data || data.length === 0) break;
         all = all.concat(data);
         if (data.length < step) break;
         from += step;
     }
-    _tagStockBomCache[category] = all;
+    if (ok) _tagStockBomCache[category] = all; // 실패 시 캐싱하지 않아야 다음 호출에서 재시도됨(빈 배열도 truthy라 캐시되면 영구 고착)
     return all;
 }
 
@@ -2102,18 +2103,20 @@ async function loadSupportBomTagRows() {
     let all = [];
     let from = 0;
     const step = 2000;
+    let ok = true;
     while (true) {
         const { data, error } = await supabaseClient.from('support_bom')
             .select('support_tag, part_no, item, matl, size_or_type, qty')
             .range(from, from + step - 1);
-        if (error) { console.error('loadSupportBomTagRows 조회 실패:', error); break; }
+        if (error) { console.error('loadSupportBomTagRows 조회 실패:', error); ok = false; break; }
         if (!data || data.length === 0) break;
         all = all.concat(data);
         if (data.length < step) break;
         from += step;
     }
-    _mssSupportBomCache = all.filter(r => r.support_tag && r.support_tag.trim() !== '' && r.support_tag !== '-');
-    return _mssSupportBomCache;
+    const filtered = all.filter(r => r.support_tag && r.support_tag.trim() !== '' && r.support_tag !== '-');
+    if (ok) _mssSupportBomCache = filtered; // 실패 시 캐싱하지 않아야 다음 호출에서 재시도됨(빈 배열도 truthy라 캐시되면 영구 고착)
+    return filtered;
 }
 
 async function loadSupportReceivingRows() {
@@ -2121,18 +2124,19 @@ async function loadSupportReceivingRows() {
     let all = [];
     let from = 0;
     const step = 2000;
+    let ok = true;
     while (true) {
         const { data, error } = await supabaseClient.from('support_receiving')
             .select('support_tag, part_no, package_no, qty')
             .range(from, from + step - 1);
-        if (error) { console.error('loadSupportReceivingRows 조회 실패:', error); break; }
+        if (error) { console.error('loadSupportReceivingRows 조회 실패:', error); ok = false; break; }
         if (!data || data.length === 0) break;
         all = all.concat(data);
         if (data.length < step) break;
         from += step;
     }
-    _mssSupportRecvCache = all;
-    return _mssSupportRecvCache;
+    if (ok) _mssSupportRecvCache = all; // 실패 시 캐싱하지 않아야 다음 호출에서 재시도됨
+    return all;
 }
 
 function _supportAggKey(b) {
