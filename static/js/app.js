@@ -456,7 +456,7 @@ async function fetchAllRows(tableName) {
 // 순차 조회 + 페이지별 재시도로 느리더라도 완전하고 정확한 매핑을 보장 (Material Finding 탭 진입 시 1회만 실행)
 async function fetchIsoBoreMap() {
     const map = {};
-    let from = 0, step = 5000, hasMore = true;
+    let from = 0, step = 5000, hasMore = true, ok = true;
     while (hasMore) {
         let data = null, error = null;
         for (let attempt = 0; attempt < 3 && !data; attempt++) {
@@ -464,7 +464,7 @@ async function fetchIsoBoreMap() {
             data = res.data; error = res.error;
             if (error) console.warn(`fetchIsoBoreMap retry (attempt ${attempt + 1}) at offset ${from}:`, error.message);
         }
-        if (error && !data) { console.error('fetchIsoBoreMap gave up at offset', from, error); break; }
+        if (error && !data) { console.error('fetchIsoBoreMap gave up at offset', from, error); ok = false; break; }
         if (!data || data.length === 0) { hasMore = false; break; }
         data.forEach(r => {
             const bore = window.getBoreFromLineNo(r.line_no);
@@ -475,7 +475,7 @@ async function fetchIsoBoreMap() {
         from += step;
         if (data.length < step) hasMore = false;
     }
-    return map;
+    return { map, ok };
 }
 
 async function syncFromSupabase() {
@@ -4708,7 +4708,11 @@ async function renderSupportBulkTable() {
 let _isoBoreMapPromise = null; // Material Finding 탭 최초 진입 시에만 1회 지연 로딩(무거운 bom 전체 스캔)
 function loadIsoBoreMapOnce() {
     if (!_isoBoreMapPromise) {
-        _isoBoreMapPromise = fetchIsoBoreMap().then(map => { db.isoBoreMap = map; return map; });
+        _isoBoreMapPromise = fetchIsoBoreMap().then(({ map, ok }) => {
+            db.isoBoreMap = map;
+            if (!ok) _isoBoreMapPromise = null; // 재시도 다 실패했으면 캐싱하지 않아야 다음 진입 시 재시도됨
+            return map;
+        });
     }
     return _isoBoreMapPromise;
 }
@@ -5949,26 +5953,29 @@ async function initShipping() {
             await loadPlUpdates();
         }
 
-        // spool_receiving: 캐시 있으면 재사용, 없을 때만 조회
+        // spool_receiving: 캐시 있으면 재사용, 없을 때만 조회. 실패 시 캐싱하지 않아야 다음 호출에서
+        // 재시도됨(에러를 무시하고 null||[] 로 캐싱하면 빈 배열이 truthy라 영구 고착됨)
         if (!_spoolShippingCache && supabaseClient) {
-            const { data: spoolRows } = await supabaseClient
+            const { data: spoolRows, error: spoolErr } = await supabaseClient
                 .from('spool_receiving')
                 .select('pkg_seq,pkg_no,description,qty,unit,purpose,system')
                 .order('pkg_seq', { ascending: true })
                 .order('id', { ascending: true })
                 .limit(5000);
-            _spoolShippingCache = spoolRows || [];
+            if (spoolErr) console.error('spool_receiving(Shipping) 조회 실패:', spoolErr);
+            else _spoolShippingCache = spoolRows || [];
         }
 
-        // support_packing_list: 캐시 있으면 재사용, 없을 때만 조회
+        // support_packing_list: 캐시 있으면 재사용, 없을 때만 조회 (위와 동일한 이유로 실패 시 미캐싱)
         if (!_supportShippingCache && supabaseClient) {
-            const { data: suppRows } = await supabaseClient
+            const { data: suppRows, error: suppErr } = await supabaseClient
                 .from('support_packing_list')
                 .select('pkg,package_no,description,qty,unit,block_info')
                 .order('pkg', { ascending: true })
                 .order('package_no', { ascending: true })
                 .limit(500);
-            _supportShippingCache = suppRows || [];
+            if (suppErr) console.error('support_packing_list(Shipping) 조회 실패:', suppErr);
+            else _supportShippingCache = suppRows || [];
         }
 
         const spoolShipping = [];
