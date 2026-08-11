@@ -28,6 +28,48 @@ let shortageRefreshTimer = null;
 const SHORTAGE_REFRESH_INTERVAL_MS = 60 * 1000; // 60초
 let _stockFiltersInitialized = false;
 
+// bom_agg 원본 행 → db.bom 행 매핑 (syncShortageData/syncFromSupabase 공용)
+// Valve/Speciality는 mat_code가 없어(Tag가 고유 키) matCode 대신 tag를 key로 사용
+function _mapBomAggRow(b) {
+    const matCode = (b.mat_code || '').trim().toUpperCase();
+    const tag = (b.tag || '').trim().toUpperCase();
+    return {
+        matCode, tag, key: matCode || tag,
+        category: b.category || '-',
+        system: b.system,
+        uom: b.uom || 'EA',
+        qty: parseFloat(b.total_qty || b.qty) || 0
+    };
+}
+
+// receiving 원본 행 → db.receiving 행 매핑 (syncShortageData/syncFromSupabase 공용)
+// Untagged Items(부속품/공구, {PKG NO}-ACC-nnn / -SPARE-nnn 합성 Tag)는 BOM에
+// 대응 항목이 없어 key로 쓰면 Surplus에 대량 오탐이 생김 — 매칭 키에서 제외
+function _mapReceivingRow(r) {
+    const matCode = (r.mat_code || '').trim().toUpperCase();
+    const tagRaw = r.tag || '-';
+    const tag = tagRaw.trim().toUpperCase();
+    const isSynthetic = /-ACC-\d|-SPARE-\d/i.test(tagRaw);
+    return {
+        id:       r.id,
+        matCode,  tag: tagRaw,
+        key:      matCode || (isSynthetic ? '' : tag),
+        category: r.category || '-',
+        docNo:    r.doc_no || '-',
+        plNo:     r.pkg_no || '-',
+        desc:     r.full_description || '-',
+        unit:     r.unit || 'EA',
+        qty:      parseFloat(r.qty) || 0,
+        purpose:  r.purpose || '',
+        opType:   r.op_type || '-',
+        valveType: r.valve_type || '-',
+        mat1:     r.mat1 || '-',
+        mat2:     r.mat2 || '-',
+        size:     r.size || '-',
+        rating:   r.rating || '-',
+    };
+}
+
 async function syncShortageData() {
     if (!supabaseClient) return;
     try {
@@ -36,46 +78,10 @@ async function syncShortageData() {
             fetchAllRows('receiving')
         ]);
         if (bomRaw.length > 0) {
-            db.bom = bomRaw.map(b => {
-                const matCode = (b.mat_code || '').trim().toUpperCase();
-                const tag = (b.tag || '').trim().toUpperCase();
-                // Valve/Speciality는 mat_code가 없어(Tag가 고유 키) matCode 대신 tag를 key로 사용
-                return {
-                    matCode, tag, key: matCode || tag,
-                    category: b.category || '-',
-                    system: b.system,
-                    uom: b.uom || 'EA',
-                    qty: parseFloat(b.total_qty || b.qty) || 0
-                };
-            }).filter(b => b.qty > 0 && b.key);
+            db.bom = bomRaw.map(_mapBomAggRow).filter(b => b.qty > 0 && b.key);
         }
         if (recvRaw.length > 0) {
-            db.receiving = recvRaw.map(r => {
-                const matCode = (r.mat_code || '').trim().toUpperCase();
-                const tagRaw = r.tag || '-';
-                const tag = tagRaw.trim().toUpperCase();
-                // Untagged Items(부속품/공구, {PKG NO}-ACC-nnn / -SPARE-nnn 합성 Tag)는 BOM에
-                // 대응 항목이 없어 key로 쓰면 Surplus에 대량 오탐이 생김 — 매칭 키에서 제외
-                const isSynthetic = /-ACC-\d|-SPARE-\d/i.test(tagRaw);
-                return {
-                    id:       r.id,
-                    matCode,  tag: tagRaw,
-                    key:      matCode || (isSynthetic ? '' : tag),
-                    category: r.category || '-',
-                    docNo:    r.doc_no || '-',
-                    plNo:     r.pkg_no || '-',
-                    desc:     r.full_description || '-',
-                    unit:     r.unit || 'EA',
-                    qty:      parseFloat(r.qty) || 0,
-                    purpose:  r.purpose || '',
-                    opType:   r.op_type || '-',
-                    valveType: r.valve_type || '-',
-                    mat1:     r.mat1 || '-',
-                    mat2:     r.mat2 || '-',
-                    size:     r.size || '-',
-                    rating:   r.rating || '-',
-                };
-            }).filter(r => r.qty > 0);
+            db.receiving = recvRaw.map(_mapReceivingRow).filter(r => r.qty > 0);
             invalidateRecvPurposeMap();
         }
         renderShortageTable();
@@ -502,18 +508,7 @@ async function syncFromSupabase() {
         }
 
         if (bomRaw.length > 0) {
-            db.bom = bomRaw.map(b => {
-                const matCode = (b.mat_code || '').trim().toUpperCase();
-                const tag = (b.tag || '').trim().toUpperCase();
-                // Valve/Speciality는 mat_code가 없어(Tag가 고유 키) matCode 대신 tag를 key로 사용
-                return {
-                    matCode, tag, key: matCode || tag,
-                    category: b.category || '-',
-                    system: b.system,
-                    uom: b.uom || 'EA',
-                    qty: parseFloat(b.total_qty || b.qty) || 0
-                };
-            }).filter(b => b.qty > 0 && b.key);
+            db.bom = bomRaw.map(_mapBomAggRow).filter(b => b.qty > 0 && b.key);
         }
         bomDescRaw.forEach(b => {
             if (b.mat_code && b.full_description) {
@@ -544,32 +539,7 @@ async function syncFromSupabase() {
         })).filter(r => r.iso !== '-');
         
         if (recvRaw.length > 0) {
-            db.receiving = recvRaw.map(r => {
-                const matCode = (r.mat_code || '').trim().toUpperCase();
-                const tagRaw = r.tag || '-';
-                const tag = tagRaw.trim().toUpperCase();
-                // Untagged Items(부속품/공구, {PKG NO}-ACC-nnn / -SPARE-nnn 합성 Tag)는 BOM에
-                // 대응 항목이 없어 key로 쓰면 Surplus에 대량 오탐이 생김 — 매칭 키에서 제외
-                const isSynthetic = /-ACC-\d|-SPARE-\d/i.test(tagRaw);
-                return {
-                    id:       r.id,
-                    matCode,  tag: tagRaw,
-                    key:      matCode || (isSynthetic ? '' : tag),
-                    category: r.category || '-',
-                    docNo:    r.doc_no || '-',
-                    plNo:     r.pkg_no || '-',
-                    desc:     r.full_description || '-',
-                    unit:     r.unit || 'EA',
-                    qty:      parseFloat(r.qty) || 0,
-                    purpose:  r.purpose || '',
-                    opType:   r.op_type || '-',
-                    valveType: r.valve_type || '-',
-                    mat1:     r.mat1 || '-',
-                    mat2:     r.mat2 || '-',
-                    size:     r.size || '-',
-                    rating:   r.rating || '-',
-                };
-            }).filter(r => r.qty > 0);
+            db.receiving = recvRaw.map(_mapReceivingRow).filter(r => r.qty > 0);
             invalidateRecvPurposeMap();
         }
 
@@ -4342,26 +4312,25 @@ function renderBulkOthersTable() {
 
 // Valve Receiving — MatCode가 없는 카테고리라 공용 _renderRecvCore(MatCode 기준) 대신
 // Tag/Operation Type/Valve Type/Mat1/Mat2/Size/Rating 자체 필드를 직접 사용하는 전용 렌더러.
-function renderTagValveTable() {
-    const tbody = document.querySelector('#valTable tbody');
-    if (!tbody) return;
+// Valve/Spare Receiving 공용 필터+정렬 — 화면 렌더러(_renderValveSpareCore)와 Export(_buildValveSpareExportRows)가
+// 동일한 조건을 재사용해 "화면엔 필터 걸었는데 Export는 전체가 나오는" 불일치를 원천 차단
+function _filterValveSpareRows(cfg) {
+    const p = cfg.idPrefix;
+    const search   = (document.getElementById(`${p}ItemSearch`)?.value || '').trim().toUpperCase();
+    const doc      = document.getElementById(`${p}DocFilter`)?.value    || 'All';
+    const pkg      = document.getElementById(`${p}PkgFilter`)?.value    || 'All';
+    const opTypeF  = document.getElementById(`${p}OpTypeFilter`)?.value || 'All';
+    const itemF    = document.getElementById(`${p}ItemFilter`)?.value   || 'All';
+    const mat1F    = document.getElementById(`${p}Mat1Filter`)?.value   || 'All';
+    const mat2F    = document.getElementById(`${p}Mat2Filter`)?.value   || 'All';
+    const sizeF    = document.getElementById(`${p}SizeFilter`)?.value   || 'All';
+    const statusF  = document.getElementById(`${p}StatusFilter`)?.value || 'All';
 
-    const search   = (document.getElementById('valItemSearch')?.value || '').trim().toUpperCase();
-    const doc      = document.getElementById('valDocFilter')?.value    || 'All';
-    const pkg      = document.getElementById('valPkgFilter')?.value    || 'All';
-    const opTypeF  = document.getElementById('valOpTypeFilter')?.value || 'All';
-    const itemF    = document.getElementById('valItemFilter')?.value   || 'All';
-    const mat1F    = document.getElementById('valMat1Filter')?.value   || 'All';
-    const mat2F    = document.getElementById('valMat2Filter')?.value   || 'All';
-    const sizeF    = document.getElementById('valSizeFilter')?.value   || 'All';
-    const statusF  = document.getElementById('valStatusFilter')?.value || 'All';
-
-    const data = db.receiving.filter(r => {
-        if (r.category !== 'Valve') return false;
-        if (isSpareBodyRow(r)) return false; // Spare 예비 밸브 본체는 별도 Spare 탭에서 관리
+    return db.receiving.filter(r => {
+        if (!cfg.rowFilter(r)) return false;
         const item = window.extractItemFromDesc(r.valveType);
         const matchSearch = !search
-            || (r.tag || '').toUpperCase().includes(search)
+            || (cfg.includeTagInSearch && (r.tag || '').toUpperCase().includes(search))
             || (r.valveType || '').toUpperCase().includes(search)
             || (r.desc || '').toUpperCase().includes(search);
         const matchDoc    = doc === 'All' || r.docNo === doc;
@@ -4375,8 +4344,16 @@ function renderTagValveTable() {
         const matchStatusF = statusF === 'All' || pkgSt === statusF;
         return matchSearch && matchDoc && matchPkg && matchOpType && matchItemF && matchMat1F && matchMat2F && matchSizeF && matchStatusF;
     }).sort((a, b) => a.docNo.localeCompare(b.docNo) || a.plNo.localeCompare(b.plNo));
+}
 
-    const page = currentValPage;
+// Valve/Spare Receiving 테이블 공용 렌더러 — 컬럼 레이아웃이 동일하고 행 predicate·TAG 컬럼
+// 표시만 다름(id는 idPrefix로 일괄 유도, val*/spr* 네이밍이 서로 대응됨)
+function _renderValveSpareCore(cfg) {
+    const tbody = document.querySelector(`#${cfg.tableId} tbody`);
+    if (!tbody) return;
+
+    const data = _filterValveSpareRows(cfg);
+    const page = cfg.getPage();
     const rows = data.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map(r => {
         const item = window.extractItemFromDesc(r.valveType);
         const pkgStatus  = (_plUpdatesCache[r.plNo] || {}).status || '';
@@ -4385,7 +4362,7 @@ function renderTagValveTable() {
         return `<tr${isOnSite ? '' : ' style="color:#999;"'}>
             <td style="text-align:center;white-space:nowrap;">${r.docNo}</td>
             <td style="text-align:center;white-space:nowrap;">${r.plNo}</td>
-            <td style="text-align:center;">${r.tag && r.tag !== '-' ? r.tag : '-'}</td>
+            <td style="text-align:center;">${cfg.tagCell(r)}</td>
             <td style="text-align:center;white-space:nowrap;">${r.opType}</td>
             <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.valveType || ''}">${r.valveType}</td>
             <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.desc || ''}">${r.desc || '-'}</td>
@@ -4400,7 +4377,29 @@ function renderTagValveTable() {
         </tr>`;
     });
     tbody.innerHTML = rows.join('');
-    renderPagination('valPagination', page, Math.max(1, Math.ceil(data.length / PAGE_SIZE)), '_valGoPage');
+    renderPagination(cfg.paginationId, page, Math.max(1, Math.ceil(data.length / PAGE_SIZE)), cfg.goPageFn);
+}
+
+// Valve/Spare 화면 렌더러·Export가 공유하는 설정 (필터 id 접두사, 행 predicate, TAG 컬럼 표시)
+const VALVE_CFG = {
+    tableId: 'valTable', idPrefix: 'val',
+    rowFilter: r => r.category === 'Valve' && !isSpareBodyRow(r), // Spare 예비 밸브 본체는 별도 Spare 탭에서 관리
+    includeTagInSearch: true,
+    tagCell: r => (r.tag && r.tag !== '-' ? r.tag : '-'),
+    getPage: () => currentValPage,
+    paginationId: 'valPagination', goPageFn: '_valGoPage'
+};
+const SPARE_CFG = {
+    tableId: 'sprTable', idPrefix: 'spr',
+    rowFilter: r => isSpareBodyRow(r),
+    includeTagInSearch: false,
+    tagCell: () => 'Spare',
+    getPage: () => currentSprPage,
+    paginationId: 'sprPagination', goPageFn: '_sprGoPage'
+};
+
+function renderTagValveTable() {
+    _renderValveSpareCore(VALVE_CFG);
 }
 
 function renderTagSpecialityTable() {
@@ -4419,62 +4418,7 @@ function renderTagSpecialityTable() {
 // Spare Receiving — Valve/Speciality의 SPARE 합성 태그 예비 밸브/기기 본체만 모아서 별도 관리.
 // TAG NO 컬럼은 실제 합성 태그 대신 고정 텍스트 "Spare"로 표시한다.
 function renderTagSpareTable() {
-    const tbody = document.querySelector('#sprTable tbody');
-    if (!tbody) return;
-
-    const search   = (document.getElementById('sprItemSearch')?.value || '').trim().toUpperCase();
-    const doc      = document.getElementById('sprDocFilter')?.value    || 'All';
-    const pkg      = document.getElementById('sprPkgFilter')?.value    || 'All';
-    const opTypeF  = document.getElementById('sprOpTypeFilter')?.value || 'All';
-    const itemF    = document.getElementById('sprItemFilter')?.value   || 'All';
-    const mat1F    = document.getElementById('sprMat1Filter')?.value   || 'All';
-    const mat2F    = document.getElementById('sprMat2Filter')?.value   || 'All';
-    const sizeF    = document.getElementById('sprSizeFilter')?.value   || 'All';
-    const statusF  = document.getElementById('sprStatusFilter')?.value || 'All';
-
-    const data = db.receiving.filter(r => {
-        if (!isSpareBodyRow(r)) return false;
-        const item = window.extractItemFromDesc(r.valveType);
-        const matchSearch = !search
-            || (r.valveType || '').toUpperCase().includes(search)
-            || (r.desc || '').toUpperCase().includes(search);
-        const matchDoc    = doc === 'All' || r.docNo === doc;
-        const matchPkg    = pkg === 'All' || r.plNo  === pkg;
-        const matchOpType = opTypeF === 'All' || r.opType === opTypeF;
-        const matchItemF  = itemF === 'All' || item === itemF;
-        const matchMat1F  = mat1F === 'All' || r.mat1 === mat1F;
-        const matchMat2F  = mat2F === 'All' || r.mat2 === mat2F;
-        const matchSizeF  = sizeF === 'All' || r.size === sizeF;
-        const pkgSt       = (_plUpdatesCache[r.plNo] || {}).status || '';
-        const matchStatusF = statusF === 'All' || pkgSt === statusF;
-        return matchSearch && matchDoc && matchPkg && matchOpType && matchItemF && matchMat1F && matchMat2F && matchSizeF && matchStatusF;
-    }).sort((a, b) => a.docNo.localeCompare(b.docNo) || a.plNo.localeCompare(b.plNo));
-
-    const page = currentSprPage;
-    const rows = data.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map(r => {
-        const item = window.extractItemFromDesc(r.valveType);
-        const pkgStatus  = (_plUpdatesCache[r.plNo] || {}).status || '';
-        const isOnSite   = pkgStatus === 'On-Site';
-        const statusColor = pkgStatus === 'On-Site' ? '#2e7d32' : pkgStatus === 'Shipping' ? '#1565c0' : pkgStatus === 'Preparing' ? '#888' : '#bbb';
-        return `<tr${isOnSite ? '' : ' style="color:#999;"'}>
-            <td style="text-align:center;white-space:nowrap;">${r.docNo}</td>
-            <td style="text-align:center;white-space:nowrap;">${r.plNo}</td>
-            <td style="text-align:center;">Spare</td>
-            <td style="text-align:center;white-space:nowrap;">${r.opType}</td>
-            <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.valveType || ''}">${r.valveType}</td>
-            <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.desc || ''}">${r.desc || '-'}</td>
-            <td style="text-align:center;font-weight:600;white-space:nowrap;">${item}</td>
-            <td style="text-align:center;">${r.mat1}</td>
-            <td style="text-align:center;">${r.mat2}</td>
-            <td style="text-align:center;font-weight:600;">${r.size}</td>
-            <td style="text-align:center;">${r.rating}</td>
-            <td style="white-space:nowrap;text-align:center;">${r.unit || 'EA'}</td>
-            <td style="white-space:nowrap;text-align:center;">${Math.round(r.qty).toLocaleString()}</td>
-            <td style="text-align:center;white-space:nowrap;font-weight:600;color:${statusColor};">${pkgStatus || '—'}</td>
-        </tr>`;
-    });
-    tbody.innerHTML = rows.join('');
-    renderPagination('sprPagination', page, Math.max(1, Math.ceil(data.length / PAGE_SIZE)), '_sprGoPage');
+    _renderValveSpareCore(SPARE_CFG);
 }
 
 function renderActiveReceivingTab() {
@@ -5241,44 +5185,15 @@ function attachEventListeners() {
         _writeRecvExcel(rows, 'Receiving', `Others_Receiving_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
     });
 
-    // Valve Export: MatCode가 없는 카테고리라 화면 렌더러(renderTagValveTable)와 동일하게
-    // Operation Type/Valve Type/Mat1/Mat2 등 자체 필드를 직접 사용 (Tag/BOM MatCode 기반 계산 아님)
-    function _buildValveExportRows() {
-        const search  = (document.getElementById('valItemSearch')?.value || '').trim().toUpperCase();
-        const doc     = document.getElementById('valDocFilter')?.value    || 'All';
-        const pkg     = document.getElementById('valPkgFilter')?.value    || 'All';
-        const opTypeF = document.getElementById('valOpTypeFilter')?.value || 'All';
-        const itemF   = document.getElementById('valItemFilter')?.value   || 'All';
-        const mat1F   = document.getElementById('valMat1Filter')?.value   || 'All';
-        const mat2F   = document.getElementById('valMat2Filter')?.value   || 'All';
-        const sizeF   = document.getElementById('valSizeFilter')?.value   || 'All';
-        const statusF = document.getElementById('valStatusFilter')?.value || 'All';
-
-        return db.receiving.filter(r => {
-            if (r.category !== 'Valve') return false;
-            if (isSpareBodyRow(r)) return false; // Spare 예비 본체는 Export에서도 제외 (화면과 일치)
-            const item = window.extractItemFromDesc(r.valveType);
-            const matchSearch = !search
-                || (r.tag || '').toUpperCase().includes(search)
-                || (r.valveType || '').toUpperCase().includes(search)
-                || (r.desc || '').toUpperCase().includes(search);
-            const matchDoc    = doc === 'All' || r.docNo === doc;
-            const matchPkg    = pkg === 'All' || r.plNo  === pkg;
-            const matchOpType = opTypeF === 'All' || r.opType === opTypeF;
-            const matchItemF  = itemF === 'All' || item === itemF;
-            const matchMat1F  = mat1F === 'All' || r.mat1 === mat1F;
-            const matchMat2F  = mat2F === 'All' || r.mat2 === mat2F;
-            const matchSizeF  = sizeF === 'All' || r.size === sizeF;
-            const pkgSt       = (_plUpdatesCache[r.plNo] || {}).status || '';
-            const matchStatusF = statusF === 'All' || pkgSt === statusF;
-            return matchSearch && matchDoc && matchPkg && matchOpType && matchItemF && matchMat1F && matchMat2F && matchSizeF && matchStatusF;
-        }).sort((a, b) => a.docNo.localeCompare(b.docNo) || a.plNo.localeCompare(b.plNo))
-        .map(r => {
+    // Valve/Spare Export 공용 — 화면 렌더러와 동일한 _filterValveSpareRows로 필터 상태를 그대로 반영
+    // (MatCode가 없는 카테고리라 Operation Type/Valve Type/Mat1/Mat2 등 자체 필드를 직접 사용)
+    function _buildValveSpareExportRows(cfg) {
+        return _filterValveSpareRows(cfg).map(r => {
             const pkgStatus = (_plUpdatesCache[r.plNo] || {}).status || '-';
             return {
                 'PKG':     r.docNo || '-',
                 'PKG NO':  r.plNo  || '-',
-                'TAG NO':  r.tag && r.tag !== '-' ? r.tag : '-',
+                'TAG NO':  cfg.tagCell(r),
                 'Operation Type': r.opType || '-',
                 'Valve Type': r.valveType || '-',
                 'Description': r.desc || '-',
@@ -5306,38 +5221,14 @@ function attachEventListeners() {
     const btnExportVal = document.getElementById('btnExportVal');
     if (btnExportVal) {
         btnExportVal.addEventListener('click', () => {
-            _exportTagRecvRows(_buildValveExportRows(), 'Valve', 'Valve_Receiving');
-        });
-    }
-
-    // Spare는 MatCode가 없고 표시 컬럼(Operation Type/Valve Type/Mat 1/Mat 2)이 Valve 화면과 동일하므로
-    // 화면 표시값을 그대로 내보낸다 (_buildValveExportRows와 동일한 방식).
-    function _buildSpareExportRows() {
-        return db.receiving.filter(r => isSpareBodyRow(r)).map(r => {
-            const pkgStatus = (_plUpdatesCache[r.plNo] || {}).status || '-';
-            return {
-                'PKG':     r.docNo || '-',
-                'PKG NO':  r.plNo  || '-',
-                'TAG NO':  'Spare',
-                'Operation Type': r.opType || '-',
-                'Valve Type': r.valveType || '-',
-                'Description': r.desc || '-',
-                'Item':    window.extractItemFromDesc(r.valveType),
-                'Mat 1':   r.mat1 || '-',
-                'Mat 2':   r.mat2 || '-',
-                'Size':    r.size || '-',
-                'Rating':  r.rating || '-',
-                'Unit':    r.unit || 'EA',
-                'Qty':     r.qty || 0,
-                'Status':  pkgStatus,
-            };
+            _exportTagRecvRows(_buildValveSpareExportRows(VALVE_CFG), 'Valve', 'Valve_Receiving');
         });
     }
 
     const btnExportSpr = document.getElementById('btnExportSpr');
     if (btnExportSpr) {
         btnExportSpr.addEventListener('click', () => {
-            _exportTagRecvRows(_buildSpareExportRows(), 'Spare', 'Spare_Receiving');
+            _exportTagRecvRows(_buildValveSpareExportRows(SPARE_CFG), 'Spare', 'Spare_Receiving');
         });
     }
 
