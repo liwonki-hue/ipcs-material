@@ -190,7 +190,7 @@ window.getCategory = function(desc, matCode) {
     if (d.includes('GASKET') || d.includes('BOLT') || /\bNUT\b/.test(d) || m.startsWith('GSKT-') || m.startsWith('STB-') || m.startsWith('NUT-')) return 'Others';
 
     // 6. Fitting Detection
-    if (d.includes('ELBOW') || d.includes('TEE') || d.includes('REDUCER') || d.includes('CAP') || d.includes('OLET') || d.includes('FLANGE') || d.includes('NIPPLE') || d.includes('COUPLING') || d.includes('UNION') || d.includes('BLIND') || d.includes('FLN') || d.includes('EL9') || d.includes('EL4') || m.startsWith('ELB-') || m.startsWith('TEE-') || m.startsWith('RED-') || m.startsWith('CAP-') || m.startsWith('FLN-') || m.startsWith('PIN-')) return 'Fitting';
+    if (d.includes('ELBOW') || d.includes('TEE') || d.includes('REDUCER') || d.includes('CAP') || d.includes('OLET') || d.includes('FLANGE') || d.includes('NIPPLE') || d.includes('COUPLING') || d.includes('UNION') || d.includes('BLIND') || d.includes('FLN') || d.includes('EL9') || d.includes('EL4') || m.startsWith('ELB-') || m.startsWith('TEE-') || m.startsWith('RED-') || m.startsWith('CAP-') || m.startsWith('FLN-') || m.startsWith('PIN-') || m.startsWith('CPF-') || m.startsWith('CPH-') || m.startsWith('CPU-') || m.startsWith('SWC-') || m.startsWith('SWE-')) return 'Fitting';
 
     return 'Others';
 };
