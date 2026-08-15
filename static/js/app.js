@@ -2420,6 +2420,17 @@ function _buildMasterMap() {
 // 실제 Rating 패턴(CL150/S40/SCH40/XS/XXS/STD 등)일 때만 사용. STB는 matcode_master의
 // class_desc 컬럼 자체에 재질 마감 라벨(HDG/ALLOY/SS304 등)이 들어있어(Rating 아님) 제외.
 const RATING_SEGMENT_RE = /^(CL\d+|SCH\d+|S\d+|XS|XXS|STD)$/i;
+
+// Mat1/Mat2(Receiving Bulk 탭): bom_mat12_agg는 bom에 있는 mat_code만 커버 —
+// BOM에 없는 사이즈/길이 변형으로 입고된 STB는 여기서 빠짐. STB는 matcode_master의
+// class_desc(재질 마감 라벨)=mat1, matl_desc(A193-Bx 규격)=mat2로 필드 의미가 반전돼
+// 있어(위 rating 주석과 동일 이유) 다른 카테고리와 같이 다룰 수 없음 — STB 전용 폴백.
+function getStbMat1Mat2Fallback(matCode, masterMap) {
+    if (!/^STB-/i.test(matCode || '')) return null;
+    const mData = masterMap && masterMap[matCode];
+    if (!mData) return null;
+    return { mat1: mData.classDesc || '-', mat2: mData.matlDesc || '-' };
+}
 function getRatingForMatCode(matCode, masterMap, fullDescription) {
     const mData = (masterMap && masterMap[matCode]) || {};
     const isStb = /^STB-/i.test(matCode || '');
@@ -4098,7 +4109,7 @@ async function _computeRecvCoreData(cfg) {
             : window.extractSizeFromLineNo(db.bomTagMap[(r.tag||'').toUpperCase()]?.lineNo) === sizeF);
         const pkgSt        = (_plUpdatesCache[r.plNo] || {}).status || '';
         const matchStatusF = statusF === 'All' || pkgSt === statusF;
-        const m12          = splitMat ? (mat12Map[effMat] || {}) : {};
+        const m12          = splitMat ? (mat12Map[effMat] || getStbMat1Mat2Fallback(effMat, masterMap) || {}) : {};
         const matchMat1    = mat1F   === 'All' || (m12.mat1 || '-') === mat1F;
         const matchMat2    = mat2F   === 'All' || (m12.mat2 || '-') === mat2F;
         const matchRating  = ratingF === 'All' || getRatingForMatCode(effMat, masterMap) === ratingF;
@@ -4147,7 +4158,7 @@ function _buildRecvRowFields(r, { masterMap, mat12Map, splitMat }) {
     const mcParts = (effMat || '').split('-');
     const matl   = mData.matlDesc || mcParts[1] || '-';
     const rating = getRatingForMatCode(effMat, masterMap);
-    const m12    = splitMat ? (mat12Map[effMat] || {}) : {};
+    const m12    = splitMat ? (mat12Map[effMat] || getStbMat1Mat2Fallback(effMat, masterMap) || {}) : {};
     const mat1Val = m12.mat1 || '-';
     const mat2Val = m12.mat2 || '-';
 
