@@ -82,7 +82,6 @@ async function syncShortageData() {
         }
         if (recvRaw.length > 0) {
             db.receiving = recvRaw.map(_mapReceivingRow).filter(r => r.qty > 0);
-            invalidateRecvPurposeMap();
         }
         renderShortageTable();
     } catch (e) {
@@ -542,7 +541,6 @@ async function syncFromSupabase() {
         
         if (recvRaw.length > 0) {
             db.receiving = recvRaw.map(_mapReceivingRow).filter(r => r.qty > 0);
-            invalidateRecvPurposeMap();
         }
 
         await loadPlUpdates();
@@ -4092,7 +4090,7 @@ async function _computeRecvCoreData(cfg) {
 
     const data = db.receiving.filter(r => {
         if (isSpareBodyRow(r)) return false; // Spare 예비 본체는 별도 Spare 탭에서 관리
-        const matchSearch  = !search || (r.matCode||'').toUpperCase().includes(search) || r.plNo.toUpperCase().includes(search) || (r.category||'').toUpperCase().includes(search) || r.desc.toUpperCase().includes(search);
+        const matchSearch  = !search || (r.matCode||'').toUpperCase().includes(search) || r.plNo.toUpperCase().includes(search) || (r.category||'').toUpperCase().includes(search) || r.desc.toUpperCase().includes(search) || (r.tag||'').toUpperCase().includes(search);
         const matchDoc     = doc  === 'All' || r.docNo === doc;
         const matchPkg     = pkg  === 'All' || r.plNo  === pkg;
         const matchForcedCat = !Array.isArray(cfg.forcedCats) || cfg.forcedCats.includes(r.category);
@@ -4108,7 +4106,8 @@ async function _computeRecvCoreData(cfg) {
         const matchSizeF = sizeF === 'All' || (_msz && _msz !== '-' ? _msz === sizeF
             : window.extractSizeFromLineNo(db.bomTagMap[(r.tag||'').toUpperCase()]?.lineNo) === sizeF);
         const pkgSt        = (_plUpdatesCache[r.plNo] || {}).status || '';
-        const matchStatusF = statusF === 'All' || pkgSt === statusF;
+        const pkgIssueDateF = (_plUpdatesCache[r.plNo] || {}).issue_date || '';
+        const matchStatusF = statusF === 'All' || (statusF === 'Issued' ? !!pkgIssueDateF : pkgSt === statusF);
         const m12          = splitMat ? (mat12Map[effMat] || getStbMat1Mat2Fallback(effMat, masterMap) || {}) : {};
         const matchMat1    = mat1F   === 'All' || (m12.mat1 || '-') === mat1F;
         const matchMat2    = mat2F   === 'All' || (m12.mat2 || '-') === mat2F;
@@ -4162,9 +4161,10 @@ function _buildRecvRowFields(r, { masterMap, mat12Map, splitMat }) {
     const mat1Val = m12.mat1 || '-';
     const mat2Val = m12.mat2 || '-';
 
-    const pkgStatus  = (_plUpdatesCache[r.plNo] || {}).status || '';
+    const pkgStatus    = (_plUpdatesCache[r.plNo] || {}).status || '';
+    const pkgIssueDate = (_plUpdatesCache[r.plNo] || {}).issue_date || '';
 
-    return { tagInfo, effMat, displayCat, catForBadge, item, flangeType, matl, mat1Val, mat2Val, size, rating, pkgStatus };
+    return { tagInfo, effMat, displayCat, catForBadge, item, flangeType, matl, mat1Val, mat2Val, size, rating, pkgStatus, pkgIssueDate };
 }
 
 async function _renderRecvCore(cfg) {
@@ -4182,8 +4182,9 @@ async function _renderRecvCore(cfg) {
     const rows = data.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map(r => {
         const f = _buildRecvRowFields(r, { masterMap, mat12Map, splitMat });
         const catBadge = getCatBadge(f.catForBadge);
-        const isOnSite   = f.pkgStatus === 'On-Site';
-        const statusColor = f.pkgStatus === 'On-Site' ? '#2e7d32' : f.pkgStatus === 'Shipping' ? '#1565c0' : f.pkgStatus === 'Preparing' ? '#888' : '#bbb';
+        const isOnSite   = f.pkgStatus === 'On-Site' || !!f.pkgIssueDate;
+        const statusColor = f.pkgIssueDate ? '#2e7d32' : f.pkgStatus === 'On-Site' ? '#2e7d32' : f.pkgStatus === 'Shipping' ? '#1565c0' : f.pkgStatus === 'Preparing' ? '#888' : '#bbb';
+        const statusText  = f.pkgIssueDate || f.pkgStatus || '—';
 
         return `<tr${isOnSite ? '' : ' style="color:#999;"'}>
             <td style="text-align:center;white-space:nowrap;">${r.docNo}</td>
@@ -4201,7 +4202,7 @@ async function _renderRecvCore(cfg) {
             <td style="text-align:center;">${f.rating}</td>
             <td style="white-space:nowrap;text-align:center;">${r.unit || 'EA'}</td>
             <td style="white-space:nowrap;text-align:center;">${Math.round(r.qty).toLocaleString()}</td>
-            <td style="text-align:center;white-space:nowrap;font-weight:600;color:${statusColor};">${f.pkgStatus || '—'}</td>
+            <td style="text-align:center;white-space:nowrap;font-weight:600;color:${statusColor};">${statusText}</td>
         </tr>`;
     });
     tbody.innerHTML = rows.join('');
@@ -4231,7 +4232,7 @@ async function _exportRecvCoreRows(cfg) {
         row['Rating'] = f.rating;
         row['Unit']   = r.unit || 'EA';
         row['Qty']    = r.qty || 0;
-        row['Status'] = f.pkgStatus || '-';
+        row['Status'] = f.pkgIssueDate || f.pkgStatus || '-';
         return row;
     });
 }
@@ -4358,7 +4359,8 @@ function _filterValveSpareRows(cfg) {
         const matchMat2F  = mat2F === 'All' || r.mat2 === mat2F;
         const matchSizeF  = sizeF === 'All' || r.size === sizeF;
         const pkgSt       = (_plUpdatesCache[r.plNo] || {}).status || '';
-        const matchStatusF = statusF === 'All' || pkgSt === statusF;
+        const pkgIssueDateF = (_plUpdatesCache[r.plNo] || {}).issue_date || '';
+        const matchStatusF = statusF === 'All' || (statusF === 'Issued' ? !!pkgIssueDateF : pkgSt === statusF);
         return matchSearch && matchDoc && matchPkg && matchOpType && matchItemF && matchMat1F && matchMat2F && matchSizeF && matchStatusF;
     }).sort((a, b) => a.docNo.localeCompare(b.docNo) || a.plNo.localeCompare(b.plNo));
 }
@@ -4373,24 +4375,25 @@ function _renderValveSpareCore(cfg) {
     const page = cfg.getPage();
     const rows = data.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map(r => {
         const item = window.extractItemFromDesc(r.valveType);
-        const pkgStatus  = (_plUpdatesCache[r.plNo] || {}).status || '';
-        const isOnSite   = pkgStatus === 'On-Site';
-        const statusColor = pkgStatus === 'On-Site' ? '#2e7d32' : pkgStatus === 'Shipping' ? '#1565c0' : pkgStatus === 'Preparing' ? '#888' : '#bbb';
+        const pkgStatus    = (_plUpdatesCache[r.plNo] || {}).status || '';
+        const pkgIssueDate = (_plUpdatesCache[r.plNo] || {}).issue_date || '';
+        const isOnSite   = pkgStatus === 'On-Site' || !!pkgIssueDate;
+        const statusColor = pkgIssueDate ? '#2e7d32' : pkgStatus === 'On-Site' ? '#2e7d32' : pkgStatus === 'Shipping' ? '#1565c0' : pkgStatus === 'Preparing' ? '#888' : '#bbb';
+        const statusText  = pkgIssueDate || pkgStatus || '—';
         return `<tr${isOnSite ? '' : ' style="color:#999;"'}>
             <td style="text-align:center;white-space:nowrap;">${r.docNo}</td>
             <td style="text-align:center;white-space:nowrap;">${r.plNo}</td>
             <td style="text-align:center;">${cfg.tagCell(r)}</td>
             <td style="text-align:center;white-space:nowrap;">${r.opType}</td>
-            <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.valveType || ''}">${r.valveType}</td>
-            <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.desc || ''}">${r.desc || '-'}</td>
             <td style="text-align:center;font-weight:600;white-space:nowrap;">${item}</td>
+            <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.desc || ''}">${r.desc || '-'}</td>
             <td style="text-align:center;">${r.mat1}</td>
             <td style="text-align:center;">${r.mat2}</td>
             <td style="text-align:center;font-weight:600;">${r.size}</td>
             <td style="text-align:center;">${r.rating}</td>
             <td style="white-space:nowrap;text-align:center;">${r.unit || 'EA'}</td>
             <td style="white-space:nowrap;text-align:center;">${Math.round(r.qty).toLocaleString()}</td>
-            <td style="text-align:center;white-space:nowrap;font-weight:600;color:${statusColor};">${pkgStatus || '—'}</td>
+            <td style="text-align:center;white-space:nowrap;font-weight:600;color:${statusColor};">${statusText}</td>
         </tr>`;
     });
     tbody.innerHTML = rows.join('');
@@ -5210,29 +5213,29 @@ function attachEventListeners() {
     // (MatCode가 없는 카테고리라 Operation Type/Valve Type/Mat1/Mat2 등 자체 필드를 직접 사용)
     function _buildValveSpareExportRows(cfg) {
         return _filterValveSpareRows(cfg).map(r => {
-            const pkgStatus = (_plUpdatesCache[r.plNo] || {}).status || '-';
+            const pkgStatus    = (_plUpdatesCache[r.plNo] || {}).status || '-';
+            const pkgIssueDate = (_plUpdatesCache[r.plNo] || {}).issue_date || '';
             return {
                 'PKG':     r.docNo || '-',
                 'PKG NO':  r.plNo  || '-',
                 'TAG NO':  cfg.tagCell(r),
                 'Operation Type': r.opType || '-',
-                'Valve Type': r.valveType || '-',
-                'Description': r.desc || '-',
                 'Item':    window.extractItemFromDesc(r.valveType),
+                'Description': r.desc || '-',
                 'Mat 1':   r.mat1 || '-',
                 'Mat 2':   r.mat2 || '-',
                 'Size':    r.size || '-',
                 'Rating':  r.rating || '-',
                 'Unit':    r.unit || 'EA',
                 'Qty':     r.qty || 0,
-                'Status':  pkgStatus,
+                'Status':  pkgIssueDate || pkgStatus,
             };
         });
     }
 
     function _exportTagRecvRows(rows, sheetName, filenamePrefix) {
         const ws = XLSX.utils.json_to_sheet(rows);
-        ws['!cols'] = [10, 18, 12, 22, 16, 30, 14, 10, 10, 8, 8, 10, 14].map(w => ({ wch: w }));
+        ws['!cols'] = [10, 18, 12, 22, 14, 30, 10, 10, 8, 8, 10, 14].map(w => ({ wch: w }));
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, sheetName);
         const today = new Date().toISOString().split('T')[0];
@@ -5959,7 +5962,7 @@ async function initShipping() {
     }
 
     document.getElementById('shippingTbody').innerHTML =
-        '<tr><td colspan="12" style="text-align:center;color:#888;padding:30px;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        '<tr><td colspan="11" style="text-align:center;color:#888;padding:30px;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
     try {
         // pl_updates는 아직 로드 안 됐을 때만 조회
         if (Object.keys(_plUpdatesCache).length === 0) {
@@ -6086,7 +6089,7 @@ async function initShipping() {
         renderShippingTable(getShippingFiltered());
     } catch(e) {
         document.getElementById('shippingTbody').innerHTML =
-            '<tr><td colspan="12" style="text-align:center;color:#e53935;padding:30px;">Failed to load data.</td></tr>';
+            '<tr><td colspan="11" style="text-align:center;color:#e53935;padding:30px;">Failed to load data.</td></tr>';
     }
 }
 
@@ -6160,24 +6163,10 @@ function getShippingFiltered() {
 }
 
 const PL_INPUT_CSS = 'width:100%;box-sizing:border-box;border:1px solid #dde3ee;border-radius:4px;padding:3px 5px;font-size:12px;background:#fff;color:#0A2540;text-align:center;';
-const PURPOSE_OPTS = ['', 'Permanent', 'Temporary', 'Repair', 'Spare', 'Commissioning', 'Accessory', 'Other'];
-
-// pkg_no → first purpose 조회 맵 (렌더링 전 한 번만 빌드)
-let _recvPurposeMap = null;
-function _buildRecvPurposeMap() {
-    _recvPurposeMap = {};
-    db.receiving.forEach(rx => {
-        if (!(rx.plNo in _recvPurposeMap)) _recvPurposeMap[rx.plNo] = rx.purpose || '';
-    });
-}
-// db.receiving 교체 시 무효화
-function invalidateRecvPurposeMap() { _recvPurposeMap = null; }
 
 function mergeRow(r) {
     const upd = _plUpdatesCache[r.pkg_no] || {};
     const chg = _plChanges[r.pkg_no]      || {};
-    if (!_recvPurposeMap) _buildRecvPurposeMap();
-    const recvPurpose = _recvPurposeMap[r.pkg_no] ?? r.purpose ?? '';
     return {
         ...r,
         status:        chg.status        ?? upd.status        ?? r.status        ?? '',
@@ -6192,7 +6181,6 @@ function mergeRow(r) {
         item:          chg.item          !== undefined ? chg.item
                      : upd.item          !== undefined && upd.item !== null ? upd.item
                     : (r.item || '-'),
-        purpose:       recvPurpose,
     };
 }
 
@@ -6222,6 +6210,21 @@ function renderShippingKpi() {
     document.getElementById('sc_remaining_pl').textContent = (plCount - issuedPlCount).toLocaleString();
     document.getElementById('sc_remaining').textContent    = (total - issuedRows.length).toLocaleString();
     document.getElementById('shippingTotalBadge').textContent = `${total.toLocaleString()} packages`;
+
+    // EA 기준 실제 불출 비율 — 단위가 섞인(EA/M/SET) db.receiving 전체를 더하면 왜곡되므로
+    // 물량 대부분(약 93%)을 차지하는 EA만 집계. "Received" 정의는 _buildRecMap()과 동일하게
+    // purpose가 Permanent/공란인 활성 입고만 인정.
+    let eaReceived = 0, eaIssued = 0;
+    db.receiving.forEach(r => {
+        if (r.unit !== 'EA') return;
+        if (!(r.purpose === 'Permanent' || r.purpose === '')) return;
+        if (!isReceivingActive(r.plNo)) return;
+        eaReceived += r.qty || 0;
+        if (isPkgIssued(r.plNo)) eaIssued += r.qty || 0;
+    });
+    const eaPct = eaReceived > 0 ? Math.round((eaIssued / eaReceived) * 100) : 0;
+    document.getElementById('sc_issued_ea_pct').textContent    = eaPct;
+    document.getElementById('sc_remaining_ea_pct').textContent = 100 - eaPct;
 }
 
 function renderShippingTable(rows) {
@@ -6248,7 +6251,7 @@ function renderShippingTable(rows) {
 
     const tbody = document.getElementById('shippingTbody');
     if (!merged.length) {
-        tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:#888;padding:30px;">No data found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#888;padding:30px;">No data found.</td></tr>';
         const spEl = document.getElementById('shippingPagination'); if (spEl) spEl.innerHTML = '';
         return;
     }
@@ -6285,13 +6288,6 @@ function renderShippingTable(rows) {
         const customClearCell = newPkg
             ? `<td style="text-align:center;padding:3px;"><select style="${PL_INPUT_CSS}" data-pkg="${pkg}" data-field="custom_clear" data-packing="${r.packing}">${clearOpts}</select></td>`
             : `<td style="${roStyle}">${r.custom_clear || '—'}</td>`;
-        const purposeOpts = PURPOSE_OPTS.map(v =>
-            `<option value="${v}"${r.purpose === v ? ' selected' : ''}>${v || '—'}</option>`
-        ).join('');
-        const purposeCell = newPkg
-            ? `<td style="text-align:center;padding:3px;"><select class="pl-purpose-pkg-sel" style="${PL_INPUT_CSS}color:#1565c0;font-weight:600;" data-pkg="${pkg}">${purposeOpts}</select></td>`
-            : `<td style="${roStyle}" data-pkg-ro="${pkg}" data-field-ro="purpose">${r.purpose || '—'}</td>`;
-
         const isSupport = _supportPkgSet.has(r.pkg_no);
         const pkgNoCell = isSupport
             ? `<td style="text-align:center;font-weight:700;font-size:11px;color:#1565c0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.pkg_no}">${r.pkg_no}</td>`
@@ -6312,7 +6308,6 @@ function renderShippingTable(rows) {
             <td style="text-align:center;padding:3px;">
                 <input type="text" class="pl-datepicker" style="${PL_INPUT_CSS}cursor:pointer;text-align:right;" data-pkg="${pkg}" data-field="issue_date" value="${r.issue_date}" placeholder="">
             </td>
-            ${purposeCell}
             <td style="padding:3px;">
                 <textarea style="${PL_INPUT_CSS}resize:vertical;min-height:32px;max-height:80px;" data-pkg="${pkg}" data-field="remark" rows="1">${r.remark || ''}</textarea>
             </td>
@@ -6464,29 +6459,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // 편집 셀 change 이벤트 위임
     const tbody = document.getElementById('shippingTbody');
     if (tbody) {
-        // Purpose 드롭박스: receiving 테이블 pkg_no 일괄 업데이트
-        tbody.addEventListener('change', async e => {
-            const sel = e.target.closest('.pl-purpose-pkg-sel');
-            if (!sel || !supabaseClient) return;
-            const pkg     = sel.dataset.pkg;
-            const purpose = sel.value;
-            if (!pkg) return;
-            sel.disabled = true;
-            const { error } = await supabaseClient.from('receiving')
-                .update({ purpose })
-                .eq('pkg_no', pkg);
-            sel.disabled = false;
-            if (!error) {
-                // 메모리 동기화
-                db.receiving.forEach(r => { if (r.plNo === pkg) r.purpose = purpose; });
-                const sd = _shippingData.find(r => r.pkg_no === pkg);
-                if (sd) sd.purpose = purpose;
-                // 동일 PKG 연속행 read-only 셀 즉시 갱신
-                tbody.querySelectorAll(`[data-pkg-ro="${pkg}"][data-field-ro="purpose"]`)
-                    .forEach(cell => { cell.textContent = purpose || '—'; });
-            }
-        });
-
         tbody.addEventListener('change', e => {
             const el = e.target;
             const pkg = el.dataset.pkg;
