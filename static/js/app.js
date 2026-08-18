@@ -2432,7 +2432,7 @@ function getStbMat1Mat2Fallback(matCode, masterMap) {
 function getRatingForMatCode(matCode, masterMap, fullDescription) {
     const mData = (masterMap && masterMap[matCode]) || {};
     const isStb = /^STB-/i.test(matCode || '');
-    if (mData.classDesc && !isStb) return mData.classDesc;
+    if (mData.classDesc && mData.classDesc !== '-' && !isStb) return mData.classDesc;
     const seg = (matCode || '').split('-')[3] || '';
     if (RATING_SEGMENT_RE.test(seg)) return seg;
     // Valve(MatCode 없음)는 Description에 박힌 CL### 표기에서 직접 추출
@@ -2745,7 +2745,20 @@ async function renderDataHealthCards() {
     }
 }
 
-function _enrichRow(key, bomMap, recMap, masterMap, mat12Map) {
+// MatCode의 MATL 세그먼트(2번째 "-" 구간, 예: SS04/CS05/AS91)만으로 Mat1이 정해지는 것을
+// mat12Map(BOM 매칭된 다른 사이즈)에서 역으로 학습해 세그먼트→Mat1 룩업을 만든다.
+// BOM에 전혀 없는(bomQty=0) matCode의 Mat1 폴백용 — 같은 세그먼트를 쓰는 다른 사이즈가
+// 이미 BOM에 있으면 그 라벨을 그대로 재사용(Item에 따라 값이 갈리는 Mat2는 대상 아님).
+function _buildSegToMat1(mat12Map) {
+    const m = {};
+    Object.entries(mat12Map).forEach(([matCode, v]) => {
+        const seg = (matCode || '').split('-')[1];
+        if (seg && v.mat1 && v.mat1 !== '-' && !(seg in m)) m[seg] = v.mat1;
+    });
+    return m;
+}
+
+function _enrichRow(key, bomMap, recMap, masterMap, mat12Map, segToMat1) {
     const bomEntry = bomMap[key] || {};
     const recEntry = recMap[key] || {};
     const cat = bomEntry.category || recEntry.category || '-';
@@ -2785,9 +2798,14 @@ function _enrichRow(key, bomMap, recMap, masterMap, mat12Map) {
     const _sc = window.extractSizeFromMatCode(matCode);
     const size = (_sc && _sc !== '-') ? _sc : (mData.size1 || '-');
     const finalCat = mData.category || window.getCategory(mData.itemDesc || '', matCode);
+    // mat12Map(bom_mat12_agg)는 bom에 있는 mat_code만 커버 — BOM에 없는(bomQty=0, 순수 입고초과)
+    // 변형은 여기서 빠짐. Mat1은 같은 MATL 세그먼트를 쓰는 다른 사이즈에서 역추출(segToMat1),
+    // Mat2는 MatCode Master의 matl_desc(해당 MatCode 고유 규격)로 폴백한다.
     const m12  = (mat12Map && mat12Map[matCode]) || {};
-    const mat1 = m12.mat1 || '-';
-    const mat2 = m12.mat2 || '-';
+    const stbFallback = getStbMat1Mat2Fallback(matCode, masterMap);
+    const segMat1 = segToMat1 && segToMat1[(matCode || '').split('-')[1]];
+    const mat1 = m12.mat1 || stbFallback?.mat1 || segMat1 || recEntry.mat1 || '-';
+    const mat2 = m12.mat2 || stbFallback?.mat2 || (mData.matlDesc && mData.matlDesc !== '-' ? mData.matlDesc : null) || recEntry.mat2 || '-';
     const rating = getRatingForMatCode(matCode, masterMap);
     const unit = recMap[matCode]?.unit || bomMap[matCode]?.uom || 'EA';
     const bomQty = bomMap[matCode]?.qty ?? 0;
@@ -2823,6 +2841,7 @@ async function renderShortageTable() {
     const masterMap = _buildMasterMap();
     const mat12Map = {};
     (await loadMssItemAgg()).forEach(r => { mat12Map[r.matCode] = { mat1: r.mat1, mat2: r.mat2 }; });
+    const segToMat1 = _buildSegToMat1(mat12Map);
 
     const catFilter    = (document.getElementById('shortCatFilter')    || {}).value || 'ALL';
     const itemFilter   = (document.getElementById('shortItemFilter')   || {}).value || 'ALL';
@@ -2834,7 +2853,7 @@ async function renderShortageTable() {
 
     const list = [];
     Object.keys(bomMap).forEach(matCode => {
-        const row = _enrichRow(matCode, bomMap, recMap, masterMap, mat12Map);
+        const row = _enrichRow(matCode, bomMap, recMap, masterMap, mat12Map, segToMat1);
         const diffQty = row.bomQty - row.recQty;
         if (diffQty <= 0.01) return;
         if (!['Pipe', 'Fitting', 'Others', 'Valve', 'Speciality'].includes(row.cat)) return;
@@ -2886,6 +2905,7 @@ async function renderSurplusTable() {
     const masterMap = _buildMasterMap();
     const mat12Map = {};
     (await loadMssItemAgg()).forEach(r => { mat12Map[r.matCode] = { mat1: r.mat1, mat2: r.mat2 }; });
+    const segToMat1 = _buildSegToMat1(mat12Map);
 
     const catFilter    = (document.getElementById('surplusCatFilter')    || {}).value || 'ALL';
     const itemFilter   = (document.getElementById('surplusItemFilter')   || {}).value || 'ALL';
@@ -2898,7 +2918,7 @@ async function renderSurplusTable() {
     const allMatCodes = new Set([...Object.keys(bomMap), ...Object.keys(recMap)]);
     const list = [];
     allMatCodes.forEach(matCode => {
-        const row = _enrichRow(matCode, bomMap, recMap, masterMap, mat12Map);
+        const row = _enrichRow(matCode, bomMap, recMap, masterMap, mat12Map, segToMat1);
         const diffQty = row.recQty - row.bomQty;
         if (diffQty <= 0.01) return;
         if (!['Pipe', 'Fitting', 'Others', 'Valve', 'Speciality'].includes(row.cat)) return;
