@@ -6396,8 +6396,14 @@ async function savePlUpdates() {
 
     try {
         const DATE_FIELDS = ['on_site', 'issue_date'];
+        // pl_updates 전체 컬럼을 항상 같은 key 세트로 채운다 — 한 번도 저장된 적 없는
+        // pkg_no(캐시에 없음)와 이미 저장된 pkg_no를 같은 배치로 upsert하면 객체마다
+        // key 개수가 달라져 PostgREST가 "All object keys must match"(PGRST102)로 거부함.
+        const PL_COLUMNS = ['status', 'on_site', 'custom_clear', 'issue_date', 'remark', 'item'];
         const upserts = dirty.map(([pkg_no, fields]) => {
-            const base = { pkg_no, ...(_plUpdatesCache[pkg_no] || {}), ...fields };
+            const cached = _plUpdatesCache[pkg_no] || {};
+            const base = { pkg_no };
+            PL_COLUMNS.forEach(f => { base[f] = fields[f] !== undefined ? fields[f] : (cached[f] !== undefined ? cached[f] : null); });
             DATE_FIELDS.forEach(f => { if (base[f] === '') base[f] = null; });
             base.updated_at = new Date().toISOString();
             return base;
