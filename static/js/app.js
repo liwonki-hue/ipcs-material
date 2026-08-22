@@ -6333,9 +6333,7 @@ function renderShippingTable(rows) {
             ${packingCell}
             ${pkgNoCell}
             <td style="text-align:center;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.category || '-'}">${r.category || '-'}</td>
-            <td style="padding:3px;">
-                <input type="text" style="${PL_INPUT_CSS}font-weight:600;" data-pkg="${pkg}" data-field="item" value="${(r.item || '-').replace(/"/g, '&quot;')}" title="Auto-extracted by default. For Package Nos with mixed materials, you can manually enter a representative Item to override.">
-            </td>
+            <td style="text-align:center;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.item || '-'}">${r.item || '-'}</td>
             <td style="text-align:center;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.description}">${r.description}</td>
             <td style="text-align:center;font-weight:600;">${qtyDisplay}</td>
             <td style="text-align:center;color:#555;">${r.unit || '—'}</td>
