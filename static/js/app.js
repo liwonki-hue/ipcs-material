@@ -5982,7 +5982,7 @@ async function initShipping() {
     }
 
     document.getElementById('shippingTbody').innerHTML =
-        '<tr><td colspan="11" style="text-align:center;color:#888;padding:30px;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        '<tr><td colspan="12" style="text-align:center;color:#888;padding:30px;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
     try {
         // pl_updates는 아직 로드 안 됐을 때만 조회
         if (Object.keys(_plUpdatesCache).length === 0) {
@@ -6024,6 +6024,7 @@ async function initShipping() {
                 spoolShipping.push({
                     packing,
                     pkg_no:       r.pkg_no,
+                    category:     'Spool',
                     description:  r.description || 'Piping Spool',
                     item:         'SPOOL',
                     qty:          r.qty || 1,
@@ -6058,6 +6059,7 @@ async function initShipping() {
                 return {
                 packing:      r.docNo,
                 pkg_no:       r.plNo,
+                category:     r.category || '-',
                 description:  r.desc,
                 item:         item,
                 qty:          r.qty,
@@ -6087,6 +6089,7 @@ async function initShipping() {
                     _shippingData.push({
                         packing:      s.pkg || (s.package_no || '').match(/^(PGU-DE-\d+)/)?.[1] || '',
                         pkg_no:       s.package_no,
+                        category:     'Support',
                         description:  s.description || 'Support',
                         item:         'SUPPORT',
                         qty:          s.qty || 1,
@@ -6109,7 +6112,7 @@ async function initShipping() {
         renderShippingTable(getShippingFiltered());
     } catch(e) {
         document.getElementById('shippingTbody').innerHTML =
-            '<tr><td colspan="11" style="text-align:center;color:#e53935;padding:30px;">Failed to load data.</td></tr>';
+            '<tr><td colspan="12" style="text-align:center;color:#e53935;padding:30px;">Failed to load data.</td></tr>';
     }
 }
 
@@ -6135,6 +6138,17 @@ function buildShippingGroupFilter(data) {
         });
     }
 
+    const categories = [...new Set(data.map(r => r.category).filter(v => v && v !== '-'))].sort();
+    const catSel = document.getElementById('shippingCategoryFilter');
+    if (catSel) {
+        catSel.innerHTML = '<option value="">All</option>';
+        categories.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c; opt.textContent = c;
+            catSel.appendChild(opt);
+        });
+    }
+
     // 수동 지정된 Item(pl_updates.item)이 있으면 그 값 기준으로 필터 옵션 구성
     const items = [...new Set(data.map(r => mergeRow(r).item).filter(v => v && v !== '-'))].sort();
     const itemSel = document.getElementById('shippingItemFilter');
@@ -6151,6 +6165,7 @@ function buildShippingGroupFilter(data) {
 function getShippingFiltered() {
     const group  = document.getElementById('shippingGroupFilter')?.value || '';
     const pkgF   = document.getElementById('shippingPkgFilter')?.value  || '';
+    const catF   = document.getElementById('shippingCategoryFilter')?.value || '';
     const itemF  = document.getElementById('shippingItemFilter')?.value || '';
     const search = (document.getElementById('shippingSearch')?.value || '').trim().toLowerCase();
     const statusF = document.getElementById('shippingStatusFilter')?.value || '';
@@ -6159,6 +6174,7 @@ function getShippingFiltered() {
         .filter(r => {
             if (group && r.packing !== group) return false;
             if (pkgF  && r.pkg_no  !== pkgF)  return false;
+            if (catF  && (r.category || '-') !== catF) return false;
             if (itemF && mergeRow(r).item !== itemF) return false;
             if (search && !r.pkg_no.toLowerCase().includes(search)
                        && !r.description.toLowerCase().includes(search)) return false;
@@ -6271,7 +6287,7 @@ function renderShippingTable(rows) {
 
     const tbody = document.getElementById('shippingTbody');
     if (!merged.length) {
-        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#888;padding:30px;">No data found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:#888;padding:30px;">No data found.</td></tr>';
         const spEl = document.getElementById('shippingPagination'); if (spEl) spEl.innerHTML = '';
         return;
     }
@@ -6316,6 +6332,7 @@ function renderShippingTable(rows) {
         return `<tr${newGroup ? ' style="background:#f8fafc;"' : ''}>
             ${packingCell}
             ${pkgNoCell}
+            <td style="text-align:center;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.category || '-'}">${r.category || '-'}</td>
             <td style="padding:3px;">
                 <input type="text" style="${PL_INPUT_CSS}font-weight:600;" data-pkg="${pkg}" data-field="item" value="${(r.item || '-').replace(/"/g, '&quot;')}" title="Auto-extracted by default. For Package Nos with mixed materials, you can manually enter a representative Item to override.">
             </td>
@@ -6368,6 +6385,7 @@ function exportShippingExcel() {
     const data = _shippingFilteredRows.map(mergeRow).map(r => ({
         'Packing':      r.packing,
         'Package No.':  r.pkg_no,
+        'Category':     r.category || '-',
         'Item':         r.item || '-',
         'Description':  r.description,
         "Q'ty":         r.qty,
@@ -6464,10 +6482,12 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('shippingGroupFilter').value = '';
         document.getElementById('shippingSearch').value = '';
         const pf = document.getElementById('shippingPkgFilter');
+        const catf = document.getElementById('shippingCategoryFilter');
         const itf = document.getElementById('shippingItemFilter');
         const sf = document.getElementById('shippingStatusFilter');
         const cf = document.getElementById('shippingCustomFilter');
         if (pf) pf.value = '';
+        if (catf) catf.value = '';
         if (itf) itf.value = '';
         if (sf) sf.value = '';
         if (cf) cf.value = '';

@@ -2473,6 +2473,12 @@
                             </select>
                         </div>
                         <div class="form-group" style="flex:1;min-width:130px;margin-bottom:0;">
+                            <label style="display:block;margin-bottom:4px;font-size:12px;">Category</label>
+                            <select id="shippingCategoryFilter" class="form-control">
+                                <option value="">All</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex:1;min-width:130px;margin-bottom:0;">
                             <label style="display:block;margin-bottom:4px;font-size:12px;">Item</label>
                             <select id="shippingItemFilter" class="form-control">
                                 <option value="">All</option>
@@ -2530,6 +2536,7 @@
                             <colgroup>
                                 <col style="width:115px;">
                                 <col style="width:215px;">
+                                <col style="width:90px;">
                                 <col style="width:140px;">
                                 <col style="width:320px;">
                                 <col style="width:70px;">
@@ -2544,6 +2551,7 @@
                                 <tr>
                                     <th style="text-align:center;">Packing</th>
                                     <th style="text-align:center;">Package No.</th>
+                                    <th style="text-align:center;">Category</th>
                                     <th style="text-align:center;">Item</th>
                                     <th style="text-align:center;">Description</th>
                                     <th style="text-align:center;">Q'ty</th>
@@ -2556,7 +2564,7 @@
                                 </tr>
                             </thead>
                             <tbody id="shippingTbody">
-                                <tr><td colspan="11" style="text-align:center;color:#888;padding:30px;">
+                                <tr><td colspan="12" style="text-align:center;color:#888;padding:30px;">
                                     <i class="fas fa-spinner fa-spin"></i> Loading...
                                 </td></tr>
                             </tbody>
