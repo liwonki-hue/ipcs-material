@@ -1389,12 +1389,13 @@
                          <div class="table-responsive">
                              <table class="data-table" id="issueTable" style="text-align:center;table-layout:fixed;width:100%;">
                                  <colgroup>
-                                     <col style="width:300px;"><col style="width:110px;"><col style="width:260px;">
+                                     <col style="width:80px;"><col style="width:300px;"><col style="width:110px;"><col style="width:260px;">
                                      <col style="width:auto;"><col style="width:70px;"><col style="width:100px;">
                                      <col style="width:100px;"><col style="width:100px;"><col style="width:100px;"><col style="width:220px;">
                                  </colgroup>
                                  <thead>
                                      <tr>
+                                         <th style="text-align:center;">System</th>
                                          <th style="text-align:center;">ISO Drawing</th>
                                          <th style="text-align:center;">Category</th>
                                          <th style="text-align:center;">Mat Code</th>
@@ -1408,7 +1409,7 @@
                                      </tr>
                                  </thead>
                                  <tbody>
-                                     <tr><td colspan="10" style="text-align:center;">Enter an ISO Drawing and click Search.</td></tr>
+                                     <tr><td colspan="11" style="text-align:center;">Enter an ISO Drawing and click Search.</td></tr>
                                  </tbody>
                              </table>
                          </div>
@@ -1428,6 +1429,16 @@
                                  <label>ISO Drawing (Search & Select)</label>
                                  <input type="text" id="mfSupportIsoSearch" class="form-control" style="width: 100%;" placeholder="Type to search ISO Drawing..." list="isoDatalist">
                              </div>
+                             <div class="form-group" style="flex: 1;">
+                                 <label>Type</label>
+                                 <select id="mfSupportTypeFilter" class="form-control" style="width: 100%;">
+                                     <option value="All">All Types</option>
+                                     <option value="SPECIAL">SPECIAL</option>
+                                     <option value="G">G-Type</option>
+                                     <option value="U">U-Type</option>
+                                     <option value="W">W-Type</option>
+                                 </select>
+                             </div>
                              <div class="form-group" style="flex: 0 0 160px;">
                                  <button class="btn btn-primary" id="btnFilterSupportTag" style="height: 38px; width: 160px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0;"><i class="fas fa-search"></i> Search</button>
                              </div>
@@ -1440,14 +1451,16 @@
                          <div class="table-responsive">
                              <table class="data-table" id="mfSupportTagTable" style="text-align:center;table-layout:fixed;width:100%;">
                                  <colgroup>
-                                     <col style="width:240px;"><col style="width:280px;"><col style="width:150px;">
+                                     <col style="width:70px;"><col style="width:220px;"><col style="width:260px;"><col style="width:90px;"><col style="width:150px;">
                                      <col style="width:110px;"><col style="width:auto;"><col style="width:75px;">
                                      <col style="width:105px;"><col style="width:105px;"><col style="width:105px;"><col style="width:105px;"><col style="width:220px;">
                                  </colgroup>
                                  <thead>
                                      <tr>
+                                         <th style="text-align:center;">System</th>
                                          <th style="text-align:center;">ISO Drawing</th>
                                          <th style="text-align:center;">Support Tag</th>
+                                         <th style="text-align:center;">Type</th>
                                          <th style="text-align:center;">Item</th>
                                          <th style="text-align:center;">Matl</th>
                                          <th style="text-align:center;">Size or Type</th>
@@ -1460,7 +1473,7 @@
                                      </tr>
                                  </thead>
                                  <tbody id="mfSupportTagTbody">
-                                     <tr><td colspan="11" style="text-align:center;color:#888;">Search by Support Tag No or ISO Drawing.</td></tr>
+                                     <tr><td colspan="13" style="text-align:center;color:#888;">Search by Support Tag No or ISO Drawing.</td></tr>
                                  </tbody>
                              </table>
                          </div>

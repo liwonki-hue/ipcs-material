@@ -5573,7 +5573,7 @@ function attachEventListeners() {
             if (printHeaderPiping) printHeaderPiping.innerHTML = `<h2>Piping Material List</h2>${printMeta}`;
 
             let tbody = document.querySelector('#issueTable tbody');
-            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:16px;color:#888;">Loading...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:16px;color:#888;">Loading...</td></tr>';
 
             // When ISO is specified: load all materials (no limit)
             // Without ISO: limit to 200 items
@@ -5590,12 +5590,12 @@ function attachEventListeners() {
 
             const { data: bomRows, error } = await query;
             if (error) {
-                tbody.innerHTML = `<tr><td colspan="10" style="color:red;text-align:center;">Error: ${error.message}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="11" style="color:red;text-align:center;">Error: ${error.message}</td></tr>`;
                 return;
             }
 
             if (!bomRows || bomRows.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;">No BOM materials found for the selected ISO Drawing.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;">No BOM materials found for the selected ISO Drawing.</td></tr>';
                 return;
             }
 
@@ -5711,6 +5711,7 @@ function attachEventListeners() {
                 const stockStyle = isFullyCovered ? 'background:#f1f8e9;' : (receivedQty > 0 ? 'background:#fff8e1;' : '');
 
                 htmlString += `<tr style="${stockStyle}">
+                    <td style="text-align:center;white-space:nowrap;">${b.system || '-'}</td>
                     <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${b.iso_dwg_no||''}">${b.iso_dwg_no || '-'}</td>
                     <td style="text-align:center;"><span style="font-size:11px;font-weight:600;color:${catColor};background:${catColor}18;padding:2px 7px;border-radius:10px;white-space:nowrap;">${category}</span></td>
                     <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${b.tag}"><strong>${b.tag}</strong> <span style="font-size:9px;color:#888;">(Tag)</span></td>
@@ -5786,6 +5787,7 @@ function attachEventListeners() {
                 let stockStyle = isFullyCovered ? 'background:#f1f8e9;' : (receivedQty > 0 ? 'background:#fff8e1;' : '');
 
                 htmlString += `<tr style="${stockStyle}">
+                    <td style="text-align:center;white-space:nowrap;">${b.system || '-'}</td>
                     <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${b.iso_dwg_no||''}">${b.iso_dwg_no || '-'}</td>
                     <td style="text-align:center;"><span style="font-size:11px;font-weight:600;color:${catColor};background:${catColor}18;padding:2px 7px;border-radius:10px;white-space:nowrap;">${category}</span></td>
                     <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${mat}"><strong>${mat}</strong></td>
@@ -5799,22 +5801,22 @@ function attachEventListeners() {
                 </tr>`;
             });
 
-            tbody.innerHTML = htmlString || `<tr><td colspan="10" style="text-align:center;color:#888;">No BOM materials found for the selected ISO Drawing.</td></tr>`;
+            tbody.innerHTML = htmlString || `<tr><td colspan="11" style="text-align:center;color:#888;">No BOM materials found for the selected ISO Drawing.</td></tr>`;
 
             if (!iso || iso === 'All') {
-                tbody.innerHTML += `<tr><td colspan="10" style="text-align:center;color:var(--color-warning);font-size:11px;padding:8px;">
+                tbody.innerHTML += `<tr><td colspan="11" style="text-align:center;color:var(--color-warning);font-size:11px;padding:8px;">
                     <i class="fas fa-info-circle"></i> Specify an ISO Drawing to view all materials for that drawing.</td></tr>`;
             }
         });
     }
 
     // ISO/Support Tag 공용: support_bom + support_receiving을 조합해 BOM/Received/Stock/PKG 렌더링
-    // filterField: 'iso_dwg_no' | 'support_tag'
-    async function fetchAndRenderSupportRows({ filterField, filterValue, tbodyEl, emptyMsg }) {
-        tbodyEl.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#aaa;padding:12px;">Loading...</td></tr>';
+    // filterField: 'iso_dwg_no' | 'support_tag'. typeFilter: 'All' | 'SPECIAL' | 'G' | 'U' | 'W' (선택)
+    async function fetchAndRenderSupportRows({ filterField, filterValue, typeFilter, tbodyEl, emptyMsg }) {
+        tbodyEl.innerHTML = '<tr><td colspan="13" style="text-align:center;color:#aaa;padding:12px;">Loading...</td></tr>';
 
         let query = supabaseClient.from('support_bom')
-            .select('iso_dwg_no, support_tag, item, matl, size_or_type, qty, part_no');
+            .select('system, iso_dwg_no, support_tag, type, item, matl, size_or_type, qty, part_no');
 
         if (filterField === 'iso_dwg_no') {
             // ISO Drawing은 "베이스도면번호-시트번호" 구조라 Support가 세트 내 다른 시트에만 등록된 경우가 흔함
@@ -5825,10 +5827,13 @@ function attachEventListeners() {
             query = query.eq(filterField, filterValue);
         }
 
+        if (typeFilter === 'SPECIAL') query = query.eq('type', 'SPECIAL');
+        else if (typeFilter && typeFilter !== 'All') query = query.ilike('type', `(${typeFilter}-%`);
+
         const { data: suppRows, error } = await query.order('support_tag').order('part_no');
 
         if (error || !suppRows || suppRows.length === 0) {
-            tbodyEl.innerHTML = `<tr><td colspan="11" style="text-align:center;color:#aaa;padding:12px;">${emptyMsg}</td></tr>`;
+            tbodyEl.innerHTML = `<tr><td colspan="13" style="text-align:center;color:#aaa;padding:12px;">${emptyMsg}</td></tr>`;
             return;
         }
 
@@ -5856,8 +5861,10 @@ function attachEventListeners() {
             const stock = Math.max(0, received - issued);
             const bomQty = s.qty ?? 0;
             return `<tr>
+                <td style="text-align:center;white-space:nowrap;">${s.system || '-'}</td>
                 <td style="text-align:center;white-space:normal;word-break:break-all;" title="${safe(s.iso_dwg_no)}">${s.iso_dwg_no || '-'}</td>
                 <td style="text-align:center;white-space:normal;word-break:break-all;font-weight:600;" title="${safe(s.support_tag)}">${s.support_tag || '-'}</td>
+                <td style="text-align:center;white-space:nowrap;">${s.type || '-'}</td>
                 <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${safe(s.item)}">${s.item || '-'}</td>
                 <td style="text-align:center;">${s.matl || '-'}</td>
                 <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${safe(s.size_or_type)}">${s.size_or_type || '-'}</td>
@@ -5895,20 +5902,21 @@ function attachEventListeners() {
         btnFilterSupportTag.addEventListener('click', async () => {
             const tag = (document.getElementById('mfSupportTagSearch')?.value || '').trim();
             const iso = (document.getElementById('mfSupportIsoSearch')?.value || '').trim();
+            const typeFilter = document.getElementById('mfSupportTypeFilter')?.value || 'All';
             const tbody = document.getElementById('mfSupportTagTbody');
             if (!tbody) return;
             if (tag) {
                 await fetchAndRenderSupportRows({
-                    filterField: 'support_tag', filterValue: tag, tbodyEl: tbody,
+                    filterField: 'support_tag', filterValue: tag, typeFilter, tbodyEl: tbody,
                     emptyMsg: 'No support materials found for this Tag No.'
                 });
             } else if (iso) {
                 await fetchAndRenderSupportRows({
-                    filterField: 'iso_dwg_no', filterValue: iso, tbodyEl: tbody,
+                    filterField: 'iso_dwg_no', filterValue: iso, typeFilter, tbodyEl: tbody,
                     emptyMsg: 'No support materials for this ISO.'
                 });
             } else {
-                tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#888;">Enter a Support Tag No or ISO Drawing.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:#888;">Enter a Support Tag No or ISO Drawing.</td></tr>';
             }
         });
     }
