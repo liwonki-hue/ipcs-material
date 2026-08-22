@@ -3686,7 +3686,7 @@ async function renderBomTable() {
 }
 window._bomGoPage = function(p) { currentBomPage = p; renderBomTable(); };
 
-function refreshBomItemFilter() {
+async function refreshBomItemFilter() {
     const TAB_CAT = { piping: 'Pipe', fitting: 'Fitting', valve: 'Valve', speciality: 'Speciality', others: 'Others' };
     const cat = TAB_CAT[_bomActiveTab] || 'Pipe';
 
@@ -3718,34 +3718,44 @@ function refreshBomItemFilter() {
     }
 
     if (mat1El || mat2El || sizeEl || (ratingEl && cat === 'Speciality')) {
-        supabaseClient.from('bom_detail')
-            .select('mat1, mat2, mat_code, full_description')
-            .eq('category', cat)
-            .not('mat1', 'is', null)
-            .limit(10000)
-            .then(({ data }) => {
-                if (!data) return;
-                const vals1 = [...new Set(data.map(r => r.mat1).filter(Boolean))].sort();
-                const vals2 = [...new Set(data.map(r => r.mat2).filter(Boolean))].sort();
-                if (mat1El) mat1El.innerHTML = '<option value="All">All Mat 1</option>'
-                    + vals1.map(v => `<option value="${v.replace(/"/g, '&quot;')}">${v}</option>`).join('');
-                if (mat2El) mat2El.innerHTML = '<option value="All">All Mat 2</option>'
-                    + vals2.map(v => `<option value="${v.replace(/"/g, '&quot;')}">${v}</option>`).join('');
-                if (sizeEl && cat === 'Others') {
-                    // GSKT/STB는 MatCode에 박힌 사이즈(볼트는 Size+길이) 기준으로 필터 옵션 구성
-                    const sizes = [...new Set(data.map(r => window.extractSizeLengthFromMatCode(r.mat_code)).filter(v => v && v !== '-'))]
-                        .sort((a, b) => parseSizeSortKey(a) - parseSizeSortKey(b));
-                    sizeEl.innerHTML = '<option value="All">All Sizes</option>'
-                        + sizes.map(s => `<option value="${s.replace(/"/g, '&quot;')}">${s}</option>`).join('');
-                }
-                if (ratingEl && cat === 'Speciality') {
-                    // full_description = "{ITEM}, {MAT2}, {SIZE}, {RATING}, {END TYPE}" — 4번째 콤마 세그먼트가 Rating
-                    const ratings = [...new Set(data.map(r => (r.full_description || '').split(',')[3]?.trim()).filter(v => v && v !== '-'))].sort();
-                    ratingEl.innerHTML = '<option value="All">All Ratings</option>'
-                        + ratings.map(r => `<option value="${r.replace(/"/g, '&quot;')}">${r}</option>`).join('');
-                }
-            })
-            .catch(err => console.error('refreshBomItemFilter mat1/mat2/size 로드 실패:', err));
+        // Pipe/Fitting은 20,000+행이라 PostgREST 서버 기본 row cap(10,000)에 걸림 -> range로 청크 분할 조회
+        let data = [], from = 0;
+        const CHUNK = 5000;
+        try {
+            while (true) {
+                const { data: chunk, error } = await supabaseClient.from('bom_detail')
+                    .select('mat1, mat2, mat_code, full_description')
+                    .eq('category', cat)
+                    .not('mat1', 'is', null)
+                    .range(from, from + CHUNK - 1);
+                if (error) throw error;
+                data = data.concat(chunk || []);
+                if (!chunk || chunk.length < CHUNK) break;
+                from += CHUNK;
+            }
+        } catch (err) {
+            console.error('refreshBomItemFilter mat1/mat2/size 로드 실패:', err);
+            return;
+        }
+        const vals1 = [...new Set(data.map(r => r.mat1).filter(Boolean))].sort();
+        const vals2 = [...new Set(data.map(r => r.mat2).filter(Boolean))].sort();
+        if (mat1El) mat1El.innerHTML = '<option value="All">All Mat 1</option>'
+            + vals1.map(v => `<option value="${v.replace(/"/g, '&quot;')}">${v}</option>`).join('');
+        if (mat2El) mat2El.innerHTML = '<option value="All">All Mat 2</option>'
+            + vals2.map(v => `<option value="${v.replace(/"/g, '&quot;')}">${v}</option>`).join('');
+        if (sizeEl && cat === 'Others') {
+            // GSKT/STB는 MatCode에 박힌 사이즈(볼트는 Size+길이) 기준으로 필터 옵션 구성
+            const sizes = [...new Set(data.map(r => window.extractSizeLengthFromMatCode(r.mat_code)).filter(v => v && v !== '-'))]
+                .sort((a, b) => parseSizeSortKey(a) - parseSizeSortKey(b));
+            sizeEl.innerHTML = '<option value="All">All Sizes</option>'
+                + sizes.map(s => `<option value="${s.replace(/"/g, '&quot;')}">${s}</option>`).join('');
+        }
+        if (ratingEl && cat === 'Speciality') {
+            // full_description = "{ITEM}, {MAT2}, {SIZE}, {RATING}, {END TYPE}" — 4번째 콤마 세그먼트가 Rating
+            const ratings = [...new Set(data.map(r => (r.full_description || '').split(',')[3]?.trim()).filter(v => v && v !== '-'))].sort();
+            ratingEl.innerHTML = '<option value="All">All Ratings</option>'
+                + ratings.map(r => `<option value="${r.replace(/"/g, '&quot;')}">${r}</option>`).join('');
+        }
     }
 }
 
