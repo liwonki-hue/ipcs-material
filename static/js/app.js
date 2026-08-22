@@ -5024,21 +5024,31 @@ window.updateIsoDropdown = function() {
 let _supportTagDatalistLoaded = false;
 async function loadSupportTagDatalist() {
     if (_supportTagDatalistLoaded) return;
-    const sel = document.getElementById('mfSupportTagFilter');
-    if (!sel || !supabaseClient) return;
+    const tagSel = document.getElementById('mfSupportTagFilter');
+    const sysSel = document.getElementById('mfSupportSystemFilter');
+    const itemSel = document.getElementById('mfSupportItemFilter');
+    if (!tagSel || !supabaseClient) return;
     // support_bom은 15,000+행이라 PostgREST 서버 기본 row cap(10,000)에 걸림 -> range로 청크 분할 조회
     let data = [], from = 0;
     const CHUNK = 5000;
     while (true) {
         const { data: chunk, error } = await supabaseClient.from('support_bom')
-            .select('support_tag').not('support_tag', 'is', null).range(from, from + CHUNK - 1);
+            .select('system, support_tag, item').not('support_tag', 'is', null).range(from, from + CHUNK - 1);
         if (error) { console.error('loadSupportTagDatalist failed:', error); return; }
         data = data.concat(chunk || []);
         if (!chunk || chunk.length < CHUNK) break;
         from += CHUNK;
     }
     const tags = [...new Set(data.map(r => r.support_tag).filter(Boolean))].sort();
-    sel.innerHTML = '<option value="All">All Support Tags</option>' + tags.map(t => `<option value="${t.replace(/"/g, '&quot;')}">${t}</option>`).join('');
+    tagSel.innerHTML = '<option value="All">All Support Tags</option>' + tags.map(t => `<option value="${t.replace(/"/g, '&quot;')}">${t}</option>`).join('');
+    if (sysSel) {
+        const systems = [...new Set(data.map(r => r.system).filter(Boolean))].sort();
+        sysSel.innerHTML = '<option value="All">All Systems</option>' + systems.map(s => `<option value="${s}">${s}</option>`).join('');
+    }
+    if (itemSel) {
+        const items = [...new Set(data.map(r => r.item).filter(Boolean))].sort();
+        itemSel.innerHTML = '<option value="All">All Items</option>' + items.map(i => `<option value="${i.replace(/"/g, '&quot;')}">${i}</option>`).join('');
+    }
     _supportTagDatalistLoaded = true;
 }
 
@@ -5819,25 +5829,25 @@ function attachEventListeners() {
         });
     }
 
-    // ISO/Support Tag 공용: support_bom + support_receiving을 조합해 BOM/Received/Stock/PKG 렌더링
-    // filterField: 'iso_dwg_no' | 'support_tag'. typeFilter: 'All' | 'SPECIAL' | 'G' | 'U' | 'W' (선택)
-    async function fetchAndRenderSupportRows({ filterField, filterValue, typeFilter, tbodyEl, emptyMsg }) {
+    // Support Material 탭 공용: support_bom + support_receiving을 조합해 BOM/Received/Stock/PKG 렌더링
+    // system/iso/tag/type/item — 넘어온 값들을 전부 AND로 조합(값이 'All'/빈문자열이면 그 조건은 생략)
+    async function fetchAndRenderSupportRows({ system, iso, tag, typeFilter, item, tbodyEl, emptyMsg }) {
         tbodyEl.innerHTML = '<tr><td colspan="13" style="text-align:center;color:#aaa;padding:12px;">Loading...</td></tr>';
 
         let query = supabaseClient.from('support_bom')
             .select('system, iso_dwg_no, support_tag, type, item, matl, size_or_type, qty, part_no');
 
-        if (filterField === 'iso_dwg_no') {
+        if (system && system !== 'All') query = query.eq('system', system);
+        if (iso) {
             // ISO Drawing은 "베이스도면번호-시트번호" 구조라 Support가 세트 내 다른 시트에만 등록된 경우가 흔함
             // (예: CCP-W-B028-PI-140-AS-002-2 검색해도 -002-5에 있는 Support까지 같은 세트로 간주해 조회)
-            const m = filterValue.match(/^(.*)-(\d+)$/);
-            query = m ? query.ilike('iso_dwg_no', `${m[1]}-%`) : query.eq('iso_dwg_no', filterValue);
-        } else {
-            query = query.eq(filterField, filterValue);
+            const m = iso.match(/^(.*)-(\d+)$/);
+            query = m ? query.ilike('iso_dwg_no', `${m[1]}-%`) : query.eq('iso_dwg_no', iso);
         }
-
+        if (tag && tag !== 'All') query = query.eq('support_tag', tag);
         if (typeFilter === 'SPECIAL') query = query.eq('type', 'SPECIAL');
         else if (typeFilter && typeFilter !== 'All') query = query.ilike('type', `(${typeFilter}-%`);
+        if (item && item !== 'All') query = query.eq('item', item);
 
         const { data: suppRows, error } = await query.order('support_tag').order('part_no');
 
@@ -5905,28 +5915,25 @@ function attachEventListeners() {
         });
     });
 
-    // Support Tag 또는 ISO Drawing 중 하나로 검색 (둘 다 선택 시 Support Tag 우선)
+    // System/ISO Drawing/Support Tag/Type/Item — 선택된 필터를 전부 AND로 조합해 검색
     const btnFilterSupportTag = document.getElementById('btnFilterSupportTag');
     if (btnFilterSupportTag) {
         btnFilterSupportTag.addEventListener('click', async () => {
-            const tag = document.getElementById('mfSupportTagFilter')?.value || 'All';
+            const system = document.getElementById('mfSupportSystemFilter')?.value || 'All';
             const iso = (document.getElementById('mfSupportIsoSearch')?.value || '').trim();
+            const tag = document.getElementById('mfSupportTagFilter')?.value || 'All';
             const typeFilter = document.getElementById('mfSupportTypeFilter')?.value || 'All';
+            const item = document.getElementById('mfSupportItemFilter')?.value || 'All';
             const tbody = document.getElementById('mfSupportTagTbody');
             if (!tbody) return;
-            if (tag !== 'All') {
-                await fetchAndRenderSupportRows({
-                    filterField: 'support_tag', filterValue: tag, typeFilter, tbodyEl: tbody,
-                    emptyMsg: 'No support materials found for this Tag No.'
-                });
-            } else if (iso) {
-                await fetchAndRenderSupportRows({
-                    filterField: 'iso_dwg_no', filterValue: iso, typeFilter, tbodyEl: tbody,
-                    emptyMsg: 'No support materials for this ISO.'
-                });
-            } else {
-                tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:#888;">Select a Support Tag or enter an ISO Drawing.</td></tr>';
+            if (system === 'All' && !iso && tag === 'All' && typeFilter === 'All' && item === 'All') {
+                tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:#888;">Select at least one filter (System / ISO Drawing / Support Tag / Type / Item).</td></tr>';
+                return;
             }
+            await fetchAndRenderSupportRows({
+                system, iso, tag, typeFilter, item, tbodyEl: tbody,
+                emptyMsg: 'No support materials found for the selected filters.'
+            });
         });
     }
 
