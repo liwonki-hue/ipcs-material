@@ -4821,7 +4821,7 @@ async function renderSupportReceivingTable() {
 
     const [dataRes, countRes] = await Promise.all([
         applyFilters(supabaseClient.from('support_receiving')
-            .select('pkg,package_no,system,iso_dwg_no,support_tag,type,part_no,id_no,item,matl,size_or_type,length_mm,qty,delivery_date')
+            .select('pkg,package_no,system,iso_dwg_no,support_tag,type,part_no,id_no,item,matl,size_or_type,qty,delivery_date')
             .range(from, to)
             .order('sys_rank').order('pkg_null_rank').order('support_tag').order('part_no')),
         applyFilters(supabaseClient.from('support_receiving')
@@ -4855,7 +4855,6 @@ async function renderSupportReceivingTable() {
             <td style="text-align:center;white-space:nowrap;">${r.item || '-'}</td>
             <td style="text-align:center;white-space:nowrap;">${r.matl || '-'}</td>
             <td style="text-align:center;white-space:nowrap;">${r.size_or_type || '-'}</td>
-            <td style="text-align:center;white-space:nowrap;">${r.length_mm || '-'}</td>
             <td style="text-align:center;white-space:nowrap;">${r.qty ?? '-'}</td>
             <td style="text-align:center;white-space:nowrap;">${r.delivery_date || '-'}</td>
         </tr>`;
@@ -5385,22 +5384,33 @@ function attachEventListeners() {
                 const iso       = document.getElementById('srecIsoFilter')?.value || 'All';
                 const tag       = document.getElementById('srecTagFilter')?.value || 'All';
                 const type      = document.getElementById('srecTypeFilter')?.value || 'All';
-                let query = supabaseClient.from('support_receiving')
-                    .select('pkg,package_no,system,iso_dwg_no,support_tag,type,part_no,id_no,item,matl,size_or_type,length_mm,qty,delivery_date')
-                    .not('support_tag', 'is', null).neq('support_tag', 'BULK').neq('support_tag', '-')
-                    .order('sys_rank').order('pkg_null_rank').order('support_tag').order('part_no')
-                    .limit(10000);
-                if (pkg === 'NULL')      query = query.is('pkg', null);
-                else if (pkg !== 'All')  query = query.eq('pkg', pkg);
-                if (packageNo !== 'All') query = query.eq('package_no', packageNo);
-                if (sys !== 'All')       query = query.eq('system', sys);
-                if (iso !== 'All')       query = query.eq('iso_dwg_no', iso);
-                if (tag !== 'All')       query = query.ilike('support_tag', `${tag}%`);
-                if (type === 'SPECIAL') query = query.eq('type', 'SPECIAL');
-                else if (type !== 'All') query = query.ilike('type', `(${type}-%`);
-                if (search) query = query.or(`iso_dwg_no.ilike.%${search}%,support_tag.ilike.%${search}%,item.ilike.%${search}%,matl.ilike.%${search}%,id_no.ilike.%${search}%`);
-                const { data, error } = await query;
-                if (error) throw error;
+                const buildQuery = () => {
+                    let q = supabaseClient.from('support_receiving')
+                        .select('pkg,package_no,system,iso_dwg_no,support_tag,type,part_no,id_no,item,matl,size_or_type,qty,delivery_date')
+                        .not('support_tag', 'is', null).neq('support_tag', 'BULK').neq('support_tag', '-')
+                        .order('sys_rank').order('pkg_null_rank').order('support_tag').order('part_no');
+                    if (pkg === 'NULL')      q = q.is('pkg', null);
+                    else if (pkg !== 'All')  q = q.eq('pkg', pkg);
+                    if (packageNo !== 'All') q = q.eq('package_no', packageNo);
+                    if (sys !== 'All')       q = q.eq('system', sys);
+                    if (iso !== 'All')       q = q.eq('iso_dwg_no', iso);
+                    if (tag !== 'All')       q = q.ilike('support_tag', `${tag}%`);
+                    if (type === 'SPECIAL') q = q.eq('type', 'SPECIAL');
+                    else if (type !== 'All') q = q.ilike('type', `(${type}-%`);
+                    if (search) q = q.or(`iso_dwg_no.ilike.%${search}%,support_tag.ilike.%${search}%,item.ilike.%${search}%,matl.ilike.%${search}%,id_no.ilike.%${search}%`);
+                    return q;
+                };
+                // support_receiving은 태그행만 13,000+행이라 PostgREST 서버 row cap(10,000)에 걸림
+                // -> range로 청크 분할 조회(전체 미필터 상태로 Export 시 잘림 방지)
+                let data = [], from = 0;
+                const CHUNK = 5000;
+                while (true) {
+                    const { data: chunk, error } = await buildQuery().range(from, from + CHUNK - 1);
+                    if (error) throw error;
+                    data = data.concat(chunk || []);
+                    if (!chunk || chunk.length < CHUNK) break;
+                    from += CHUNK;
+                }
                 const rows = (data || []).map(r => ({
                     'PKG':           r.pkg           || '-',
                     'PACKAGE NO':    r.package_no    || '-',
@@ -5413,7 +5423,6 @@ function attachEventListeners() {
                     'ITEM':          r.item          || '-',
                     'MATL':          r.matl          || '-',
                     'SIZE OR TYPE':  r.size_or_type  || '-',
-                    'LENGTH (MM)':   r.length_mm     || '-',
                     "Q'TY":          r.qty           || 0,
                     'DELIVERY DATE': r.delivery_date || '-',
                 }));
