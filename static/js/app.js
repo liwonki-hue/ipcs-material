@@ -4589,6 +4589,9 @@ async function renderSupportReceivingTable() {
     const type      = document.getElementById('srecTypeFilter')?.value || 'All';
 
     const applyFilters = (q) => {
+        // Support Tag 없는 Bulk 구조재(renderSupportBulkTable에서 별도 패널로 집계)는 이 Tagged
+        // 목록에서 제외 — 제외 안 하면 태그 있는 항목 사이에 태그 없는 행이 섞여 표시됨
+        q = q.not('support_tag', 'is', null).neq('support_tag', 'BULK').neq('support_tag', '-');
         if (pkg === 'NULL')      q = q.is('pkg', null);
         else if (pkg !== 'All')  q = q.eq('pkg', pkg);
         if (packageNo !== 'All') q = q.eq('package_no', packageNo);
@@ -5155,6 +5158,7 @@ function attachEventListeners() {
                 const type      = document.getElementById('srecTypeFilter')?.value || 'All';
                 let query = supabaseClient.from('support_receiving')
                     .select('pkg,package_no,system,iso_dwg_no,support_tag,type,part_no,id_no,item,matl,size_or_type,length_mm,qty,delivery_date')
+                    .not('support_tag', 'is', null).neq('support_tag', 'BULK').neq('support_tag', '-')
                     .order('sys_rank').order('pkg_null_rank').order('support_tag').order('part_no')
                     .limit(10000);
                 if (pkg === 'NULL')      query = query.is('pkg', null);
