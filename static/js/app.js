@@ -5876,9 +5876,16 @@ function attachEventListeners() {
         }
 
         const tags = [...new Set(suppRows.map(s => s.support_tag).filter(Boolean))];
-        const { data: recRows } = await supabaseClient.from('support_receiving')
-            .select('support_tag, part_no, package_no, qty')
-            .in('support_tag', tags);
+        // System/Type만 넓게 걸면 tags가 수천 개까지 늘어나 .in() URL이 너무 길어져 fetch 자체가 실패함 -> 배치 분할 조회
+        const TAG_BATCH = 150;
+        let recRows = [];
+        for (let i = 0; i < tags.length; i += TAG_BATCH) {
+            const { data: chunk, error: recErr } = await supabaseClient.from('support_receiving')
+                .select('support_tag, part_no, package_no, qty')
+                .in('support_tag', tags.slice(i, i + TAG_BATCH));
+            if (recErr) { console.error('fetchAndRenderSupportRows support_receiving 조회 실패:', recErr); continue; }
+            recRows = recRows.concat(chunk || []);
+        }
 
         // key = support_tag::part_no → { package_no: qty }
         const pkgByRow = {};
