@@ -5024,12 +5024,21 @@ window.updateIsoDropdown = function() {
 let _supportTagDatalistLoaded = false;
 async function loadSupportTagDatalist() {
     if (_supportTagDatalistLoaded) return;
-    const dl = document.getElementById('mfSupportTagDatalist');
-    if (!dl || !supabaseClient) return;
-    const { data, error } = await supabaseClient.from('support_bom').select('support_tag').limit(20000);
-    if (error) { console.error('loadSupportTagDatalist failed:', error); return; }
-    const tags = [...new Set((data || []).map(r => r.support_tag).filter(Boolean))].sort();
-    dl.innerHTML = tags.map(t => `<option value="${t.replace(/"/g, '&quot;')}">`).join('');
+    const sel = document.getElementById('mfSupportTagFilter');
+    if (!sel || !supabaseClient) return;
+    // support_bom은 15,000+행이라 PostgREST 서버 기본 row cap(10,000)에 걸림 -> range로 청크 분할 조회
+    let data = [], from = 0;
+    const CHUNK = 5000;
+    while (true) {
+        const { data: chunk, error } = await supabaseClient.from('support_bom')
+            .select('support_tag').not('support_tag', 'is', null).range(from, from + CHUNK - 1);
+        if (error) { console.error('loadSupportTagDatalist failed:', error); return; }
+        data = data.concat(chunk || []);
+        if (!chunk || chunk.length < CHUNK) break;
+        from += CHUNK;
+    }
+    const tags = [...new Set(data.map(r => r.support_tag).filter(Boolean))].sort();
+    sel.innerHTML = '<option value="All">All Support Tags</option>' + tags.map(t => `<option value="${t.replace(/"/g, '&quot;')}">${t}</option>`).join('');
     _supportTagDatalistLoaded = true;
 }
 
@@ -5896,16 +5905,16 @@ function attachEventListeners() {
         });
     });
 
-    // Support Tag No 또는 ISO Drawing 중 하나로 검색 (둘 다 입력 시 Tag No 우선)
+    // Support Tag 또는 ISO Drawing 중 하나로 검색 (둘 다 선택 시 Support Tag 우선)
     const btnFilterSupportTag = document.getElementById('btnFilterSupportTag');
     if (btnFilterSupportTag) {
         btnFilterSupportTag.addEventListener('click', async () => {
-            const tag = (document.getElementById('mfSupportTagSearch')?.value || '').trim();
+            const tag = document.getElementById('mfSupportTagFilter')?.value || 'All';
             const iso = (document.getElementById('mfSupportIsoSearch')?.value || '').trim();
             const typeFilter = document.getElementById('mfSupportTypeFilter')?.value || 'All';
             const tbody = document.getElementById('mfSupportTagTbody');
             if (!tbody) return;
-            if (tag) {
+            if (tag !== 'All') {
                 await fetchAndRenderSupportRows({
                     filterField: 'support_tag', filterValue: tag, typeFilter, tbodyEl: tbody,
                     emptyMsg: 'No support materials found for this Tag No.'
@@ -5916,7 +5925,7 @@ function attachEventListeners() {
                     emptyMsg: 'No support materials for this ISO.'
                 });
             } else {
-                tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:#888;">Enter a Support Tag No or ISO Drawing.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:#888;">Select a Support Tag or enter an ISO Drawing.</td></tr>';
             }
         });
     }

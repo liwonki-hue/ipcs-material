@@ -1317,14 +1317,14 @@
                 <div class="page-header">
                      <div>
                          <h1>Material Finding</h1>
-                         <p class="subtitle">Search materials by ISO Drawing / Support Tag List.</p>
+                         <p class="subtitle">Search materials by ISO Drawing / Support Material.</p>
                      </div>
                  </div>
 
                  <!-- Mode Switcher -->
                  <div style="display:flex;gap:0;border-bottom:2px solid #c8cfe0;margin-bottom:16px;">
                      <button class="mf-mode-btn active" data-mode="iso" style="padding:8px 24px;border:none;border-bottom:3px solid #0A2540;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#0A2540;margin-bottom:-2px;letter-spacing:0.5px;">ISO DRAWING</button>
-                     <button class="mf-mode-btn" data-mode="support" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">SUPPORT TAG LIST</button>
+                     <button class="mf-mode-btn" data-mode="support" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">SUPPORT MATERIAL</button>
                  </div>
 
                  <!-- Mode A: ISO Drawing -->
@@ -1421,9 +1421,8 @@
                      <div class="panel filter-panel" style="margin-bottom: 20px;">
                          <div style="display: flex; align-items: flex-end; gap: 15px; width: 100%; flex-wrap: wrap;">
                              <div class="form-group" style="flex: 2;">
-                                 <label>Support Tag No (Search & Select)</label>
-                                 <input type="text" id="mfSupportTagSearch" class="form-control" style="width: 100%;" placeholder="Type to search Support Tag No..." list="mfSupportTagDatalist">
-                                 <datalist id="mfSupportTagDatalist"></datalist>
+                                 <label>Support Tag</label>
+                                 <select id="mfSupportTagFilter" class="form-control" style="width: 100%;"><option value="All">All Support Tags</option></select>
                              </div>
                              <div class="form-group" style="flex: 2;">
                                  <label>ISO Drawing (Search & Select)</label>
@@ -1446,7 +1445,7 @@
                      </div>
                      <div class="panel data-panel" style="border: 1px solid #ddd;">
                          <div class="panel-header" style="background:#f8f9fa; padding:6px 15px; margin-bottom:0; min-height:44px; border-bottom:1px solid #ddd;">
-                             <h3 style="margin:0; font-size:14px; font-weight:600; color:#222;"><i class="fas fa-tools"></i> Support Tag List</h3>
+                             <h3 style="margin:0; font-size:14px; font-weight:600; color:#222;"><i class="fas fa-tools"></i> Support Material</h3>
                          </div>
                          <div class="table-responsive">
                              <table class="data-table" id="mfSupportTagTable" style="text-align:center;table-layout:fixed;width:100%;">
@@ -1473,7 +1472,7 @@
                                      </tr>
                                  </thead>
                                  <tbody id="mfSupportTagTbody">
-                                     <tr><td colspan="13" style="text-align:center;color:#888;">Search by Support Tag No or ISO Drawing.</td></tr>
+                                     <tr><td colspan="13" style="text-align:center;color:#888;">Select a Support Tag or enter an ISO Drawing.</td></tr>
                                  </tbody>
                              </table>
                          </div>
