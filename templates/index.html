@@ -245,6 +245,7 @@
                      <button class="bom-tab-btn" data-tab="valve" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">VALVE</button>
                      <button class="bom-tab-btn" data-tab="speciality" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">SPECIALITY</button>
                      <button class="bom-tab-btn" data-tab="spool" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">SPOOL</button>
+                     <button class="bom-tab-btn" data-tab="support" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">SUPPORT</button>
                      <button class="bom-tab-btn" data-tab="others" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">OTHERS</button>
                      <button class="bom-tab-btn" data-tab="vendor" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">VENDOR</button>
                     <button class="bom-tab-btn" data-tab="matcode" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">MATCODE MASTER</button>
@@ -517,6 +518,80 @@
                          </table>
                      </div>
                      <div id="bomSpoolPagination"></div>
+                 </div>
+                 </div>
+
+                 <div id="bomSupportPanel" style="display:none;">
+                 <div class="panel filter-panel" style="margin-bottom: 20px;">
+                      <div style="display: flex; align-items: flex-end; justify-content: space-between; width: 100%; gap: 10px; flex-wrap: nowrap;">
+                          <div style="display: flex; align-items: flex-end; gap: 10px; flex: 1; min-width: 0;">
+                              <div class="form-group" style="flex: 2; min-width: 0; margin-bottom: 0;">
+                                  <label>Search (Tag / ISO / Item)</label>
+                                  <input type="text" id="bomSupportSearch" class="form-control" style="width: 100%;" placeholder="Support Tag, ISO Drawing, Item...">
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                                  <label>System</label>
+                                  <select id="bomSupportSystemFilter" class="form-control" style="width: 100%;"><option value="All">All Systems</option></select>
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                                  <label>ISO Drawing</label>
+                                  <select id="bomSupportIsoFilter" class="form-control" style="width: 100%;"><option value="All">All ISOs</option></select>
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                                  <label>Support Tag</label>
+                                  <select id="bomSupportTagFilter" class="form-control" style="width: 100%;"><option value="All">All Support Tags</option></select>
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                                  <label>Type</label>
+                                  <select id="bomSupportTypeFilter" class="form-control" style="width: 100%;">
+                                      <option value="All">All Types</option>
+                                      <option value="SPECIAL">SPECIAL</option>
+                                      <option value="G">G-Type</option>
+                                      <option value="U">U-Type</option>
+                                      <option value="W">W-Type</option>
+                                  </select>
+                              </div>
+                              <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                                  <label>Package No</label>
+                                  <select id="bomSupportPackageNoFilter" class="form-control" style="width: 100%;"><option value="All">All Package No</option></select>
+                              </div>
+                              <div style="padding-bottom: 1px; display: flex; gap: 8px; flex-shrink: 0;">
+                                  <button class="btn btn-primary" id="btnFilterBomSupport" style="white-space: nowrap;"><i class="fas fa-search"></i> Search</button>
+                                  <button class="btn btn-outline" id="btnClearBomSupportFilters" style="white-space: nowrap;">Clear</button>
+                              </div>
+                          </div>
+                          <div style="padding-bottom: 1px; display: flex; gap: 8px; flex-shrink: 0;">
+                              <button class="btn btn-outline" id="btnExportBomSupport" style="white-space: nowrap; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export</button>
+                          </div>
+                      </div>
+                  </div>
+
+                 <div class="panel data-panel">
+                     <div class="panel-header"><h3><i class="fas fa-grip-lines"></i> Support BOM</h3></div>
+                     <div class="table-responsive">
+                         <table class="data-table" id="bomSupportTable" style="font-size:0.82em;table-layout:fixed;width:100%;">
+                             <colgroup>
+                                 <col style="width:6%;"><col style="width:16%;"><col style="width:15%;">
+                                 <col style="width:9%;"><col style="width:14%;"><col style="width:9%;">
+                                 <col style="width:13%;"><col style="width:4%;"><col style="width:14%;">
+                             </colgroup>
+                             <thead>
+                                 <tr>
+                                     <th style="text-align:center;">System</th>
+                                     <th style="text-align:center;">ISO Drawing</th>
+                                     <th style="text-align:center;">Support Tag</th>
+                                     <th style="text-align:center;">Type</th>
+                                     <th style="text-align:center;">Item</th>
+                                     <th style="text-align:center;">Matl</th>
+                                     <th style="text-align:center;">Size / Type</th>
+                                     <th style="text-align:center;">Qty</th>
+                                     <th style="text-align:center;">Package No.</th>
+                                 </tr>
+                             </thead>
+                             <tbody><tr><td colspan="9" style="text-align:center;color:#888;">Loading...</td></tr></tbody>
+                         </table>
+                     </div>
+                     <div id="bomSupportPagination"></div>
                  </div>
                  </div>
             </section>
@@ -1048,6 +1123,11 @@
 
                     <!-- Support tab -->
                     <div id="recTagSupport" style="display:none;">
+                        <div style="display:flex;gap:0;border-bottom:2px solid #c8cfe0;margin-bottom:16px;">
+                            <button class="support-subtab-btn" data-subtab="tag" style="padding:6px 20px;border:none;border-bottom:3px solid #0A2540;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#0A2540;margin-bottom:-2px;">TAG</button>
+                            <button class="support-subtab-btn" data-subtab="bulk" style="padding:6px 20px;border:none;border-bottom:3px solid transparent;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;">BULK (No Tag)</button>
+                        </div>
+                        <div id="srecTagView">
                         <div class="panel filter-panel" style="margin-bottom:20px;">
                             <div style="display:flex;align-items:flex-end;justify-content:space-between;width:100%;gap:10px;flex-wrap:nowrap;">
                                 <div style="display:flex;align-items:flex-end;gap:10px;flex:1;min-width:0;">
@@ -1121,7 +1201,9 @@
                             </div>
                             <div id="srecPagination"></div>
                         </div>
-                        <div class="panel data-panel" style="margin-top:20px;">
+                        </div><!-- end srecTagView -->
+                        <div id="srecBulkView" style="display:none;">
+                        <div class="panel data-panel">
                             <div class="panel-header"><h3>Bulk Materials (No Support Tag)</h3></div>
                             <p style="font-size:11px;color:#888;margin:0 0 10px;padding:0 15px;">
                                 Structural bulk stock (Channel, H-Beam, Angle, Plate, Anchor Bolt, etc.) not tied to a specific Support Tag.
@@ -1143,6 +1225,7 @@
                                 </table>
                             </div>
                         </div>
+                        </div><!-- end srecBulkView -->
                     </div><!-- end recTagSupport -->
 
                     <!-- Spare tab -->
