@@ -6172,7 +6172,7 @@ function getShippingFiltered() {
             if (_shippingKpiFilter && _shippingKpiFilter !== 'all') {
                 if (_shippingKpiFilter === 'shipping'  && st !== 'Preparing' && st !== 'Shipping') return false;
                 if (_shippingKpiFilter === 'onsite'    && st !== 'On-Site')   return false;
-                if (_shippingKpiFilter === 'cleared'   && cc !== 'Cleared')   return false;
+                if (_shippingKpiFilter === 'cleared'   && (st !== 'On-Site' || cc !== 'Cleared')) return false;
                 if (_shippingKpiFilter === 'pending'   && (st !== 'On-Site' || cc === 'Cleared')) return false;
                 if (_shippingKpiFilter === 'issued'    && !m.issue_date)      return false;
                 if (_shippingKpiFilter === 'remaining' && m.issue_date)       return false;
@@ -6211,7 +6211,7 @@ function renderShippingKpi() {
     const plCount    = new Set(allMerged.map(r => r.packing)).size;
     const shippingRows  = allMerged.filter(r => r.status === 'Preparing' || r.status === 'Shipping');
     const onsiteRows    = allMerged.filter(r => r.status === 'On-Site');
-    const clearedRows   = allMerged.filter(r => r.custom_clear === 'Cleared');
+    const clearedRows   = allMerged.filter(r => r.status === 'On-Site' && r.custom_clear === 'Cleared');
     const issuedRows    = allMerged.filter(r => r.issue_date);
     const pendingRows   = allMerged.filter(r => r.status === 'On-Site' && r.custom_clear !== 'Cleared');
     document.getElementById('sc_pl_count').textContent      = plCount.toLocaleString();
