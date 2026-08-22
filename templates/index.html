@@ -1317,15 +1317,14 @@
                 <div class="page-header">
                      <div>
                          <h1>Material Finding</h1>
-                         <p class="subtitle">Search materials by ISO Drawing / Support Tag No / Item (Valve·Speciality).</p>
+                         <p class="subtitle">Search materials by ISO Drawing / Support Tag List.</p>
                      </div>
                  </div>
 
                  <!-- Mode Switcher -->
                  <div style="display:flex;gap:0;border-bottom:2px solid #c8cfe0;margin-bottom:16px;">
                      <button class="mf-mode-btn active" data-mode="iso" style="padding:8px 24px;border:none;border-bottom:3px solid #0A2540;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#0A2540;margin-bottom:-2px;letter-spacing:0.5px;">ISO DRAWING</button>
-                     <button class="mf-mode-btn" data-mode="support" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">SUPPORT TAG NO</button>
-                     <button class="mf-mode-btn" data-mode="item" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">ITEM (VALVE·SPECIALITY)</button>
+                     <button class="mf-mode-btn" data-mode="support" style="padding:8px 24px;border:none;border-bottom:3px solid transparent;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#888;margin-bottom:-2px;letter-spacing:0.5px;">SUPPORT TAG LIST</button>
                  </div>
 
                  <!-- Mode A: ISO Drawing -->
@@ -1414,51 +1413,20 @@
                              </table>
                          </div>
                      </div>
-
-                     <div id="printHeaderSupport" class="print-header"></div>
-
-                     <div class="panel data-panel" style="border: 1px solid #ddd;">
-                         <div class="panel-header" style="background:#f8f9fa; padding:6px 15px; margin-bottom:0; min-height:44px; border-bottom:1px solid #ddd;">
-                             <h3 style="margin:0; font-size:14px; font-weight:600; color:#222;"><i class="fas fa-tools"></i> Support Tag List</h3>
-                         </div>
-                         <div class="table-responsive">
-                             <table class="data-table" id="suppMatTable" style="text-align:center;table-layout:fixed;width:100%;">
-                                 <colgroup>
-                                     <col style="width:240px;"><col style="width:280px;"><col style="width:150px;">
-                                     <col style="width:110px;"><col style="width:auto;"><col style="width:75px;">
-                                     <col style="width:105px;"><col style="width:105px;"><col style="width:105px;"><col style="width:105px;"><col style="width:220px;">
-                                 </colgroup>
-                                 <thead>
-                                     <tr>
-                                         <th style="text-align:center;">ISO Drawing</th>
-                                         <th style="text-align:center;">Support Tag</th>
-                                         <th style="text-align:center;">Item</th>
-                                         <th style="text-align:center;">Matl</th>
-                                         <th style="text-align:center;">Size or Type</th>
-                                         <th style="text-align:center;">Unit</th>
-                                         <th style="text-align:center;">BOM Qty</th>
-                                         <th style="text-align:center;">Received Qty</th>
-                                         <th style="text-align:center;">Issued Qty</th>
-                                         <th style="text-align:center;">Stock Qty</th>
-                                         <th style="text-align:center;">Packing List (PKG No)</th>
-                                     </tr>
-                                 </thead>
-                                 <tbody id="suppMatTbody">
-                                     <tr><td colspan="11" style="text-align:center;color:#888;">Select an ISO Drawing and click Search.</td></tr>
-                                 </tbody>
-                             </table>
-                         </div>
-                     </div>
                  </div>
 
-                 <!-- Mode B: Support Tag No -->
+                 <!-- Mode B: Support Tag List (ISO Drawing 또는 Support Tag No로 검색, 2026-08-22 독립 탭으로 분리) -->
                  <div id="mfModeSupport" class="mf-mode-panel" style="display:none;">
                      <div class="panel filter-panel" style="margin-bottom: 20px;">
-                         <div style="display: flex; align-items: flex-end; gap: 15px; width: 100%;">
+                         <div style="display: flex; align-items: flex-end; gap: 15px; width: 100%; flex-wrap: wrap;">
                              <div class="form-group" style="flex: 2;">
                                  <label>Support Tag No (Search & Select)</label>
                                  <input type="text" id="mfSupportTagSearch" class="form-control" style="width: 100%;" placeholder="Type to search Support Tag No..." list="mfSupportTagDatalist">
                                  <datalist id="mfSupportTagDatalist"></datalist>
+                             </div>
+                             <div class="form-group" style="flex: 2;">
+                                 <label>ISO Drawing (Search & Select)</label>
+                                 <input type="text" id="mfSupportIsoSearch" class="form-control" style="width: 100%;" placeholder="Type to search ISO Drawing..." list="isoDatalist">
                              </div>
                              <div class="form-group" style="flex: 0 0 160px;">
                                  <button class="btn btn-primary" id="btnFilterSupportTag" style="height: 38px; width: 160px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0;"><i class="fas fa-search"></i> Search</button>
@@ -1467,7 +1435,7 @@
                      </div>
                      <div class="panel data-panel" style="border: 1px solid #ddd;">
                          <div class="panel-header" style="background:#f8f9fa; padding:6px 15px; margin-bottom:0; min-height:44px; border-bottom:1px solid #ddd;">
-                             <h3 style="margin:0; font-size:14px; font-weight:600; color:#222;"><i class="fas fa-tools"></i> Support Material List</h3>
+                             <h3 style="margin:0; font-size:14px; font-weight:600; color:#222;"><i class="fas fa-tools"></i> Support Tag List</h3>
                          </div>
                          <div class="table-responsive">
                              <table class="data-table" id="mfSupportTagTable" style="text-align:center;table-layout:fixed;width:100%;">
@@ -1492,67 +1460,7 @@
                                      </tr>
                                  </thead>
                                  <tbody id="mfSupportTagTbody">
-                                     <tr><td colspan="11" style="text-align:center;color:#888;">Search a Support Tag No.</td></tr>
-                                 </tbody>
-                             </table>
-                         </div>
-                     </div>
-                 </div>
-
-                 <!-- Mode C: Item (Valve/Speciality) -->
-                 <div id="mfModeItem" class="mf-mode-panel" style="display:none;">
-                     <div class="panel filter-panel" style="margin-bottom: 20px;">
-                         <div style="display: flex; align-items: flex-end; gap: 15px; width: 100%;">
-                             <div class="form-group" style="flex: 1;">
-                                 <label>Category</label>
-                                 <select id="mfItemCategoryFilter" class="form-control" style="width: 100%;">
-                                     <option value="Valve">Valve</option>
-                                     <option value="Speciality">Speciality</option>
-                                 </select>
-                             </div>
-                             <div class="form-group" style="flex: 2;">
-                                 <label>Item</label>
-                                 <select id="mfItemItemFilter" class="form-control" style="width: 100%;"><option value="All">All Items</option></select>
-                             </div>
-                             <div class="form-group" style="flex: 1;">
-                                 <label>System</label>
-                                 <select id="mfItemSystemFilter" class="form-control" style="width: 100%;"><option>All</option></select>
-                             </div>
-                             <div class="form-group" style="flex: 1;">
-                                 <label>Size</label>
-                                 <select id="mfItemSizeFilter" class="form-control" style="width: 100%;"><option value="All">All Sizes</option></select>
-                             </div>
-                             <div class="form-group" style="flex: 0 0 160px;">
-                                 <button class="btn btn-primary" id="btnFilterItem" style="height: 38px; width: 160px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0;"><i class="fas fa-search"></i> Search</button>
-                             </div>
-                         </div>
-                     </div>
-                     <div class="panel data-panel" style="border: 1px solid #ddd;">
-                         <div class="panel-header" style="background:#f8f9fa; padding:6px 15px; margin-bottom:0; min-height:44px; border-bottom:1px solid #ddd;">
-                             <h3 style="margin:0; font-size:14px; font-weight:600; color:#222;"><i class="fas fa-faucet"></i> Item Search Result</h3>
-                         </div>
-                         <div class="table-responsive">
-                             <table class="data-table" id="mfItemTable" style="text-align:center;table-layout:fixed;width:100%;">
-                                 <colgroup>
-                                     <col style="width:200px;"><col style="width:260px;"><col style="width:110px;">
-                                     <col style="width:auto;"><col style="width:70px;"><col style="width:100px;">
-                                     <col style="width:100px;"><col style="width:100px;"><col style="width:220px;">
-                                 </colgroup>
-                                 <thead>
-                                     <tr>
-                                         <th style="text-align:center;">Tag No</th>
-                                         <th style="text-align:center;">ISO Drawing</th>
-                                         <th style="text-align:center;">Line No</th>
-                                         <th style="text-align:center;">Category</th>
-                                         <th style="text-align:center;">Description</th>
-                                         <th style="text-align:center;">Unit</th>
-                                         <th style="text-align:center;">Received Qty</th>
-                                         <th style="text-align:center;">Stock Qty</th>
-                                         <th style="text-align:center;">Packing List (PKG No)</th>
-                                     </tr>
-                                 </thead>
-                                 <tbody id="mfItemTbody">
-                                     <tr><td colspan="9" style="text-align:center;color:#888;">Select Category/Item and click Search.</td></tr>
+                                     <tr><td colspan="11" style="text-align:center;color:#888;">Search by Support Tag No or ISO Drawing.</td></tr>
                                  </tbody>
                              </table>
                          </div>

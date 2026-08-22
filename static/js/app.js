@@ -5571,8 +5571,6 @@ function attachEventListeners() {
             const printMeta = `<div class="print-header-meta">ISO Drawing No: <strong>${iso || 'All'}</strong> &nbsp;|&nbsp; Printed: <strong>${printedAt}</strong></div>`;
             const printHeaderPiping = document.getElementById('printHeaderPiping');
             if (printHeaderPiping) printHeaderPiping.innerHTML = `<h2>Piping Material List</h2>${printMeta}`;
-            const printHeaderSupport = document.getElementById('printHeaderSupport');
-            if (printHeaderSupport) printHeaderSupport.innerHTML = `<h2>Support Material List</h2>${printMeta}`;
 
             let tbody = document.querySelector('#issueTable tbody');
             tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:16px;color:#888;">Loading...</td></tr>';
@@ -5807,23 +5805,6 @@ function attachEventListeners() {
                 tbody.innerHTML += `<tr><td colspan="10" style="text-align:center;color:var(--color-warning);font-size:11px;padding:8px;">
                     <i class="fas fa-info-circle"></i> Specify an ISO Drawing to view all materials for that drawing.</td></tr>`;
             }
-
-            // Support Tag List 렌더링 (Task 6과 공유하는 헬퍼 재사용)
-            // Category 필터가 특정 카테고리(Pipe/Fitting/Valve/Speciality/Others)로 좁혀져 있으면
-            // Support는 그 목록에 속하지 않으므로 함께 표시하지 않음 (All일 때만 전체 그림 표시)
-            const suppTbody = document.getElementById('suppMatTbody');
-            if (suppTbody) {
-                if (iso && iso !== 'All' && categoryFilter === 'All') {
-                    await fetchAndRenderSupportRows({
-                        filterField: 'iso_dwg_no', filterValue: iso, tbodyEl: suppTbody,
-                        emptyMsg: 'No support materials for this ISO.'
-                    });
-                } else if (iso && iso !== 'All') {
-                    suppTbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#888;">Category filter is active — set Category to "All" to view Support items.</td></tr>';
-                } else {
-                    suppTbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#888;">Select an ISO Drawing and click Search.</td></tr>';
-                }
-            }
         });
     }
 
@@ -5890,7 +5871,7 @@ function attachEventListeners() {
         }).join('');
     }
 
-    // Material Finding 모드 전환 (ISO Drawing / Support Tag No / Item)
+    // Material Finding 모드 전환 (ISO Drawing / Support Tag List)
     document.querySelectorAll('.mf-mode-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             document.querySelectorAll('.mf-mode-btn').forEach(b => {
@@ -5904,147 +5885,33 @@ function attachEventListeners() {
             const mode = btn.dataset.mode;
             document.getElementById('mfModeIso').style.display     = mode === 'iso'     ? '' : 'none';
             document.getElementById('mfModeSupport').style.display = mode === 'support' ? '' : 'none';
-            document.getElementById('mfModeItem').style.display    = mode === 'item'    ? '' : 'none';
             if (mode === 'support') loadSupportTagDatalist();
         });
     });
 
+    // Support Tag No 또는 ISO Drawing 중 하나로 검색 (둘 다 입력 시 Tag No 우선)
     const btnFilterSupportTag = document.getElementById('btnFilterSupportTag');
     if (btnFilterSupportTag) {
         btnFilterSupportTag.addEventListener('click', async () => {
             const tag = (document.getElementById('mfSupportTagSearch')?.value || '').trim();
+            const iso = (document.getElementById('mfSupportIsoSearch')?.value || '').trim();
             const tbody = document.getElementById('mfSupportTagTbody');
             if (!tbody) return;
-            if (!tag) {
-                tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#888;">Enter a Support Tag No.</td></tr>';
-                return;
+            if (tag) {
+                await fetchAndRenderSupportRows({
+                    filterField: 'support_tag', filterValue: tag, tbodyEl: tbody,
+                    emptyMsg: 'No support materials found for this Tag No.'
+                });
+            } else if (iso) {
+                await fetchAndRenderSupportRows({
+                    filterField: 'iso_dwg_no', filterValue: iso, tbodyEl: tbody,
+                    emptyMsg: 'No support materials for this ISO.'
+                });
+            } else {
+                tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#888;">Enter a Support Tag No or ISO Drawing.</td></tr>';
             }
-            await fetchAndRenderSupportRows({
-                filterField: 'support_tag', filterValue: tag, tbodyEl: tbody,
-                emptyMsg: 'No support materials found for this Tag No.'
-            });
         });
     }
-
-    let _tagOverrides = {}; // tag(upper) → { iso_dwg_no, line_no }
-    let _tagOverridesLoaded = false;
-    async function loadTagOverrides() {
-        if (_tagOverridesLoaded || !supabaseClient) return;
-        const { data, error } = await supabaseClient.from('tag_overrides').select('tag, iso_dwg_no, line_no');
-        if (error) { console.error('loadTagOverrides failed:', error); return; }
-        (data || []).forEach(r => { _tagOverrides[(r.tag || '').toUpperCase()] = r; });
-        _tagOverridesLoaded = true;
-    }
-
-    async function saveTagOverride(tag, isoDwgNo, lineNo) {
-        const key = tag.toUpperCase();
-        const row = { tag: key, iso_dwg_no: isoDwgNo || null, line_no: lineNo || null, updated_at: new Date().toISOString() };
-        const { error } = await supabaseClient.from('tag_overrides').upsert(row);
-        if (error) { alert('Save failed: ' + error.message); return false; }
-        _tagOverrides[key] = row;
-        return true;
-    }
-
-    const btnFilterItem = document.getElementById('btnFilterItem');
-    if (btnFilterItem) {
-        btnFilterItem.addEventListener('click', async () => {
-            const cat  = document.getElementById('mfItemCategoryFilter')?.value || 'Valve';
-            const item = document.getElementById('mfItemItemFilter')?.value || 'All';
-            const sys  = document.getElementById('mfItemSystemFilter')?.value || 'All';
-            const size = document.getElementById('mfItemSizeFilter')?.value || 'All';
-            const tbody = document.getElementById('mfItemTbody');
-            if (!tbody) return;
-            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:16px;color:#888;">Loading...</td></tr>';
-
-            await loadTagOverrides();
-
-            // Tag별로 db.receiving 그룹핑 (BOM 매칭 여부 무관 — 입고 기록이 있는 모든 Tag를 대상으로 함)
-            const byTag = {};
-            db.receiving.filter(r => isReceivingActive(r.plNo) && r.category === cat && r.tag).forEach(r => {
-                const key = r.tag.toUpperCase();
-                if (!byTag[key]) byTag[key] = { tag: r.tag, records: [], pkgMap: {} };
-                byTag[key].records.push(r);
-                byTag[key].pkgMap[r.plNo] = (byTag[key].pkgMap[r.plNo] || 0) + (r.qty || 0);
-            });
-
-            const rows = Object.values(byTag).filter(g => {
-                const sample = g.records[0];
-                const bomInfo = db.bomTagMap[g.tag.toUpperCase()];
-                const desc = bomInfo ? bomInfo.fullDescription : sample.desc;
-                const mcItem = bomInfo ? window.extractItemFromMatCode(bomInfo.matCode) : null;
-                const rowItem = (mcItem && mcItem !== '-') ? mcItem : window.extractItemFromDesc(desc || '');
-                if (item !== 'All' && rowItem !== item) return false;
-                if (size !== 'All') {
-                    const sz = bomInfo ? window.extractSizeFromMatCode(bomInfo.matCode) : '-';
-                    if (sz !== size) return false;
-                }
-                if (sys !== 'All' && sample.system && sample.system !== sys) return false;
-                return true;
-            });
-
-            if (rows.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#888;">No matching items found.</td></tr>';
-                return;
-            }
-
-            tbody.innerHTML = rows.map(g => {
-                const sample = g.records[0];
-                const bomInfo = db.bomTagMap[g.tag.toUpperCase()];
-                const override = _tagOverrides[g.tag.toUpperCase()];
-                const iso = bomInfo ? (bomInfo.iso_dwg_no || '') : (override ? override.iso_dwg_no : '');
-                const lineNo = override ? (override.line_no || '') : '';
-                const desc = (bomInfo ? bomInfo.fullDescription : sample.desc) || '-';
-                const safeDesc = desc.replace(/"/g, '&quot;');
-                const received = Object.values(g.pkgMap).reduce((a, b) => a + b, 0);
-                const issued = Object.entries(g.pkgMap).filter(([pkg]) => isPkgIssued(pkg)).reduce((a, [, qty]) => a + qty, 0);
-                const stock = Math.max(0, received - issued);
-
-                const isoCell = iso
-                    ? `${iso}${!bomInfo ? ' <span style="font-size:10px;color:#1565c0;">(Manual)</span>' : ''}`
-                    : `<button class="btn btn-outline btn-small mf-assign-iso" data-tag="${g.tag}" style="font-size:11px;padding:2px 8px;">Assign ISO</button>`;
-
-                return `<tr data-tag-row="${g.tag}">
-                    <td style="text-align:center;font-weight:600;">${g.tag}</td>
-                    <td style="text-align:center;" class="mf-iso-cell">${isoCell}</td>
-                    <td style="text-align:center;" class="mf-lineno-cell">${lineNo || '-'}</td>
-                    <td style="text-align:center;">${cat}</td>
-                    <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${safeDesc}">${safeDesc}</td>
-                    <td style="text-align:center;">${sample.unit || 'EA'}</td>
-                    <td style="text-align:center;">${received.toFixed(2)}</td>
-                    <td style="text-align:center;"><strong style="color:${stock > 0 ? '#2e7d32' : '#c62828'};">${stock.toFixed(2)}</strong></td>
-                    <td style="text-align:left;font-size:11px;line-height:1.6;">${renderPkgListCell(g.pkgMap)}</td>
-                </tr>`;
-            }).join('');
-        });
-    }
-
-    // ISO 지정 버튼 클릭 → 인라인 입력 폼으로 교체
-    document.getElementById('mfItemTbody')?.addEventListener('click', (e) => {
-        const btn = e.target.closest('.mf-assign-iso');
-        if (!btn) return;
-        const tag = btn.dataset.tag;
-        const cell = btn.closest('.mf-iso-cell');
-        cell.innerHTML = `
-            <input type="text" class="form-control mf-assign-iso-input" style="width:140px;display:inline-block;font-size:11px;" placeholder="ISO Drawing" list="isoDatalist">
-            <button class="btn btn-primary btn-small mf-assign-iso-save" data-tag="${tag}" style="font-size:11px;padding:2px 8px;">Save</button>
-        `;
-    });
-
-    document.getElementById('mfItemTbody')?.addEventListener('click', async (e) => {
-        const saveBtn = e.target.closest('.mf-assign-iso-save');
-        if (!saveBtn) return;
-        const tag = saveBtn.dataset.tag;
-        const row = saveBtn.closest('tr');
-        const isoInput = row.querySelector('.mf-assign-iso-input');
-        const isoVal = (isoInput?.value || '').trim();
-        if (!isoVal) { alert('Please enter an ISO Drawing.'); return; }
-        const lineNoCell = row.querySelector('.mf-lineno-cell');
-        const lineNoVal = (lineNoCell?.textContent || '').trim();
-        const ok = await saveTagOverride(tag, isoVal, lineNoVal === '-' ? '' : lineNoVal);
-        if (ok) {
-            document.getElementById('btnFilterItem')?.click();
-        }
-    });
 
     const btnAddBomItem = document.getElementById('btnAddBomItem');
     if(btnAddBomItem) {
