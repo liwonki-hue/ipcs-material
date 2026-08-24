@@ -6301,6 +6301,7 @@ function getShippingFiltered() {
     const search = (document.getElementById('shippingSearch')?.value || '').trim().toLowerCase();
     const statusF = document.getElementById('shippingStatusFilter')?.value || '';
     const customF = document.getElementById('shippingCustomFilter')?.value || '';
+    const issuedF = document.getElementById('shippingIssuedFilter')?.value || '';
     return (_shippingData || [])
         .filter(r => {
             if (group && r.packing !== group) return false;
@@ -6309,13 +6310,16 @@ function getShippingFiltered() {
             if (itemF && mergeRow(r).item !== itemF) return false;
             if (search && !r.pkg_no.toLowerCase().includes(search)
                        && !r.description.toLowerCase().includes(search)) return false;
-            const needMerge = statusF || customF || (_shippingKpiFilter && _shippingKpiFilter !== 'all');
+            const needMerge = statusF || customF || issuedF || (_shippingKpiFilter && _shippingKpiFilter !== 'all');
             if (!needMerge) return true;
             const m = mergeRow(r);
             const st = m.status || '';
             const cc = (m.custom_clear || '').trim();
             if (statusF && (statusF === '__none__' ? st !== '' : st !== statusF)) return false;
             if (customF && (customF === '__none__' ? cc !== '' : cc !== customF)) return false;
+            // Issued 여부는 On-Site 상태인 항목에만 의미가 있음 -> Preparing/Shipping은 두 옵션 모두에서 제외
+            if (issuedF === 'yes' && (st !== 'On-Site' || !m.issue_date)) return false;
+            if (issuedF === 'no'  && (st !== 'On-Site' || m.issue_date))  return false;
             if (_shippingKpiFilter && _shippingKpiFilter !== 'all') {
                 if (_shippingKpiFilter === 'shipping'  && st !== 'Preparing' && st !== 'Shipping') return false;
                 if (_shippingKpiFilter === 'onsite'    && st !== 'On-Site')   return false;
@@ -6378,20 +6382,10 @@ function renderShippingKpi() {
     document.getElementById('sc_remaining').textContent    = (total - issuedRows.length).toLocaleString();
     document.getElementById('shippingTotalBadge').textContent = `${total.toLocaleString()} packages`;
 
-    // EA 기준 실제 불출 비율 — 단위가 섞인(EA/M/SET) db.receiving 전체를 더하면 왜곡되므로
-    // 물량 대부분(약 93%)을 차지하는 EA만 집계. "Received" 정의는 _buildRecMap()과 동일하게
-    // purpose가 Permanent/공란인 활성 입고만 인정.
-    let eaReceived = 0, eaIssued = 0;
-    db.receiving.forEach(r => {
-        if (r.unit !== 'EA') return;
-        if (!(r.purpose === 'Permanent' || r.purpose === '')) return;
-        if (!isReceivingActive(r.plNo)) return;
-        eaReceived += r.qty || 0;
-        if (isPkgIssued(r.plNo)) eaIssued += r.qty || 0;
-    });
-    const eaPct = eaReceived > 0 ? Math.round((eaIssued / eaReceived) * 100) : 0;
-    document.getElementById('sc_issued_ea_pct').textContent    = eaPct;
-    document.getElementById('sc_remaining_ea_pct').textContent = 100 - eaPct;
+    // Packing List No 기준 불출 비율 (issuedPlCount/plCount) — 위에서 표시하는 PL 건수와 동일 기준
+    const plPct = plCount > 0 ? Math.round((issuedPlCount / plCount) * 100) : 0;
+    document.getElementById('sc_issued_pl_pct').textContent    = plPct;
+    document.getElementById('sc_remaining_pl_pct').textContent = 100 - plPct;
 }
 
 function renderShippingTable(rows) {
@@ -6615,11 +6609,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const itf = document.getElementById('shippingItemFilter');
         const sf = document.getElementById('shippingStatusFilter');
         const cf = document.getElementById('shippingCustomFilter');
+        const isf = document.getElementById('shippingIssuedFilter');
         if (pf) pf.value = '';
         if (catf) catf.value = '';
         if (itf) itf.value = '';
         if (sf) sf.value = '';
         if (cf) cf.value = '';
+        if (isf) isf.value = '';
         resetKpiFilter();
         _shippingPage = 1;
         if (_shippingData) renderShippingTable(getShippingFiltered());

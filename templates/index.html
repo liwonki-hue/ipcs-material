@@ -2447,7 +2447,7 @@
                             <span style="font-size:26px;font-weight:700;color:#6a1b9a;" id="sc_issued">—</span>
                             <span style="font-size:12px;color:#888;">PKG</span>
                         </div>
-                        <div style="font-size:11px;color:#6a1b9a;margin-top:2px;">Issue Date set (<span id="sc_issued_ea_pct">—</span>%)</div>
+                        <div style="font-size:11px;color:#6a1b9a;margin-top:2px;">Issue Date set (<span id="sc_issued_pl_pct">—</span>%)</div>
                     </div>
                     <!-- Remaining -->
                     <div class="panel shipping-kpi-card" id="skpi_remaining" onclick="setShippingKpiFilter('remaining')" style="padding:16px;text-align:center;cursor:pointer;border:2px solid transparent;">
@@ -2459,7 +2459,7 @@
                             <span style="font-size:26px;font-weight:700;color:#e65100;" id="sc_remaining">—</span>
                             <span style="font-size:12px;color:#888;">PKG</span>
                         </div>
-                        <div style="font-size:11px;color:#e65100;margin-top:2px;">Packing List − Issued (<span id="sc_remaining_ea_pct">—</span>%)</div>
+                        <div style="font-size:11px;color:#e65100;margin-top:2px;">Packing List − Issued (<span id="sc_remaining_pl_pct">—</span>%)</div>
                     </div>
                 </div>
 
@@ -2511,6 +2511,14 @@
                                 <option value="Cleared">Cleared</option>
                                 <option value="Pending">Pending</option>
                                 <option value="__none__">Not Set</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex:1;min-width:130px;margin-bottom:0;">
+                            <label style="display:block;margin-bottom:4px;font-size:12px;">Issued</label>
+                            <select id="shippingIssuedFilter" class="form-control">
+                                <option value="">All</option>
+                                <option value="yes">Issued</option>
+                                <option value="no">Not Issued</option>
                             </select>
                         </div>
                         <button class="btn btn-primary" id="btnShippingFilter" style="height:38px;white-space:nowrap;flex-shrink:0;">
