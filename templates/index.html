@@ -257,8 +257,7 @@
                           <div style="display: flex; align-items: flex-end; gap: 10px; flex: 1; min-width: 0;">
                               <div class="form-group" style="flex: 2; min-width: 0; margin-bottom: 0;">
                                   <label>Search (ISO / MatCode / Description)</label>
-                                  <input type="text" id="bomIsoSearch" class="form-control" style="width: 100%;" placeholder="ISO Drawing, MatCode, Description..." list="bomIsoDatalist">
-                                  <datalist id="bomIsoDatalist"></datalist>
+                                  <input type="text" id="bomIsoSearch" class="form-control" style="width: 100%;" placeholder="ISO Drawing, MatCode, Description...">
                               </div>
                               <div class="form-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
                                   <label>System</label>
@@ -300,10 +299,10 @@
                      <div class="table-responsive">
                          <table class="data-table" id="bomTable" style="font-size:0.82em;table-layout:fixed;width:100%;">
                              <colgroup>
-                                 <col style="width:14%;"><col style="width:6%;"><col style="width:13%;">
-                                 <col style="width:11%;"><col style="width:9%;"><col style="width:6%;">
-                                 <col style="width:7%;"><col style="width:7%;"><col style="width:6%;">
-                                 <col style="width:10%;"><col style="width:4%;"><col style="width:7%;">
+                                 <col style="width:9%;"><col style="width:5%;"><col style="width:12%;">
+                                 <col style="width:10%;"><col style="width:8%;"><col style="width:6%;">
+                                 <col style="width:7%;"><col style="width:6%;"><col style="width:6%;">
+                                 <col style="width:18%;"><col style="width:4%;"><col style="width:9%;">
                              </colgroup>
                              <thead>
                                  <tr>
@@ -494,10 +493,10 @@
                      <div class="table-responsive">
                          <table class="data-table" id="bomSpoolTable" style="font-size:0.82em;table-layout:fixed;width:100%;">
                              <colgroup>
-                                 <col style="width:14%;"><col style="width:6%;"><col style="width:13%;">
-                                 <col style="width:11%;"><col style="width:19%;"><col style="width:6%;">
-                                 <col style="width:9%;"><col style="width:9%;"><col style="width:6%;">
-                                 <col style="width:4%;"><col style="width:6%;">
+                                 <col style="width:9%;"><col style="width:5%;"><col style="width:12%;">
+                                 <col style="width:10%;"><col style="width:24%;"><col style="width:6%;">
+                                 <col style="width:7%;"><col style="width:7%;"><col style="width:6%;">
+                                 <col style="width:4%;"><col style="width:10%;">
                              </colgroup>
                              <thead>
                                  <tr>
@@ -571,9 +570,9 @@
                      <div class="table-responsive">
                          <table class="data-table" id="bomSupportTable" style="font-size:0.82em;table-layout:fixed;width:100%;">
                              <colgroup>
-                                 <col style="width:6%;"><col style="width:16%;"><col style="width:15%;">
-                                 <col style="width:9%;"><col style="width:14%;"><col style="width:9%;">
-                                 <col style="width:13%;"><col style="width:4%;"><col style="width:14%;">
+                                 <col style="width:5%;"><col style="width:13%;"><col style="width:10%;">
+                                 <col style="width:9%;"><col style="width:20%;"><col style="width:11%;">
+                                 <col style="width:13%;"><col style="width:8%;"><col style="width:11%;">
                              </colgroup>
                              <thead>
                                  <tr>
@@ -944,11 +943,11 @@
                             <div style="overflow-x:auto;">
                                 <table class="data-table" id="spoolReceivingTable" style="table-layout:fixed;width:100%;">
                                     <colgroup>
-                                        <col style="width:159px;"><col style="width:272px;">
-                                        <col style="width:96px;"><col style="width:227px;">
-                                        <col style="width:238px;"><col style="width:102px;">
-                                        <col style="width:85px;"><col style="width:85px;">
-                                        <col style="width:79px;">
+                                        <col style="width:10%;"><col style="width:16%;">
+                                        <col style="width:6%;"><col style="width:22%;">
+                                        <col style="width:13%;"><col style="width:9%;">
+                                        <col style="width:7%;"><col style="width:5%;">
+                                        <col style="width:12%;">
                                     </colgroup>
                                     <thead>
                                         <tr>
@@ -1028,21 +1027,30 @@
                         <div class="panel data-panel">
                             <div class="panel-header"><h3>Valve Receiving</h3></div>
                             <div class="table-responsive">
-                                <table class="data-table" id="valTable">
+                                <table class="data-table" id="valTable" style="table-layout:fixed;width:100%;">
+                                    <colgroup>
+                                        <col style="width:8%;"><col style="width:13%;">
+                                        <col style="width:8%;"><col style="width:6%;">
+                                        <col style="width:8%;"><col style="width:21%;">
+                                        <col style="width:6%;"><col style="width:7%;">
+                                        <col style="width:4%;"><col style="width:5%;">
+                                        <col style="width:4%;"><col style="width:5%;">
+                                        <col style="width:5%;">
+                                    </colgroup>
                                     <thead>
                                         <tr>
-                                            <th style="width:129px;">PKG</th><th style="width:237px;">PKG NO</th>
-                                            <th style="width:183px;">TAG NO</th>
-                                            <th style="width:97px;">Operation Type</th>
-                                            <th style="width:150px;">Item</th>
-                                            <th style="width:280px;">Description</th>
-                                            <th style="width:97px;">Mat 1</th>
-                                            <th style="width:108px;">Mat 2</th>
-                                            <th style="width:70px;">Size</th>
-                                            <th style="width:75px;">Rating</th>
-                                            <th style="width:65px;">Unit</th>
-                                            <th style="width:65px;">Qty</th>
-                                            <th style="width:86px;">Status</th>
+                                            <th>PKG</th><th>PKG NO</th>
+                                            <th>TAG NO</th>
+                                            <th>Operation Type</th>
+                                            <th>Item</th>
+                                            <th>Description</th>
+                                            <th>Mat 1</th>
+                                            <th>Mat 2</th>
+                                            <th>Size</th>
+                                            <th>Rating</th>
+                                            <th>Unit</th>
+                                            <th>Qty</th>
+                                            <th>Status</th>
                                         </tr>
                                     </thead>
                                     <tbody></tbody>
@@ -1099,19 +1107,27 @@
                         <div class="panel data-panel">
                             <div class="panel-header"><h3>Speciality Receiving</h3></div>
                             <div class="table-responsive">
-                                <table class="data-table" id="splTable">
+                                <table class="data-table" id="splTable" style="table-layout:fixed;width:100%;">
+                                    <colgroup>
+                                        <col style="width:10%;"><col style="width:14%;">
+                                        <col style="width:12%;"><col style="width:15%;">
+                                        <col style="width:4%;"><col style="width:9%;">
+                                        <col style="width:6%;"><col style="width:6%;">
+                                        <col style="width:6%;"><col style="width:9%;">
+                                        <col style="width:9%;">
+                                    </colgroup>
                                     <thead>
                                         <tr>
-                                            <th style="width:136px;">PKG</th><th style="width:249px;">PKG NO</th>
-                                            <th style="width:238px;">TAG NO</th>
-                                            <th style="width:147px;">Item</th>
-                                            <th style="width:45px;">Type</th>
-                                            <th style="width:136px;">Mat</th>
-                                            <th style="width:85px;">Size</th>
-                                            <th style="width:79px;">Rating</th>
-                                            <th style="width:85px;">Unit</th>
-                                            <th style="width:79px;">Qty</th>
-                                            <th style="width:91px;">Status</th>
+                                            <th>PKG</th><th>PKG NO</th>
+                                            <th>TAG NO</th>
+                                            <th>Item</th>
+                                            <th>Type</th>
+                                            <th>Mat</th>
+                                            <th>Size</th>
+                                            <th>Rating</th>
+                                            <th>Unit</th>
+                                            <th>Qty</th>
+                                            <th>Status</th>
                                         </tr>
                                     </thead>
                                     <tbody></tbody>
@@ -1286,21 +1302,30 @@
                         <div class="panel data-panel">
                             <div class="panel-header"><h3>Spare Receiving</h3></div>
                             <div class="table-responsive">
-                                <table class="data-table" id="sprTable">
+                                <table class="data-table" id="sprTable" style="table-layout:fixed;width:100%;">
+                                    <colgroup>
+                                        <col style="width:8%;"><col style="width:13%;">
+                                        <col style="width:8%;"><col style="width:6%;">
+                                        <col style="width:8%;"><col style="width:21%;">
+                                        <col style="width:6%;"><col style="width:7%;">
+                                        <col style="width:4%;"><col style="width:5%;">
+                                        <col style="width:4%;"><col style="width:5%;">
+                                        <col style="width:5%;">
+                                    </colgroup>
                                     <thead>
                                         <tr>
-                                            <th style="width:120px;text-align:center;">PKG</th><th style="width:220px;text-align:center;">PKG NO</th>
-                                            <th style="width:170px;text-align:center;">TAG NO</th>
-                                            <th style="width:90px;text-align:center;">Operation Type</th>
-                                            <th style="width:140px;text-align:center;">Item</th>
-                                            <th style="width:270px;text-align:center;">Description</th>
-                                            <th style="width:90px;text-align:center;">Mat 1</th>
-                                            <th style="width:100px;text-align:center;">Mat 2</th>
-                                            <th style="width:65px;text-align:center;">Size</th>
-                                            <th style="width:70px;text-align:center;">Rating</th>
-                                            <th style="width:60px;text-align:center;">Unit</th>
-                                            <th style="width:60px;text-align:center;">Qty</th>
-                                            <th style="width:80px;text-align:center;">Status</th>
+                                            <th style="text-align:center;">PKG</th><th style="text-align:center;">PKG NO</th>
+                                            <th style="text-align:center;">TAG NO</th>
+                                            <th style="text-align:center;">Operation Type</th>
+                                            <th style="text-align:center;">Item</th>
+                                            <th style="text-align:center;">Description</th>
+                                            <th style="text-align:center;">Mat 1</th>
+                                            <th style="text-align:center;">Mat 2</th>
+                                            <th style="text-align:center;">Size</th>
+                                            <th style="text-align:center;">Rating</th>
+                                            <th style="text-align:center;">Unit</th>
+                                            <th style="text-align:center;">Qty</th>
+                                            <th style="text-align:center;">Status</th>
                                         </tr>
                                     </thead>
                                     <tbody></tbody>
@@ -1644,10 +1669,10 @@
                      <div class="table-responsive">
                          <table class="data-table" id="stockValveTable" style="table-layout:fixed;width:100%;font-size:0.85em;">
                              <colgroup>
-                                 <col style="width:13%;"><col style="width:6%;"><col style="width:13%;">
-                                 <col style="width:11%;"><col style="width:10%;"><col style="width:7%;">
-                                 <col style="width:9%;"><col style="width:6%;"><col style="width:7%;">
-                                 <col style="width:9%;"><col style="width:9%;">
+                                 <col style="width:9%;"><col style="width:5%;"><col style="width:12%;">
+                                 <col style="width:9%;"><col style="width:10%;"><col style="width:7%;">
+                                 <col style="width:8%;"><col style="width:6%;"><col style="width:7%;">
+                                 <col style="width:13%;"><col style="width:14%;">
                              </colgroup>
                              <thead>
                                  <tr>
@@ -1707,10 +1732,10 @@
                      <div class="table-responsive">
                          <table class="data-table" id="stockSpecialityTable" style="table-layout:fixed;width:100%;font-size:0.85em;">
                              <colgroup>
-                                 <col style="width:13%;"><col style="width:6%;"><col style="width:13%;">
-                                 <col style="width:11%;"><col style="width:10%;"><col style="width:7%;">
-                                 <col style="width:9%;"><col style="width:6%;"><col style="width:7%;">
-                                 <col style="width:9%;"><col style="width:9%;">
+                                 <col style="width:9%;"><col style="width:5%;"><col style="width:12%;">
+                                 <col style="width:9%;"><col style="width:10%;"><col style="width:7%;">
+                                 <col style="width:8%;"><col style="width:6%;"><col style="width:7%;">
+                                 <col style="width:13%;"><col style="width:14%;">
                              </colgroup>
                              <thead>
                                  <tr>
@@ -1805,16 +1830,16 @@
                         <table class="data-table" id="shortageTable" style="table-layout:fixed;width:100%;">
                             <colgroup>
                                 <col style="width:130px;">
-                                <col style="width:220px;">
-                                <col style="width:170px;">
+                                <col style="width:190px;">
+                                <col style="width:150px;">
                                 <col style="width:100px;">
                                 <col style="width:100px;">
                                 <col style="width:100px;">
                                 <col style="width:70px;">
                                 <col style="width:70px;">
-                                <col style="width:110px;">
                                 <col style="width:120px;">
-                                <col style="width:120px;">
+                                <col style="width:140px;">
+                                <col style="width:140px;">
                             </colgroup>
                             <thead>
                                 <tr>
@@ -1909,16 +1934,16 @@
                         <table class="data-table" id="surplusTable" style="table-layout:fixed;width:100%;">
                             <colgroup>
                                 <col style="width:130px;">
-                                <col style="width:220px;">
-                                <col style="width:170px;">
+                                <col style="width:190px;">
+                                <col style="width:150px;">
                                 <col style="width:100px;">
                                 <col style="width:100px;">
                                 <col style="width:100px;">
                                 <col style="width:70px;">
                                 <col style="width:70px;">
-                                <col style="width:110px;">
                                 <col style="width:120px;">
-                                <col style="width:120px;">
+                                <col style="width:140px;">
+                                <col style="width:140px;">
                             </colgroup>
                             <thead>
                                 <tr>
@@ -2110,9 +2135,9 @@
                      <div class="table-responsive">
                          <table class="data-table" id="mssTable" style="font-size:0.82em;table-layout:fixed;width:100%;">
                              <colgroup>
-                                 <col style="width:15%;"><col style="width:10%;"><col style="width:12%;">
+                                 <col style="width:13%;"><col style="width:9%;"><col style="width:10%;">
                                  <col style="width:8%;"><col style="width:5%;"><col style="width:5%;">
-                                 <col style="width:11%;"><col style="width:9%;"><col style="width:6%;"><col style="width:5%;"><col style="width:9%;"><col style="width:5%;">
+                                 <col style="width:9%;"><col style="width:9%;"><col style="width:8%;"><col style="width:8%;"><col style="width:8%;"><col style="width:8%;">
                              </colgroup>
                              <thead>
                                  <tr>
@@ -2187,9 +2212,9 @@
                          <div class="table-responsive">
                              <table class="data-table" id="mssValveTable" style="font-size:0.82em;table-layout:fixed;width:100%;">
                                  <colgroup>
-                                     <col style="width:15%;"><col style="width:10%;"><col style="width:12%;">
+                                     <col style="width:13%;"><col style="width:9%;"><col style="width:10%;">
                                      <col style="width:8%;"><col style="width:5%;"><col style="width:5%;">
-                                     <col style="width:11%;"><col style="width:9%;"><col style="width:6%;"><col style="width:5%;"><col style="width:9%;"><col style="width:5%;">
+                                     <col style="width:9%;"><col style="width:9%;"><col style="width:8%;"><col style="width:8%;"><col style="width:8%;"><col style="width:8%;">
                                  </colgroup>
                                  <thead>
                                      <tr>
@@ -2265,9 +2290,9 @@
                          <div class="table-responsive">
                              <table class="data-table" id="mssSpecialityTable" style="font-size:0.82em;table-layout:fixed;width:100%;">
                                  <colgroup>
-                                     <col style="width:15%;"><col style="width:10%;"><col style="width:12%;">
+                                     <col style="width:13%;"><col style="width:9%;"><col style="width:10%;">
                                      <col style="width:8%;"><col style="width:5%;"><col style="width:5%;">
-                                     <col style="width:11%;"><col style="width:9%;"><col style="width:6%;"><col style="width:5%;"><col style="width:9%;"><col style="width:5%;">
+                                     <col style="width:9%;"><col style="width:9%;"><col style="width:8%;"><col style="width:8%;"><col style="width:8%;"><col style="width:8%;">
                                  </colgroup>
                                  <thead>
                                      <tr>
@@ -2335,9 +2360,9 @@
                          <div class="table-responsive">
                              <table class="data-table" id="mssSupportTable" style="font-size:0.82em;table-layout:fixed;width:100%;">
                                  <colgroup>
-                                     <col style="width:15%;"><col style="width:10%;"><col style="width:12%;">
+                                     <col style="width:13%;"><col style="width:9%;"><col style="width:10%;">
                                      <col style="width:8%;"><col style="width:5%;"><col style="width:5%;">
-                                     <col style="width:11%;"><col style="width:9%;"><col style="width:6%;"><col style="width:5%;"><col style="width:9%;"><col style="width:5%;">
+                                     <col style="width:9%;"><col style="width:9%;"><col style="width:8%;"><col style="width:8%;"><col style="width:8%;"><col style="width:8%;">
                                  </colgroup>
                                  <thead>
                                      <tr>

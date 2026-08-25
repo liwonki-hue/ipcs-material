@@ -3211,16 +3211,13 @@ function setupCatItemSize(catEl, itemEl, sizeEl, getItems, getSizes, allVal) {
 function initFilterOptions() {
     // BOM Filters
     const bomSys = document.getElementById('bomSystemFilter');
-    const bomIsoData = document.getElementById('bomIsoDatalist');
     const bomItemF = document.getElementById('bomItemFilter');
     const bomSizeF = document.getElementById('bomSizeFilter');
 
-    if(bomSys && bomIsoData) {
+    if(bomSys) {
         const systems = [...new Set(db.bom.map(b => b.system).filter(Boolean))].sort();
-        const isos = [...new Set(db.bomIsoList.map(r => r.iso))].sort();
 
         bomSys.innerHTML = '<option value="All">All Systems</option>' + systems.map(s => `<option value="${s}">${s}</option>`).join('');
-        bomIsoData.innerHTML = isos.map(i => `<option value="${i}">`).join('');
 
         // 탭 기반 Item → Size 연동 (Category는 _bomActiveTab이 결정)
         if (bomItemF) {
