@@ -1122,43 +1122,30 @@ function initStockFilters() {
     const btnExportStock = document.getElementById('btnExportStock');
     if (btnExportStock) {
         btnExportStock.addEventListener('click', () => {
-            const masterMap = {};
-            db.matCodeMaster.forEach(m => { masterMap[m.matCode] = m; });
-            const { recMap, docMap, pkgMap } = buildRecvMaps(r => isReceivingActive(r.plNo) && isKpiReceiving(r));
-            const recDescMap = {};
-            db.receiving.forEach(r => { if (r.matCode && !recDescMap[r.matCode]) recDescMap[r.matCode] = r.desc; });
-            const issMap = getIssuedQtyMap(() => true);
-            const codes = [...new Set(Object.keys(recMap))].sort();
-            const rows = codes.map(key => {
-                const { matCode, sizeOverride } = window.parseStockKey(key);
-                const m   = masterMap[matCode] || {};
-                const rec = recMap[key] || 0;
-                const iss = issMap[matCode] || 0;
-                const fullDesc = db.bomDesc[matCode] || recDescMap[matCode] || '-';
-                const size = sizeOverride || window.getEffectiveSize(matCode, fullDesc, m.size1);
-                const rating = getRatingForMatCode(matCode, masterMap);
-                return {
-                    'PKG':             docMap[key] ? [...docMap[key]].sort().join(', ') : '-',
-                    'PKG NO':          pkgMap[key] ? [...pkgMap[key]].sort().join(', ') : '-',
-                    'MatCode':         matCode,
-                    'Category':        m.category || '-',
-                    'Full Description': fullDesc,
-                    'Item':            m.itemDesc || '-',
-                    'Size':            size,
-                    'Rating':          rating,
-                    'Unit':            'EA',
-                    'Total Received':  rec,
-                    'Total Issued':    iss,
-                    'Stock (Balance)': Math.max(0, rec - iss),
-                    'Status':          Math.max(0, rec - iss) > 0 ? 'In Stock' : 'Out of Stock',
-                };
-            });
+            // 화면에 보이는 Stock 서브탭(Piping/Others)과 동일한 카테고리·필터만 내보냄
+            const forcedCats = _stActiveBulkTab === 'others' ? ['Others'] : ['Pipe', 'Fitting'];
+            const rows = _buildStockRows(forcedCats).map(r => ({
+                'PKG':             r.docs.length ? r.docs.join(', ') : '-',
+                'PKG NO':          r.pkgs.length ? r.pkgs.join(', ') : '-',
+                'MatCode':         r.matCode,
+                'Category':        r.cat,
+                'Full Description': r.fullDesc,
+                'Item':            r.item,
+                'Size':            r.size,
+                'Rating':          r.rating,
+                'Unit':            r.unitStr,
+                'Total Received':  r.rec,
+                'Total Issued':    r.iss,
+                'Stock (Balance)': r.stock,
+                'Status':          r.stock > 0 ? 'In Stock' : 'Out of Stock',
+            }));
             const ws = XLSX.utils.json_to_sheet(rows);
             ws['!cols'] = [18, 28, 26, 12, 40, 14, 8, 10, 6, 14, 12, 14, 12].map(w => ({ wch: w }));
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, 'Stock');
             const today = new Date().toISOString().split('T')[0];
-            XLSX.writeFile(wb, `Stock_Export_${today}.xlsx`);
+            const tabLabel = _stActiveBulkTab === 'others' ? 'Others' : 'PipeFitting';
+            XLSX.writeFile(wb, `Stock_${tabLabel}_Export_${today}.xlsx`);
         });
     }
     } // end _stockFiltersInitialized guard
@@ -1182,11 +1169,9 @@ function buildRecvMaps(filterFn) {
     return { recMap, docMap, pkgMap };
 }
 
-function renderStockTable(forcedCats, hideMatCode) {
-    let tbody = document.querySelector('#stockTable tbody');
-    if(!tbody) return;
-    tbody.innerHTML = '';
-
+// Material Stock (Piping/Others 공용) 필터+집계 — 화면 렌더러와 Export 버튼이 동일하게 사용해
+// "화면엔 카테고리/필터 걸었는데 Export는 전체가 나오는" 불일치를 원천 차단
+function _buildStockRows(forcedCats) {
     // Filter values
     const search   = (document.getElementById('stockSearch')    ?.value || '').toLowerCase();
     const fDoc     = document.getElementById('stockDocFilter')  ?.value || 'All';
@@ -1253,15 +1238,7 @@ function renderStockTable(forcedCats, hideMatCode) {
         return true;
     });
 
-    const label = document.getElementById('stockCountLabel');
-    if (label) label.textContent = `(${filtered.length.toLocaleString()} items)`;
-
-    const stTotalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-    if (_stockPage > stTotalPages) _stockPage = 1;
-    const stStart = (_stockPage - 1) * PAGE_SIZE;
-    const display = filtered.slice(stStart, stStart + PAGE_SIZE);
-
-    const stockRows = display.map(key => {
+    return filtered.map(key => {
         const { matCode, sizeOverride } = window.parseStockKey(key);
         let rec   = recMap[key] || 0;
         let iss   = issMap[matCode] || 0;  // matCode 기준 (복합키 제거)
@@ -1276,23 +1253,46 @@ function renderStockTable(forcedCats, hideMatCode) {
         const size    = sizeOverride || window.getEffectiveSize(matCode, fullDesc, mData.size1);
         const unitStr = bomLookup[matCode]?.unit || 'EA';
         const rating  = getRatingForMatCode(matCode, masterMap);
-        const badge   = stock > 0 ? '<span class="status-badge ok">In Stock</span>' : '<span class="status-badge err">Out of Stock</span>';
-        const docs    = docMap[key] ? [...docMap[key]].sort().join('<br>') : '-';
-        const pkgs    = pkgMap[key] ? [...pkgMap[key]].sort().join('<br>') : '-';
+        const docs    = docMap[key] ? [...docMap[key]].sort() : [];
+        const pkgs    = pkgMap[key] ? [...pkgMap[key]].sort() : [];
+
+        return { key, matCode, cat, item, matl, fullDesc, size, unitStr, rating, rec, iss, stock, docs, pkgs };
+    });
+}
+
+function renderStockTable(forcedCats, hideMatCode) {
+    let tbody = document.querySelector('#stockTable tbody');
+    if(!tbody) return;
+    tbody.innerHTML = '';
+
+    const rows = _buildStockRows(forcedCats);
+
+    const label = document.getElementById('stockCountLabel');
+    if (label) label.textContent = `(${rows.length.toLocaleString()} items)`;
+
+    const stTotalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+    if (_stockPage > stTotalPages) _stockPage = 1;
+    const stStart = (_stockPage - 1) * PAGE_SIZE;
+    const display = rows.slice(stStart, stStart + PAGE_SIZE);
+
+    const stockRows = display.map(r => {
+        const badge = r.stock > 0 ? '<span class="status-badge ok">In Stock</span>' : '<span class="status-badge err">Out of Stock</span>';
+        const docs  = r.docs.length ? r.docs.join('<br>') : '-';
+        const pkgs  = r.pkgs.length ? r.pkgs.join('<br>') : '-';
 
         return `<tr>
             <td>${docs}</td>
             <td>${pkgs}</td>
-            <td style="${hideMatCode ? 'padding:0;width:0;overflow:hidden;' : 'font-weight:600;color:var(--color-primary);'}">${hideMatCode ? '' : matCode}</td>
-            <td><strong>${cat}</strong></td>
-            <td>${item}</td>
-            <td>${matl}</td>
-            <td>${size}</td>
-            <td style="text-align:center;">${rating}</td>
-            <td>${unitStr}</td>
-            <td style="text-align:center;">${rec.toFixed(2)}</td>
-            <td style="text-align:center;">${iss.toFixed(2)}</td>
-            <td style="font-weight:700;text-align:center;">${stock.toFixed(2)}</td>
+            <td style="${hideMatCode ? 'padding:0;width:0;overflow:hidden;' : 'font-weight:600;color:var(--color-primary);'}">${hideMatCode ? '' : r.matCode}</td>
+            <td><strong>${r.cat}</strong></td>
+            <td>${r.item}</td>
+            <td>${r.matl}</td>
+            <td>${r.size}</td>
+            <td style="text-align:center;">${r.rating}</td>
+            <td>${r.unitStr}</td>
+            <td style="text-align:center;">${r.rec.toFixed(2)}</td>
+            <td style="text-align:center;">${r.iss.toFixed(2)}</td>
+            <td style="font-weight:700;text-align:center;">${r.stock.toFixed(2)}</td>
             <td>${badge}</td>
         </tr>`;
     });
@@ -3538,70 +3538,77 @@ function initFilterOptions() {
 }
 
 
-async function renderBomTable() {
-    let tbody = document.querySelector('#bomTable tbody');
-    if(!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
+function _bomTabCategory() {
+    const TAB_CAT = { piping: 'Pipe', fitting: 'Fitting', valve: 'Valve', speciality: 'Speciality', others: 'Others' };
+    return TAB_CAT[_bomActiveTab] || 'Pipe';
+}
 
+// BOM 탭(Piping/Fitting/Valve/Speciality/Others) 공용 필터 — 화면 렌더러와 Export 버튼이
+// 동일하게 사용해 "화면엔 필터 걸었는데 Export는 전체가 나오는" 불일치를 원천 차단
+function _applyBomTabFilters(q) {
     const search  = (document.getElementById('bomIsoSearch')?.value || '').trim();
     const sys     = document.getElementById('bomSystemFilter')?.value || 'All';
-    const TAB_CAT = { piping: 'Pipe', fitting: 'Fitting', valve: 'Valve', speciality: 'Speciality', others: 'Others' };
-    const cat     = TAB_CAT[_bomActiveTab] || 'Pipe';
+    const cat     = _bomTabCategory();
     const item    = document.getElementById('bomItemFilter')?.value || 'All';
     const mat1    = document.getElementById('bomMat1Filter')?.value || 'All';
     const mat2    = document.getElementById('bomMat2Filter')?.value || 'All';
     const size    = document.getElementById('bomSizeFilter')?.value || 'All';
     const rating  = document.getElementById('bomRatingFilter')?.value || 'All';
 
-    // 필터를 두 쿼리(data + count)에 동일하게 적용하는 헬퍼
-    const applyFilters = (q) => {
-        if (sys  !== 'All') q = q.eq('system', sys);
-        if (search) q = q.or(`iso_dwg_no.ilike.%${search}%,mat_code.ilike.%${search}%,category.ilike.%${search}%,full_description.ilike.%${search}%,tag.ilike.%${search}%`);
-        if (cat  !== 'All') q = q.eq('category', cat);
-        if (mat1 !== 'All') q = q.eq('mat1', mat1);
-        if (mat2 !== 'All') q = q.eq('mat2', mat2);
-        if (item !== 'All') {
-            if (item === 'CONTROL VALVE') {
-                q = q.or('tag.ilike.%-TCV-%,tag.ilike.%-LCV-%,tag.ilike.%-FCV-%,tag.ilike.%-PCV-%,tag.ilike.%-FV-%');
-            } else if (item === 'SAFETY VALVE') {
-                q = q.or('tag.ilike.%-PSV%,tag.ilike.%-PRV%,mat_code.ilike.PSV-*,mat_code.ilike.PRV-*');
+    if (sys  !== 'All') q = q.eq('system', sys);
+    if (search) q = q.or(`iso_dwg_no.ilike.%${search}%,mat_code.ilike.%${search}%,category.ilike.%${search}%,full_description.ilike.%${search}%,tag.ilike.%${search}%`);
+    if (cat  !== 'All') q = q.eq('category', cat);
+    if (mat1 !== 'All') q = q.eq('mat1', mat1);
+    if (mat2 !== 'All') q = q.eq('mat2', mat2);
+    if (item !== 'All') {
+        if (item === 'CONTROL VALVE') {
+            q = q.or('tag.ilike.%-TCV-%,tag.ilike.%-LCV-%,tag.ilike.%-FCV-%,tag.ilike.%-PCV-%,tag.ilike.%-FV-%');
+        } else if (item === 'SAFETY VALVE') {
+            q = q.or('tag.ilike.%-PSV%,tag.ilike.%-PRV%,mat_code.ilike.PSV-*,mat_code.ilike.PRV-*');
+        } else {
+            const prefixes = ITEM_PREFIX_MAP[item];
+            // Valve/Speciality는 mat_code가 없어(Tag로만 매칭) prefix 검색이 항상 무효 — Description으로 대체
+            if (cat !== 'Valve' && cat !== 'Speciality' && prefixes && prefixes.length > 0) {
+                q = q.or(prefixes.map(p => `mat_code.ilike.${p}-*`).join(','));
             } else {
-                const prefixes = ITEM_PREFIX_MAP[item];
-                // Valve/Speciality는 mat_code가 없어(Tag로만 매칭) prefix 검색이 항상 무효 — Description으로 대체
-                if (cat !== 'Valve' && cat !== 'Speciality' && prefixes && prefixes.length > 0) {
-                    q = q.or(prefixes.map(p => `mat_code.ilike.${p}-*`).join(','));
-                } else {
-                    q = q.ilike('full_description', `%${item}%`);
-                }
+                q = q.ilike('full_description', `%${item}%`);
             }
         }
-        if (size !== 'All') {
-            if (cat === 'Others') {
-                // GSKT/STB는 D-code가 없고 MatCode에 사이즈(볼트는 Size+길이)가 그대로 박혀있음
-                const m = size.match(/^([\d\/\-]+)"(?:x(\d+)mm)?$/);
-                if (m) q = q.ilike('mat_code', m[2] ? `%-${m[1]}"x${m[2]}%` : `%-${m[1]}"%`);
+    }
+    if (size !== 'All') {
+        if (cat === 'Others') {
+            // GSKT/STB는 D-code가 없고 MatCode에 사이즈(볼트는 Size+길이)가 그대로 박혀있음
+            const m = size.match(/^([\d\/\-]+)"(?:x(\d+)mm)?$/);
+            if (m) q = q.ilike('mat_code', m[2] ? `%-${m[1]}"x${m[2]}%` : `%-${m[1]}"%`);
+        } else {
+            const toD = v => 'D' + Math.round(parseFloat(v) * 10).toString().padStart(3, '0');
+            const dualMatch = size.match(/([\d.]+)"×([\d.]+)"/);
+            if (dualMatch) {
+                q = q.ilike('mat_code', `%${toD(dualMatch[1])}${toD(dualMatch[2])}%`);
             } else {
-                const toD = v => 'D' + Math.round(parseFloat(v) * 10).toString().padStart(3, '0');
-                const dualMatch = size.match(/([\d.]+)"×([\d.]+)"/);
-                if (dualMatch) {
-                    q = q.ilike('mat_code', `%${toD(dualMatch[1])}${toD(dualMatch[2])}%`);
-                } else {
-                    const single = size.match(/([\d.]+)"/);
-                    if (single) q = q.ilike('mat_code', `%-${toD(single[1])}-%`);
-                }
+                const single = size.match(/([\d.]+)"/);
+                if (single) q = q.ilike('mat_code', `%-${toD(single[1])}-%`);
             }
         }
-        if (rating !== 'All') {
-            // Valve/Speciality는 mat_code가 없어 Rating이 mat_code 세그먼트가 아닌 Description(CL150, 300# 등)에만 존재
-            if (cat === 'Valve' || cat === 'Speciality') {
-                q = q.ilike('full_description', `%${rating}%`);
-            } else {
-                const codes = [...(getRatingMatCodesForCat(cat)[rating] || [])];
-                q = q.in('mat_code', codes.length ? codes : ['__NONE__']);
-            }
+    }
+    if (rating !== 'All') {
+        // Valve/Speciality는 mat_code가 없어 Rating이 mat_code 세그먼트가 아닌 Description(CL150, 300# 등)에만 존재
+        if (cat === 'Valve' || cat === 'Speciality') {
+            q = q.ilike('full_description', `%${rating}%`);
+        } else {
+            const codes = [...(getRatingMatCodesForCat(cat)[rating] || [])];
+            q = q.in('mat_code', codes.length ? codes : ['__NONE__']);
         }
-        return q;
-    };
+    }
+    return q;
+}
+
+async function renderBomTable() {
+    let tbody = document.querySelector('#bomTable tbody');
+    if(!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
+
+    const applyFilters = _applyBomTabFilters;
 
     // 데이터 쿼리 + COUNT 쿼리를 병렬 실행
     const dataQ  = applyFilters(
@@ -3870,12 +3877,11 @@ async function initVendorFilters() {
                 btnExportVendor.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exporting...';
                 try {
                     const sys = document.getElementById('vendorSystemFilter')?.value || 'All';
-                    const search = (document.getElementById('vendorIsoSearch')?.value || '').trim();
-                    let query = supabaseClient.from('vendor')
-                        .select('system, iso_dwg_no, line_no, mat_code, full_description, uom, qty')
-                        .order('iso_dwg_no').limit(100000);
-                    if (sys !== 'All') query = query.eq('system', sys);
-                    if (search) query = query.or(`iso_dwg_no.ilike.%${search}%,mat_code.ilike.%${search}%,full_description.ilike.%${search}%`);
+                    let query = _applyVendorFilters(
+                        supabaseClient.from('vendor')
+                            .select('system, iso_dwg_no, line_no, mat_code, full_description, uom, qty')
+                            .order('iso_dwg_no').limit(100000)
+                    );
                     const { data, error } = await query;
                     if (error) throw error;
 
@@ -3910,11 +3916,8 @@ async function initVendorFilters() {
     }
 }
 
-async function renderVendorTable() {
-    let tbody = document.querySelector('#vendorTable tbody');
-    if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
-
+// Vendor 탭 공용 필터 — 화면 렌더러와 Export 버튼이 동일하게 사용
+function _applyVendorFilters(q) {
     const search = (document.getElementById('vendorIsoSearch')?.value || '').trim();
     const sys    = document.getElementById('vendorSystemFilter')?.value || 'All';
     const item   = document.getElementById('vendorItemFilter')?.value || 'All';
@@ -3922,25 +3925,31 @@ async function renderVendorTable() {
     const size   = document.getElementById('vendorSizeFilter')?.value || 'All';
     const rating = document.getElementById('vendorRatingFilter')?.value || 'All';
 
-    const applyFilters = (q) => {
-        if (sys !== 'All') q = q.eq('system', sys);
-        if (search) q = q.or(`iso_dwg_no.ilike.%${search}%,mat_code.ilike.%${search}%,full_description.ilike.%${search}%`);
-        if (mat1 !== 'All') q = q.eq('mat1', mat1);
-        if (item !== 'All') {
-            const prefixes = VENDOR_ITEM_PREFIX_MAP[item];
-            if (prefixes && prefixes.length) q = q.or(prefixes.map(p => `mat_code.ilike.${p}-*`).join(','));
-        }
-        if (size !== 'All') {
-            // size 표시값(예: '3/4"x120mm', '8"')을 MatCode에 박힌 그대로의 부분 문자열로 역변환
-            const m = size.match(/^([\d\/\-]+)"(?:x(\d+)mm)?$/);
-            if (m) q = q.ilike('mat_code', m[2] ? `%-${m[1]}"x${m[2]}%` : `%-${m[1]}"%`);
-        }
-        if (rating !== 'All') {
-            const codes = [...(_vendorRatingMap[rating] || [])];
-            q = q.in('mat_code', codes.length ? codes : ['__NONE__']);
-        }
-        return q;
-    };
+    if (sys !== 'All') q = q.eq('system', sys);
+    if (search) q = q.or(`iso_dwg_no.ilike.%${search}%,mat_code.ilike.%${search}%,full_description.ilike.%${search}%`);
+    if (mat1 !== 'All') q = q.eq('mat1', mat1);
+    if (item !== 'All') {
+        const prefixes = VENDOR_ITEM_PREFIX_MAP[item];
+        if (prefixes && prefixes.length) q = q.or(prefixes.map(p => `mat_code.ilike.${p}-*`).join(','));
+    }
+    if (size !== 'All') {
+        // size 표시값(예: '3/4"x120mm', '8"')을 MatCode에 박힌 그대로의 부분 문자열로 역변환
+        const m = size.match(/^([\d\/\-]+)"(?:x(\d+)mm)?$/);
+        if (m) q = q.ilike('mat_code', m[2] ? `%-${m[1]}"x${m[2]}%` : `%-${m[1]}"%`);
+    }
+    if (rating !== 'All') {
+        const codes = [...(_vendorRatingMap[rating] || [])];
+        q = q.in('mat_code', codes.length ? codes : ['__NONE__']);
+    }
+    return q;
+}
+
+async function renderVendorTable() {
+    let tbody = document.querySelector('#vendorTable tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
+
+    const applyFilters = _applyVendorFilters;
 
     const dataQ = applyFilters(
         supabaseClient.from('vendor')
@@ -5307,27 +5316,36 @@ function attachEventListeners() {
             btnExportBom.disabled = true;
             btnExportBom.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exporting...';
             try {
-                const search = (document.getElementById('bomIsoSearch')?.value || '').trim();
+                const cat = _bomTabCategory();
                 const sys = document.getElementById('bomSystemFilter')?.value || 'All';
 
-                let query = supabaseClient.from('bom_detail')
-                    .select('system, iso_dwg_no, category, mat_code, full_description, uom, qty')
-                    .order('iso_dwg_no')
-                    .limit(100000);
-                if (sys !== 'All') query = query.eq('system', sys);
-                if (search) query = query.or(`iso_dwg_no.ilike.%${search}%,mat_code.ilike.%${search}%,category.ilike.%${search}%,full_description.ilike.%${search}%`);
-
-                const { data, error } = await query;
-                if (error) throw error;
+                // PostgREST 서버 row cap(10,000)에 걸리는 카테고리(Pipe/Fitting)가 있어
+                // range로 청크 분할 조회(단일 쿼리로는 10,000행 이상 못 받아옴)
+                const buildQuery = () => _applyBomTabFilters(
+                    supabaseClient.from('bom_detail')
+                        .select('system, iso_dwg_no, line_no, category, mat_code, tag, full_description, uom, qty')
+                        .order('iso_dwg_no')
+                );
+                let data = [], from = 0;
+                const CHUNK = 5000;
+                while (true) {
+                    const { data: chunk, error } = await buildQuery().range(from, from + CHUNK - 1);
+                    if (error) throw error;
+                    data = data.concat(chunk || []);
+                    if (!chunk || chunk.length < CHUNK) break;
+                    from += CHUNK;
+                }
 
                 const masterMap = _buildMasterMap();
                 const rows = (data || []).map(b => {
-                    const rating = getRatingForMatCode(b.mat_code, masterMap);
+                    const rating = getRatingForMatCode(b.mat_code, masterMap, b.full_description);
                     return {
                         'System Area': b.system || '-',
                         'ISO Drawing': b.iso_dwg_no || '-',
+                        'Line No':     b.line_no || '-',
                         'Category':    b.category || '-',
-                        'Mat Code':    b.mat_code || '-',
+                        'Mat Code / Tag': b.mat_code || b.tag || '-',
+                        'Item':        window.extractItemFromDesc(b.full_description),
                         'Rating':      rating,
                         'Description': b.full_description || '-',
                         'Unit':        b.uom || 'EA',
@@ -5336,12 +5354,12 @@ function attachEventListeners() {
                 });
 
                 const ws = XLSX.utils.json_to_sheet(rows);
-                ws['!cols'] = [18,30,14,24,10,50,8,12].map(w => ({ wch: w }));
+                ws['!cols'] = [18,30,20,14,24,16,10,50,8,12].map(w => ({ wch: w }));
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, 'BOM');
 
                 const today = new Date().toISOString().split('T')[0];
-                const fileName = `BOM_Export_${today}${sys !== 'All' ? '_' + sys : ''}.xlsx`;
+                const fileName = `BOM_${cat}_Export_${today}${sys !== 'All' ? '_' + sys : ''}.xlsx`;
                 XLSX.writeFile(wb, fileName);
             } catch(e) {
                 alert('Export failed: ' + e.message);
