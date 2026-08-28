@@ -210,6 +210,7 @@ window.extractItemFromDesc = function(desc) {
         'Y-STRAINER',
         'ELBOW LR', 'ELBOW SR',
         'NIPPLE', 'WELDOLET', 'SOCKOLET', 'THREADOLET',
+        'TIE-ROD',
     ];
     // COMPOUND 매칭 문자열(원문 표기)과 화면 표시용 통일 라벨이 다른 경우의 별칭
     const COMPOUND_LABEL_ALIAS = { 'SWAGE-CON': 'SWAGECON', 'SWAGE-ECC': 'SWAGEECC' };
@@ -5685,9 +5686,21 @@ function attachEventListeners() {
                 : [];
             const demandByMat = {}; // matCode → { "system::iso": { system, iso, qty } }
             if (fifoMatCodes.length) {
-                const { data: demandRows } = await supabaseClient.from('bom')
-                    .select('mat_code, iso_dwg_no, qty, system')
-                    .in('mat_code', fifoMatCodes);
+                // 흔한 MatCode(예: 1" 소구경 배관)는 project 전체에서 수천 건씩 나와 PostgREST 기본 1000행
+                // 캡에 걸릴 수 있으므로 range로 청크 분할 조회
+                let demandRows = [];
+                let dFrom = 0;
+                const dStep = 1000;
+                while (true) {
+                    const { data: chunk, error: demandErr } = await supabaseClient.from('bom')
+                        .select('mat_code, iso_dwg_no, qty, system')
+                        .in('mat_code', fifoMatCodes)
+                        .range(dFrom, dFrom + dStep - 1);
+                    if (demandErr) { console.error('FIFO demand 조회 실패:', demandErr); break; }
+                    demandRows = demandRows.concat(chunk || []);
+                    if (!chunk || chunk.length < dStep) break;
+                    dFrom += dStep;
+                }
                 (demandRows || []).forEach(d => {
                     const m = (d.mat_code || '').trim().toUpperCase();
                     if (!demandByMat[m]) demandByMat[m] = {};
