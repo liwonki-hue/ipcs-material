@@ -3553,8 +3553,14 @@ function _applyBomTabFilters(q) {
     const mat2    = document.getElementById('bomMat2Filter')?.value || 'All';
     const size    = document.getElementById('bomSizeFilter')?.value || 'All';
     const rating  = document.getElementById('bomRatingFilter')?.value || 'All';
+    const isoStatus = document.getElementById('bomIsoStatusFilter')?.value || 'All';
+    const lineStatus = document.getElementById('bomLineNoStatusFilter')?.value || 'All';
 
     if (sys  !== 'All') q = q.eq('system', sys);
+    if (isoStatus === 'Has') q = q.not('iso_dwg_no', 'is', null).neq('iso_dwg_no', '');
+    else if (isoStatus === 'Missing') q = q.or('iso_dwg_no.is.null,iso_dwg_no.eq.');
+    if (lineStatus === 'Has') q = q.not('line_no', 'is', null).neq('line_no', '');
+    else if (lineStatus === 'Missing') q = q.or('line_no.is.null,line_no.eq.');
     if (search) q = q.or(`iso_dwg_no.ilike.%${search}%,mat_code.ilike.%${search}%,category.ilike.%${search}%,full_description.ilike.%${search}%,tag.ilike.%${search}%`);
     if (cat  !== 'All') q = q.eq('category', cat);
     if (mat1 !== 'All') q = q.eq('mat1', mat1);
@@ -3862,7 +3868,7 @@ async function initVendorFilters() {
         document.getElementById('btnFilterVendor')?.addEventListener('click', () => { currentVendorPage = 1; renderVendorTable(); });
         document.getElementById('btnClearVendorFilters')?.addEventListener('click', () => {
             const isoEl = document.getElementById('vendorIsoSearch'); if (isoEl) isoEl.value = '';
-            ['vendorSystemFilter', 'vendorItemFilter', 'vendorMat1Filter', 'vendorSizeFilter', 'vendorRatingFilter'].forEach(id => {
+            ['vendorSystemFilter', 'vendorItemFilter', 'vendorMat1Filter', 'vendorSizeFilter', 'vendorRatingFilter', 'vendorIsoStatusFilter', 'vendorLineNoStatusFilter'].forEach(id => {
                 const el = document.getElementById(id); if (el) el.value = 'All';
             });
             currentVendorPage = 1;
@@ -3923,8 +3929,14 @@ function _applyVendorFilters(q) {
     const mat1   = document.getElementById('vendorMat1Filter')?.value || 'All';
     const size   = document.getElementById('vendorSizeFilter')?.value || 'All';
     const rating = document.getElementById('vendorRatingFilter')?.value || 'All';
+    const isoStatus = document.getElementById('vendorIsoStatusFilter')?.value || 'All';
+    const lineStatus = document.getElementById('vendorLineNoStatusFilter')?.value || 'All';
 
     if (sys !== 'All') q = q.eq('system', sys);
+    if (isoStatus === 'Has') q = q.not('iso_dwg_no', 'is', null).neq('iso_dwg_no', '');
+    else if (isoStatus === 'Missing') q = q.or('iso_dwg_no.is.null,iso_dwg_no.eq.');
+    if (lineStatus === 'Has') q = q.not('line_no', 'is', null).neq('line_no', '');
+    else if (lineStatus === 'Missing') q = q.or('line_no.is.null,line_no.eq.');
     if (search) q = q.or(`iso_dwg_no.ilike.%${search}%,mat_code.ilike.%${search}%,full_description.ilike.%${search}%`);
     if (mat1 !== 'All') q = q.eq('mat1', mat1);
     if (item !== 'All') {
@@ -4014,6 +4026,8 @@ async function initBomSpoolFilters() {
         document.getElementById('btnClearBomSpoolFilters')?.addEventListener('click', () => {
             const searchEl = document.getElementById('bomSpoolSearch'); if (searchEl) searchEl.value = '';
             const sysEl = document.getElementById('bomSpoolSystemFilter'); if (sysEl) sysEl.value = 'All';
+            const isoStEl = document.getElementById('bomSpoolIsoStatusFilter'); if (isoStEl) isoStEl.value = 'All';
+            const lineStEl = document.getElementById('bomSpoolLineNoStatusFilter'); if (lineStEl) lineStEl.value = 'All';
             currentBomSpoolPage = 1;
             renderBomSpoolTable();
         });
@@ -4059,6 +4073,8 @@ async function initBomSpoolFilters() {
 async function _fetchBomSpoolRows({ page = 1, forExport = false } = {}) {
     const search = (document.getElementById('bomSpoolSearch')?.value || '').trim();
     const sys    = document.getElementById('bomSpoolSystemFilter')?.value || 'All';
+    const isoStatus = document.getElementById('bomSpoolIsoStatusFilter')?.value || 'All';
+    const lineStatus = document.getElementById('bomSpoolLineNoStatusFilter')?.value || 'All';
 
     let query = supabaseClient.from('spool_bom')
         .select('tag_no, system, iso_dwg_no, line_no, description, size, mat1, mat2, rating, uom, qty', forExport ? undefined : { count: 'exact' })
@@ -4066,6 +4082,10 @@ async function _fetchBomSpoolRows({ page = 1, forExport = false } = {}) {
 
     if (sys !== 'All') query = query.eq('system', sys);
     if (search) query = query.or(`tag_no.ilike.%${search}%,iso_dwg_no.ilike.%${search}%,description.ilike.%${search}%`);
+    if (isoStatus === 'Has') query = query.not('iso_dwg_no', 'is', null).neq('iso_dwg_no', '');
+    else if (isoStatus === 'Missing') query = query.or('iso_dwg_no.is.null,iso_dwg_no.eq.');
+    if (lineStatus === 'Has') query = query.not('line_no', 'is', null).neq('line_no', '');
+    else if (lineStatus === 'Missing') query = query.or('line_no.is.null,line_no.eq.');
 
     if (forExport) {
         query = query.limit(100000);
@@ -4179,6 +4199,7 @@ async function initBomSupportFilters() {
             if (tagEl) tagEl.value = 'All';
             if (pkgEl) pkgEl.value = 'All';
             const typEl = document.getElementById('bomSupportTypeFilter'); if (typEl) typEl.value = 'All';
+            const isoStEl = document.getElementById('bomSupportIsoStatusFilter'); if (isoStEl) isoStEl.value = 'All';
             currentBomSupportPage = 1;
             renderBomSupportTable();
         });
@@ -4226,6 +4247,7 @@ async function _fetchBomSupportRows({ page = 1, forExport = false } = {}) {
     const tag    = document.getElementById('bomSupportTagFilter')?.value || 'All';
     const pkgNo  = document.getElementById('bomSupportPackageNoFilter')?.value || 'All';
     const type   = document.getElementById('bomSupportTypeFilter')?.value || 'All';
+    const isoStatus = document.getElementById('bomSupportIsoStatusFilter')?.value || 'All';
 
     let query = supabaseClient.from('support_bom')
         .select('support_tag, system, iso_dwg_no, type, item, matl, size_or_type, qty, package_no', forExport ? undefined : { count: 'exact' })
@@ -4242,6 +4264,8 @@ async function _fetchBomSupportRows({ page = 1, forExport = false } = {}) {
     if (type === 'SPECIAL') query = query.eq('type', 'SPECIAL');
     else if (type !== 'All') query = query.ilike('type', `(${type}-%`);
     if (search) query = query.or(`support_tag.ilike.%${search}%,iso_dwg_no.ilike.%${search}%,item.ilike.%${search}%`);
+    if (isoStatus === 'Has') query = query.not('iso_dwg_no', 'is', null).neq('iso_dwg_no', '');
+    else if (isoStatus === 'Missing') query = query.or('iso_dwg_no.is.null,iso_dwg_no.eq.');
 
     if (forExport) {
         query = query.limit(100000);
@@ -5245,6 +5269,10 @@ function attachEventListeners() {
             if (bomSizeFilter) bomSizeFilter.value = 'All';
             const bomRatingFilter = document.getElementById('bomRatingFilter');
             if (bomRatingFilter) bomRatingFilter.value = 'All';
+            const bomIsoStatusFilter = document.getElementById('bomIsoStatusFilter');
+            if (bomIsoStatusFilter) bomIsoStatusFilter.value = 'All';
+            const bomLineNoStatusFilter = document.getElementById('bomLineNoStatusFilter');
+            if (bomLineNoStatusFilter) bomLineNoStatusFilter.value = 'All';
             currentBomPage = 1;
             renderBomTable();
         });
