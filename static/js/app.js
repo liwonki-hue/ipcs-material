@@ -101,7 +101,7 @@ const ITEM_PREFIX_MAP = {
     'RED-CON':['RDC'], 'RED-ECC':['RDE'],
     'CAP':['CAP'],
     'COUPLING-FULL':['CPF'], 'COUPLING-HALF':['CPH'], 'COUPLING':['CPU'],
-    'SWAGECON':['SWC'], 'SWAGEECC':['SWE'],
+    'SWAGE-CON':['SWC'], 'SWAGE-ECC':['SWE'],
     'WELDOLET':['WOL'], 'SOCKOLET':['SOL'], 'THREADOLET':['TOL'],
     'NOZZLE':['NOZ'],
     'GATE VALVE':['GTV'], 'GLOBE VALVE':['GLV'], 'CHECK VALVE':['CHV'],
@@ -212,14 +212,12 @@ window.extractItemFromDesc = function(desc) {
         'NIPPLE', 'WELDOLET', 'SOCKOLET', 'THREADOLET',
         'TIE-ROD',
     ];
-    // COMPOUND 매칭 문자열(원문 표기)과 화면 표시용 통일 라벨이 다른 경우의 별칭
-    const COMPOUND_LABEL_ALIAS = { 'SWAGE-CON': 'SWAGECON', 'SWAGE-ECC': 'SWAGEECC' };
     const upper = desc2.toUpperCase().trim();
     // Steam Trap 세부 재질 감지 — "(High Alloy)" 공백 유무 모두 처리
     if (/STEAM TRAP\s*\(HIGH ALLOY\)/i.test(desc2)) return 'STEAM TRAP (HIGH ALLOY)';
     if (/STEAM TRAP\s*\(LOW ALLOY\)/i.test(desc2))  return 'STEAM TRAP (LOW ALLOY)';
     for (const c of COMPOUND) {
-        if (upper.startsWith(c)) return COMPOUND_LABEL_ALIAS[c] || c;
+        if (upper.startsWith(c)) return c;
     }
     // Safety / Control Valve 직접 감지 (description 전체 기준)
     if (/SAFETY VALVE|\bPSV\b|\bPRV\b/.test(upper)) return 'SAFETY VALVE';
@@ -240,7 +238,7 @@ window.extractItemFromDesc = function(desc) {
     // 2단계 제거 후 COMPOUND 재검사
     const sUpper = s.toUpperCase();
     for (const c of COMPOUND) {
-        if (sUpper.startsWith(c)) return COMPOUND_LABEL_ALIAS[c] || c;
+        if (sUpper.startsWith(c)) return c;
     }
     if (!s) return '-';
     // ( 도 구분자로 처리 (FLEXIBLE HOSE (AIR HOSE REEL) 등 괄호 형식 대응)
@@ -279,7 +277,7 @@ window.extractItemFromMatCode = function(matCode) {
         'RDC':'RED-CON', 'RDE':'RED-ECC',
         'CAP':'CAP',
         'CPF':'COUPLING-FULL', 'CPH':'COUPLING-HALF', 'CPU':'COUPLING',
-        'SWC':'SWAGECON', 'SWE':'SWAGEECC',
+        'SWC':'SWAGE-CON', 'SWE':'SWAGE-ECC',
         'WOL':'WELDOLET', 'SOL':'SOCKOLET', 'TOL':'THREADOLET', 'LAT':'LATROLET',
         'TR':'TRANSITION PIECE',
         'NOZ':'NOZZLE', 'FNO':'FLOW ELEMENT', 'STP':'STEAM TRAP (HIGH)', 'ATP':'AIR TRAP',
