@@ -3297,7 +3297,7 @@ function initFilterOptions() {
             const systems    = [...new Set(data.map(r => r.system).filter(Boolean))].sort();
 
             if (el('srecPkgFilter'))
-                el('srecPkgFilter').innerHTML = '<option value="All">All PKGs</option>' + pkgs.map(v => `<option value="${v}">${v}</option>`).join('') + '<option value="NULL">(Unassigned PKG)</option>';
+                el('srecPkgFilter').innerHTML = '<option value="All">All PKGs</option>' + pkgs.map(v => `<option value="${v}">${v}</option>`).join('');
             if (el('srecPackageNoFilter'))
                 el('srecPackageNoFilter').innerHTML = '<option value="All">All Package No</option>' + packageNos.map(v => `<option value="${v}">${v}</option>`).join('');
             srecSys.innerHTML = '<option value="All">All Systems</option>' + systems.map(s => `<option value="${s}">${s}</option>`).join('');
