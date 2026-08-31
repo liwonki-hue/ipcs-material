@@ -6380,7 +6380,8 @@ function getShippingFiltered() {
                 if (_shippingKpiFilter === 'cleared'   && (st !== 'On-Site' || cc !== 'Cleared')) return false;
                 if (_shippingKpiFilter === 'pending'   && (st !== 'On-Site' || cc === 'Cleared')) return false;
                 if (_shippingKpiFilter === 'issued'    && !m.issue_date)      return false;
-                if (_shippingKpiFilter === 'remaining' && m.issue_date)       return false;
+                // Remaining = On-Site 상태인데 아직 Issue 안 된 항목만(Shipping/Preparing은 별도 KPI라 제외)
+                if (_shippingKpiFilter === 'remaining' && (st !== 'On-Site' || m.issue_date)) return false;
             }
             return true;
         })
@@ -6423,7 +6424,8 @@ function renderShippingKpi() {
     document.getElementById('sc_total').textContent         = total.toLocaleString();
     document.getElementById('sc_shipping_pl').textContent   = new Set(shippingRows.map(r => r.packing)).size.toLocaleString();
     document.getElementById('sc_shipping').textContent      = shippingRows.length.toLocaleString();
-    document.getElementById('sc_onsite_pl').textContent    = new Set(onsiteRows.map(r => r.packing)).size.toLocaleString();
+    const onsitePlCount = new Set(onsiteRows.map(r => r.packing)).size;
+    document.getElementById('sc_onsite_pl').textContent    = onsitePlCount.toLocaleString();
     document.getElementById('sc_onsite').textContent       = onsiteRows.length.toLocaleString();
     document.getElementById('sc_cleared_pl').textContent   = new Set(clearedRows.map(r => r.packing)).size.toLocaleString();
     document.getElementById('sc_cleared').textContent      = clearedRows.length.toLocaleString();
@@ -6432,8 +6434,9 @@ function renderShippingKpi() {
     document.getElementById('sc_issued').textContent       = issuedRows.length.toLocaleString();
     document.getElementById('sc_pending_pl').textContent   = new Set(pendingRows.map(r => r.packing)).size.toLocaleString();
     document.getElementById('sc_pending').textContent      = pendingRows.length.toLocaleString();
-    document.getElementById('sc_remaining_pl').textContent = (plCount - issuedPlCount).toLocaleString();
-    document.getElementById('sc_remaining').textContent    = (total - issuedRows.length).toLocaleString();
+    // Remaining = On-Site 상태인데 아직 Issue 안 된 항목(Shipping/Preparing은 별도 KPI라 제외)
+    document.getElementById('sc_remaining_pl').textContent = (onsitePlCount - issuedPlCount).toLocaleString();
+    document.getElementById('sc_remaining').textContent    = (onsiteRows.length - issuedRows.length).toLocaleString();
     document.getElementById('shippingTotalBadge').textContent = `${total.toLocaleString()} packages`;
 
     // Packing List No 기준 불출 비율 (issuedPlCount/plCount) — 위에서 표시하는 PL 건수와 동일 기준
