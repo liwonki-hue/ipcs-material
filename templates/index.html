@@ -499,7 +499,7 @@
                  <div class="panel filter-panel" style="margin-bottom: 20px;">
                       <div style="display: flex; align-items: flex-end; justify-content: space-between; width: 100%; gap: 10px 12px; flex-wrap: wrap;">
                           <div style="display: flex; align-items: flex-end; gap: 10px 12px; flex: 1; min-width: 0; flex-wrap: wrap;">
-                              <div class="form-group" style="flex: 2; min-width: 220px; margin-bottom: 0;">
+                              <div class="form-group" style="flex: 1; min-width: 180px; margin-bottom: 0;">
                                   <label>Search (Tag / ISO / Description)</label>
                                   <input type="text" id="bomSpoolSearch" class="form-control" style="width: 100%;" placeholder="Tag No, ISO Drawing, Description...">
                               </div>
@@ -539,10 +539,10 @@
                      <div class="table-responsive">
                          <table class="data-table" id="bomSpoolTable" style="font-size:0.82em;table-layout:fixed;width:100%;">
                              <colgroup>
-                                 <col style="width:9%;"><col style="width:5%;"><col style="width:12%;">
-                                 <col style="width:10%;"><col style="width:24%;"><col style="width:6%;">
-                                 <col style="width:7%;"><col style="width:7%;"><col style="width:6%;">
-                                 <col style="width:4%;"><col style="width:10%;">
+                                 <col style="width:13%;"><col style="width:5%;"><col style="width:18%;">
+                                 <col style="width:15%;"><col style="width:8%;"><col style="width:4%;">
+                                 <col style="width:8%;"><col style="width:12%;"><col style="width:5%;">
+                                 <col style="width:4%;"><col style="width:8%;">
                              </colgroup>
                              <thead>
                                  <tr>
@@ -972,15 +972,19 @@
                         </div>
                         <div class="panel" style="padding:16px;margin-bottom:16px;">
                             <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
-                                <div class="form-group" style="flex:3;min-width:200px;margin-bottom:0;">
+                                <div class="form-group" style="flex:2;min-width:200px;margin-bottom:0;">
                                     <label style="display:block;margin-bottom:4px;font-size:12px;">Search (PKG NO / Tag No / Description)</label>
                                     <input type="text" id="srSearch" class="form-control" placeholder="package no, tag no, description...">
                                 </div>
-                                <div class="form-group" style="flex:0 0 160px;margin-bottom:0;">
-                                    <label style="display:block;margin-bottom:4px;font-size:12px;">Package No</label>
+                                <div class="form-group" style="flex:1;min-width:120px;margin-bottom:0;">
+                                    <label style="display:block;margin-bottom:4px;font-size:12px;">PKG</label>
                                     <select id="srPkgFilter" class="form-control"><option value="">All</option></select>
                                 </div>
-                                <div class="form-group" style="flex:0 0 110px;margin-bottom:0;">
+                                <div class="form-group" style="flex:1;min-width:160px;margin-bottom:0;">
+                                    <label style="display:block;margin-bottom:4px;font-size:12px;">PKG NO</label>
+                                    <select id="srPkgNoFilter" class="form-control"><option value="">All</option></select>
+                                </div>
+                                <div class="form-group" style="flex:1;min-width:100px;margin-bottom:0;">
                                     <label style="display:block;margin-bottom:4px;font-size:12px;">System</label>
                                     <select id="srSystemFilter" class="form-control">
                                         <option value="">All</option>
@@ -988,37 +992,52 @@
                                         <option value="LP">LP</option>
                                     </select>
                                 </div>
+                                <div class="form-group" style="flex:1;min-width:100px;margin-bottom:0;">
+                                    <label style="display:block;margin-bottom:4px;font-size:12px;">Size</label>
+                                    <select id="srSizeFilter" class="form-control"><option value="">All</option></select>
+                                </div>
+                                <div class="form-group" style="flex:1;min-width:120px;margin-bottom:0;">
+                                    <label style="display:block;margin-bottom:4px;font-size:12px;">Status</label>
+                                    <select id="srStatusFilter" class="form-control">
+                                        <option value="">All</option>
+                                        <option value="Preparing">Preparing</option>
+                                        <option value="Shipping">Shipping</option>
+                                        <option value="On-Site">On-Site</option>
+                                        <option value="Issued">Issued</option>
+                                    </select>
+                                </div>
                                 <button class="btn btn-primary" id="btnSrSearch" style="height:38px;"><i class="fas fa-search"></i> Search</button>
                                 <button class="btn btn-outline" id="btnSrReset" style="height:38px;">Reset</button>
                                 <button class="btn btn-outline" id="btnExportSr" style="height:38px;white-space:nowrap;display:flex;align-items:center;gap:6px;"><i class="fas fa-file-excel" style="color:#1d6f42;"></i> Export Excel</button>
                             </div>
                         </div>
-                        <div class="panel" style="padding:0;overflow:hidden;">
-                            <div style="overflow-x:auto;">
+                        <div class="panel data-panel">
+                            <div class="panel-header">
+                                <h3>Spool Receiving</h3>
+                                <span id="srCountInfo" style="font-size:13px;color:#666;"></span>
+                            </div>
+                            <div class="table-responsive">
                                 <table class="data-table" id="spoolReceivingTable" style="table-layout:fixed;width:100%;">
                                     <colgroup>
-                                        <col style="width:10%;"><col style="width:16%;">
-                                        <col style="width:6%;"><col style="width:22%;">
-                                        <col style="width:13%;"><col style="width:9%;">
-                                        <col style="width:7%;"><col style="width:5%;">
-                                        <col style="width:12%;">
+                                        <col style="width:9%;"><col style="width:15%;">
+                                        <col style="width:5%;"><col style="width:21%;">
+                                        <col style="width:12%;"><col style="width:8%;">
+                                        <col style="width:6%;"><col style="width:5%;">
+                                        <col style="width:11%;"><col style="width:8%;">
                                     </colgroup>
                                     <thead>
                                         <tr>
                                             <th>PKG</th><th>PKG NO</th><th>System</th>
                                             <th>Description</th><th>Tag No</th><th>Item</th>
-                                            <th>Size</th><th>Unit</th><th>Qty</th>
+                                            <th>Size</th><th>Unit</th><th>Qty</th><th>Status</th>
                                         </tr>
                                     </thead>
                                     <tbody id="srTbody">
-                                        <tr><td colspan="9" style="text-align:center;color:#999;padding:40px;">Loading...</td></tr>
+                                        <tr><td colspan="10" style="text-align:center;color:#999;padding:40px;">Loading...</td></tr>
                                     </tbody>
                                 </table>
                             </div>
-                            <div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
-                                <span id="srCountInfo" style="font-size:13px;color:#666;"></span>
-                                <div id="srPagination"></div>
-                            </div>
+                            <div id="srPagination"></div>
                         </div>
                     </div><!-- end recTagSpool -->
 
@@ -2545,7 +2564,7 @@
                 <!-- Filter Panel -->
                 <div class="panel filter-panel" style="margin-bottom:20px;">
                     <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;">
-                        <div class="form-group" style="flex:3;min-width:200px;margin-bottom:0;">
+                        <div class="form-group" style="flex:2;min-width:200px;margin-bottom:0;">
                             <label style="display:block;margin-bottom:4px;font-size:12px;">Search (Package No. / Description)</label>
                             <input type="text" id="shippingSearch" class="form-control" placeholder="e.g. BOP-PIP-001 or GATE Valve...">
                         </div>
@@ -2719,16 +2738,26 @@
     </div>
 
     <!-- Scripts -->
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260826b"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260831a"></script>
     <script>
         (function () {
             var BASE_W = 1920, BASE_H = 1080;
+            var MIN_SCALE = 0.85; // 노트북 저해상도에서 글자가 너무 작아지지 않도록 하한선 적용
+            var MAX_SCALE = 1.5;  // zoom 적용 자체가 resize 이벤트를 다시 유발해 무한 확대되는 것을 방지하는 상한선
+            var resizeTimer = null;
             function fitScreen() {
-                var scale = Math.min(window.innerWidth / BASE_W, window.innerHeight / BASE_H);
+                var rawScale = Math.min(window.innerWidth / BASE_W, window.innerHeight / BASE_H);
+                var scale = Math.min(Math.max(rawScale, MIN_SCALE), MAX_SCALE);
                 document.documentElement.style.zoom = scale;
+                // 하한선에 걸려 화면에 다 안 들어오면 스크롤 허용(기본은 overflow:hidden으로 잘림 방지)
+                document.body.style.overflow = rawScale < MIN_SCALE ? 'auto' : 'hidden';
             }
             fitScreen();
-            window.addEventListener('resize', fitScreen);
+            // zoom 변경이 다시 resize를 유발해 연쇄 재계산되는 것을 막기 위해 디바운스
+            window.addEventListener('resize', function () {
+                clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(fitScreen, 150);
+            });
         })();
     </script>
 </body>

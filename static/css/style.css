@@ -51,7 +51,7 @@ ul { list-style: none; }
 .top-header { height: 60px; background-color: var(--bg-panel); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; padding: 0 20px; box-shadow: var(--shadow-sm); z-index: 50; }
 
 /* Views */
-.view-section { display: none; flex: 1; min-height: 0; padding: 14px 20px; overflow-y: auto; }
+.view-section { display: none; flex: 1; min-height: 0; padding: 14px 20px 50px; overflow-y: auto; }
 .view-section.active { display: block; }
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
 .page-header h1 { font-size: 20px; color: var(--color-primary); margin-bottom: 2px; font-weight: 600; }

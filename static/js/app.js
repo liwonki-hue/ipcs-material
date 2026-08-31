@@ -6536,6 +6536,7 @@ function renderShippingTable(rows) {
             altFormat: 'y-m-d',
             allowInput: false,
             disableMobile: true,
+            position: 'below left', // 항상 입력창 바로 아래-왼쪽에 뜨도록 고정(자동 배치가 화면 오른쪽으로 벗어나던 문제 수정)
             locale: { firstDayOfWeek: 1 },
             onReady: (_dates, _str, fp) => {
                 if (fp.altInput) {
@@ -6792,20 +6793,48 @@ async function initSpoolReceiving() {
     renderSpoolReceiving();
 }
 
+// Full pkg_no(예: PGU-DE-0466-BOP-PIP-001) 대신 PKG 컬럼에 보이는 짧은 패키지 번호(PGU-DE-0466) 기준
+function _srPkgShort(r) {
+    return (r.pkg_no || '').match(/^(PGU-DE-\d+)/)?.[1] || r.pkg_no || '';
+}
+
 function _initSrFilters() {
     const sel = document.getElementById('srPkgFilter');
     if (!sel) return;
-    const pkgs = [...new Set((_srData || []).map(r => r.pkg_no).filter(Boolean))].sort();
+    const pkgs = [...new Set((_srData || []).map(_srPkgShort).filter(Boolean))].sort();
     sel.innerHTML = '<option value="">All</option>' + pkgs.map(p => `<option value="${p}">${p}</option>`).join('');
+
+    const pkgNoSel = document.getElementById('srPkgNoFilter');
+    if (pkgNoSel) {
+        const pkgNos = [...new Set((_srData || []).map(r => r.pkg_no).filter(Boolean))].sort();
+        pkgNoSel.innerHTML = '<option value="">All</option>' + pkgNos.map(p => `<option value="${p}">${p}</option>`).join('');
+    }
+
+    const sizeSel = document.getElementById('srSizeFilter');
+    if (sizeSel) {
+        const sizes = [...new Set((_srData || []).map(r => r.size).filter(Boolean))]
+            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+        sizeSel.innerHTML = '<option value="">All</option>' + sizes.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('');
+    }
 }
 
 function _getSrFiltered() {
     const pkg = document.getElementById('srPkgFilter')?.value  || '';
+    const pkgNo = document.getElementById('srPkgNoFilter')?.value || '';
     const sys = document.getElementById('srSystemFilter')?.value || '';
+    const size = document.getElementById('srSizeFilter')?.value || '';
+    const status = document.getElementById('srStatusFilter')?.value || '';
     const q   = (document.getElementById('srSearch')?.value || '').trim().toLowerCase();
     return (_srData || []).filter(r => {
-        if (pkg && r.pkg_no  !== pkg) return false;
+        if (pkg && _srPkgShort(r) !== pkg) return false;
+        if (pkgNo && r.pkg_no !== pkgNo) return false;
         if (sys && r.system  !== sys) return false;
+        if (size && r.size !== size) return false;
+        if (status) {
+            const upd = _plUpdatesCache[r.pkg_no] || {};
+            if (status === 'Issued') { if (!upd.issue_date) return false; }
+            else if ((upd.status || '') !== status) return false;
+        }
         if (q && ![r.pkg_no, r.tag_no, r.description, r.iso_dwg_no].join(' ').toLowerCase().includes(q)) return false;
         return true;
     });
@@ -6831,9 +6860,12 @@ function renderSpoolReceiving() {
         : '';
 
     tbody.innerHTML = page.length === 0
-        ? `<tr><td colspan="9" style="text-align:center;color:#999;padding:40px;">No data</td></tr>`
+        ? `<tr><td colspan="10" style="text-align:center;color:#999;padding:40px;">No data</td></tr>`
         : page.map(r => {
-            const pkgShort = (r.pkg_no || '').match(/^(PGU-DE-\d+)/)?.[1] || r.pkg_no || '';
+            const pkgShort = _srPkgShort(r);
+            const upd          = _plUpdatesCache[r.pkg_no] || {};
+            const statusColor  = upd.issue_date ? '#2e7d32' : upd.status === 'On-Site' ? '#2e7d32' : upd.status === 'Shipping' ? '#1565c0' : upd.status === 'Preparing' ? '#888' : '#bbb';
+            const statusText   = upd.issue_date ? `Issued ${upd.issue_date}` : (upd.status || '—');
             return `<tr>
             <td style="font-size:12px;font-weight:600;white-space:nowrap;">${pkgShort}</td>
             <td style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.pkg_no || ''}">${r.pkg_no || ''}</td>
@@ -6844,6 +6876,7 @@ function renderSpoolReceiving() {
             <td>${r.size || ''}</td>
             <td style="color:#888;">${r.unit || 'EA'}</td>
             <td>${r.qty ?? 1}</td>
+            <td style="font-size:11px;font-weight:600;white-space:nowrap;color:${statusColor};">${statusText}</td>
         </tr>`;
         }).join('');
 
@@ -6861,7 +6894,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const srSearchEl  = document.getElementById('srSearch');
     if (btnSrSearch) btnSrSearch.addEventListener('click', () => { _srPage = 1; renderSpoolReceiving(); });
     if (btnSrReset)  btnSrReset.addEventListener('click', () => {
-        ['srPkgFilter','srSystemFilter'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+        ['srPkgFilter','srPkgNoFilter','srSystemFilter','srSizeFilter','srStatusFilter'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
         if (srSearchEl) srSearchEl.value = '';
         _srPage = 1; renderSpoolReceiving();
     });
@@ -6870,18 +6903,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnExportSr = document.getElementById('btnExportSr');
     if (btnExportSr) {
         btnExportSr.addEventListener('click', () => {
-            const rows = _getSrFiltered().map(r => ({
-                'PKG NO':      r.pkg_no      || '-',
-                'System':      r.system      || '-',
-                'Description': r.description || '-',
-                'Tag No':      r.tag_no      || '-',
-                'Item':        r.item        || 'Spool',
-                'Size':        r.size        || '-',
-                'Unit':        r.unit        || 'EA',
-                'Qty':         r.qty ?? 1,
-            }));
+            const rows = _getSrFiltered().map(r => {
+                const upd = _plUpdatesCache[r.pkg_no] || {};
+                return {
+                    'PKG NO':      r.pkg_no      || '-',
+                    'System':      r.system      || '-',
+                    'Description': r.description || '-',
+                    'Tag No':      r.tag_no      || '-',
+                    'Item':        r.item        || 'Spool',
+                    'Size':        r.size        || '-',
+                    'Unit':        r.unit        || 'EA',
+                    'Qty':         r.qty ?? 1,
+                    'Status':      upd.issue_date ? `Issued ${upd.issue_date}` : (upd.status || '-'),
+                };
+            });
             const ws = XLSX.utils.json_to_sheet(rows);
-            ws['!cols'] = [22, 8, 40, 20, 14, 14, 8, 8].map(w => ({ wch: w }));
+            ws['!cols'] = [22, 8, 40, 20, 14, 14, 8, 8, 16].map(w => ({ wch: w }));
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, 'Spool Receiving');
             const today = new Date().toISOString().split('T')[0];
