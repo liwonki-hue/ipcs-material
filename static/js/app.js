@@ -6468,6 +6468,12 @@ function renderShippingTable(rows) {
     const merged = allMerged.slice(start, start + PAGE_SIZE);
 
     const tbody = document.getElementById('shippingTbody');
+    // innerHTML로 행을 갈아엎기 전에 기존 flatpickr 인스턴스를 먼저 destroy —
+    // 그 뒤(innerHTML 교체 후)에 destroy를 시도하면 이미 새 엘리먼트라 _flatpickr가 없어
+    // 아무것도 정리되지 않고, body에 붙은 캘린더 DOM과 document 리스너가 렌더링마다 누적됨
+    tbody.querySelectorAll('.pl-datepicker').forEach(el => {
+        if (el._flatpickr) el._flatpickr.destroy();
+    });
     if (!merged.length) {
         tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:#888;padding:30px;">No data found.</td></tr>';
         const spEl = document.getElementById('shippingPagination'); if (spEl) spEl.innerHTML = '';
@@ -6532,14 +6538,17 @@ function renderShippingTable(rows) {
     }).join('');
 
     document.querySelectorAll('#shippingTbody .pl-datepicker').forEach(el => {
-        if (el._flatpickr) el._flatpickr.destroy();
         flatpickr(el, {
             dateFormat: 'Y-m-d',
             altInput: true,
             altFormat: 'y-m-d',
             allowInput: false,
             disableMobile: true,
-            position: 'below left', // 항상 입력창 바로 아래-왼쪽에 뜨도록 고정(자동 배치가 화면 오른쪽으로 벗어나던 문제 수정)
+            // 가로는 항상 입력창 왼쪽 기준 고정(화면 오른쪽으로 벗어나던 문제 수정),
+            // 세로는 'auto'로 둬서 화면 하단 근처 행에서는 자동으로 위쪽에 뜨도록 함.
+            // body가 height:100%+overflow:hidden이라 'below'로 고정하면 화면 하단 행에서
+            // 캘린더가 body 밖으로 밀려나 잘려 보이지 않는 버그가 있었음(간헐적 미표시 원인)
+            position: 'auto left',
             locale: { firstDayOfWeek: 1 },
             onReady: (_dates, _str, fp) => {
                 if (fp.altInput) {
