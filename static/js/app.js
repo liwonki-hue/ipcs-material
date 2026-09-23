@@ -4909,6 +4909,7 @@ window._srecGoPage = function(p) { currentSrecPage = p; renderSupportReceivingTa
 // BOM 수량(참고용)과 Received 수량을 함께 보여준다. Tag 매칭이 불가능한 항목이라 %는 계산하지 않는다.
 let _srecBulkExpanded = new Set(); // 펼친 자재 key
 let _srecBulkVisibleKeys = [];
+let _srecBulkFilterSig = ''; // 패키지 관련 필터가 바뀔 때만 자동 펼침(사용자가 접은 상태를 다시 펼치지 않기 위함)
 let _srecBulkData = null; // { bom, rec } — 탭 진입 시 1회 조회, 필터는 이 캐시에서 클라이언트 처리
 async function renderSupportBulkTable() {
     const tbody = document.getElementById('srecBulkTbody');
@@ -4922,7 +4923,7 @@ async function renderSupportBulkTable() {
             .or('support_tag.is.null,support_tag.eq.BULK')
             .limit(2000),
         supabaseClient.from('support_receiving')
-            .select('item,matl,size_or_type,qty,pkg,package_no,system,id_no')
+            .select('item,matl,size_or_type,qty,pkg,package_no,id_no')
             .or('support_tag.is.null,support_tag.eq.BULK,support_tag.eq.-')
             .limit(2000),
     ]);
@@ -5019,7 +5020,9 @@ function paintSupportBulkTable() {
     const allKeys = [...new Set([...(pkgFilterOn ? [] : Object.keys(bomAgg)), ...Object.keys(recAgg)])]
         .filter(keyVisible).sort();
     _srecBulkVisibleKeys = allKeys.filter(k => recAgg[k]);
-    if (pkgFilterOn) _srecBulkVisibleKeys.forEach(k => _srecBulkExpanded.add(k));
+    const filterSig = [fPkg, fPkgNo, fStatus, fIssued].join('|');
+    if (pkgFilterOn && filterSig !== _srecBulkFilterSig) _srecBulkVisibleKeys.forEach(k => _srecBulkExpanded.add(k));
+    _srecBulkFilterSig = filterSig;
 
     const toggleBtn = document.getElementById('btnToggleSrecBulk');
     if (toggleBtn) {
