@@ -4912,7 +4912,7 @@ async function renderSupportBulkTable() {
     const tbody = document.getElementById('srecBulkTbody');
     if (!tbody) return;
     if (!supabaseClient) return;
-    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:16px;color:#888;">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:16px;color:#888;">Loading...</td></tr>';
 
     const [bomRes, recRes] = await Promise.all([
         supabaseClient.from('support_bom')
@@ -4926,7 +4926,7 @@ async function renderSupportBulkTable() {
     ]);
 
     if (bomRes.error || recRes.error) {
-        tbody.innerHTML = `<tr><td colspan="10" style="color:red;text-align:center;">Error: ${(bomRes.error || recRes.error).message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="12" style="color:red;text-align:center;">Error: ${(bomRes.error || recRes.error).message}</td></tr>`;
         return;
     }
 
@@ -5014,7 +5014,7 @@ function paintSupportBulkTable() {
         .filter(keyVisible).sort();
 
     if (allKeys.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#888;padding:16px;">No bulk materials found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:#888;padding:16px;">No bulk materials found.</td></tr>';
         return;
     }
 
@@ -5028,15 +5028,18 @@ function paintSupportBulkTable() {
         const totalQty = rec ? rec.total : 0;
         const pkgEntries = rec ? Object.entries(rec.pkgs).sort((a, b) => a[0].localeCompare(b[0])) : [];
         const common = cell(kItem) + cell(kMatl) + cell(kSize) + cell(bomQty || '-');
+        // Material Shortage/Surplus 화면과 동일 기준(diff = 입고 합계 - BOM)과 공용 셀 헬퍼 사용
+        const diff = totalQty - bomQty;
+        const shortSurplus = _mssShortageCellHtml(diff) + _mssSurplusCellHtml(diff);
         if (pkgEntries.length === 0) {
-            rowsHtml.push(`<tr>${cell('-')}${cell('-')}${common}${cell('-')}${cell('-')}${cell('-')}${cell('-')}</tr>`);
+            rowsHtml.push(`<tr>${cell('-')}${cell('-')}${common}${cell('-')}${cell('-')}${shortSurplus}${cell('-')}${cell('-')}</tr>`);
             return;
         }
         pkgEntries.forEach(([pkgNo, info]) => {
             const upd = _plUpdatesCache[pkgNo] || {};
             const status = upd.status
                 ? `<span style="color:${statusColors[upd.status] || '#bbb'};">${upd.status}</span>` : '-';
-            rowsHtml.push(`<tr>${cell(info.pkg || '-')}${cell(pkgNo || '-')}${common}${cell(info.qty || '-')}${cell(status)}${cell(upd.issue_date || '-')}${cell(totalQty || '-')}</tr>`);
+            rowsHtml.push(`<tr>${cell(info.pkg || '-')}${cell(pkgNo || '-')}${common}${cell(info.qty || '-')}${cell(totalQty || '-')}${shortSurplus}${cell(status)}${cell(upd.issue_date || '-')}</tr>`);
         });
     });
     tbody.innerHTML = rowsHtml.join('');
