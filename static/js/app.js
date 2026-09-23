@@ -4932,7 +4932,10 @@ async function renderSupportBulkTable() {
         return;
     }
 
-    _srecBulkData = { bom: bomRes.data || [], rec: recRes.data || [] };
+    // BOM과 입고의 Item명 표기가 달라 같은 자재가 Shortage/Surplus로 갈라지던 것을 대표 이름으로 통일(표시용, DB는 그대로)
+    const ITEM_ALIAS = { 'WELDED BEAM ATTACHMENT': 'BEAM ATTACHMENT', 'PIPE CLAMP SHOE': 'CLAMP SHOE' };
+    const aliasItem = r => ({ ...r, item: ITEM_ALIAS[r.item] || r.item });
+    _srecBulkData = { bom: (bomRes.data || []).map(aliasItem), rec: (recRes.data || []).map(aliasItem) };
     rebuildSupportBulkFilterOptions();
     paintSupportBulkTable();
 }
