@@ -1313,6 +1313,23 @@
                                     <label>PACKAGE NO</label>
                                     <select id="srecBulkPackageNoFilter" class="form-control" style="width:100%;"><option value="All">All Package No</option></select>
                                 </div>
+                                <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                    <label>Status</label>
+                                    <select id="srecBulkStatusFilter" class="form-control" style="width:100%;">
+                                        <option value="All">All Status</option>
+                                        <option value="Preparing">Preparing</option>
+                                        <option value="Shipping">Shipping</option>
+                                        <option value="On-Site">On-Site</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                    <label>Issue Date</label>
+                                    <select id="srecBulkIssuedFilter" class="form-control" style="width:100%;">
+                                        <option value="All">All</option>
+                                        <option value="yes">Issued</option>
+                                        <option value="no">Not Issued</option>
+                                    </select>
+                                </div>
                                 <div style="padding-bottom:1px;display:flex;gap:8px;flex-shrink:0;">
                                     <button class="btn btn-primary" id="btnFilterSrecBulk" style="white-space:nowrap;"><i class="fas fa-search"></i> Search</button>
                                     <button class="btn btn-outline" id="btnClearSrecBulk" style="white-space:nowrap;">Clear</button>
@@ -1336,8 +1353,9 @@
                                             <th style="text-align:center;min-width:120px;">SIZE OR TYPE</th>
                                             <th style="text-align:center;">BOM QTY</th>
                                             <th style="text-align:center;">RECEIVED QTY</th>
+                                            <th style="text-align:center;">STATUS</th>
+                                            <th style="text-align:center;">ISSUE DATE</th>
                                             <th style="text-align:center;">TOTAL RECEIVED</th>
-                                            <th style="text-align:center;">ISSUE STATUS</th>
                                         </tr>
                                     </thead>
                                     <tbody id="srecBulkTbody"></tbody>

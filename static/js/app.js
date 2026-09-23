@@ -4912,7 +4912,7 @@ async function renderSupportBulkTable() {
     const tbody = document.getElementById('srecBulkTbody');
     if (!tbody) return;
     if (!supabaseClient) return;
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:16px;color:#888;">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:16px;color:#888;">Loading...</td></tr>';
 
     const [bomRes, recRes] = await Promise.all([
         supabaseClient.from('support_bom')
@@ -4926,7 +4926,7 @@ async function renderSupportBulkTable() {
     ]);
 
     if (bomRes.error || recRes.error) {
-        tbody.innerHTML = `<tr><td colspan="9" style="color:red;text-align:center;">Error: ${(bomRes.error || recRes.error).message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="10" style="color:red;text-align:center;">Error: ${(bomRes.error || recRes.error).message}</td></tr>`;
         return;
     }
 
@@ -4961,6 +4961,8 @@ function paintSupportBulkTable() {
     const fMatl   = document.getElementById('srecBulkMatlFilter')?.value || 'All';
     const fPkg    = document.getElementById('srecBulkPkgFilter')?.value || 'All';
     const fPkgNo  = document.getElementById('srecBulkPackageNoFilter')?.value || 'All';
+    const fStatus = document.getElementById('srecBulkStatusFilter')?.value || 'All';
+    const fIssued = document.getElementById('srecBulkIssuedFilter')?.value || 'All';
 
     const keyOf = r => `${r.item || '-'}::${r.matl || '-'}::${r.size_or_type || '-'}`;
     const itemMatlOk = r => (fItem === 'All' || r.item === fItem) && (fMatl === 'All' || r.matl === fMatl);
@@ -4968,10 +4970,13 @@ function paintSupportBulkTable() {
 
     // BOM은 Package/ID No가 없으므로 Item/MATL 필터만 수량에 반영하고, Search는 표시 여부 판단에만 사용
     const bomRows = _srecBulkData.bom.filter(itemMatlOk);
-    const pkgFilterOn = fPkg !== 'All' || fPkgNo !== 'All';
+    const pkgFilterOn = fPkg !== 'All' || fPkgNo !== 'All' || fStatus !== 'All' || fIssued !== 'All';
+    const plOf = r => _plUpdatesCache[r.package_no] || {};
     const recRows = _srecBulkData.rec.filter(r => itemMatlOk(r)
         && (fPkg === 'All' || r.pkg === fPkg)
-        && (fPkgNo === 'All' || r.package_no === fPkgNo));
+        && (fPkgNo === 'All' || r.package_no === fPkgNo)
+        && (fStatus === 'All' || plOf(r).status === fStatus)
+        && (fIssued === 'All' || (fIssued === 'yes' ? !!plOf(r).issue_date : !plOf(r).issue_date)));
 
     const bomAgg = {}; // key -> { qty }
     bomRows.forEach(r => {
@@ -5009,11 +5014,12 @@ function paintSupportBulkTable() {
         .filter(keyVisible).sort();
 
     if (allKeys.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#888;padding:16px;">No bulk materials found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#888;padding:16px;">No bulk materials found.</td></tr>';
         return;
     }
 
     const cell = (v, extra = '') => `<td style="text-align:center;white-space:nowrap;${extra}">${v}</td>`;
+    const statusColors = { 'On-Site': '#2e7d32', 'Shipping': '#1565c0', 'Preparing': '#888' };
     const rowsHtml = [];
     allKeys.forEach(k => {
         const [kItem, kMatl, kSize] = k.split('::');
@@ -5023,15 +5029,14 @@ function paintSupportBulkTable() {
         const pkgEntries = rec ? Object.entries(rec.pkgs).sort((a, b) => a[0].localeCompare(b[0])) : [];
         const common = cell(kItem) + cell(kMatl) + cell(kSize) + cell(bomQty || '-');
         if (pkgEntries.length === 0) {
-            rowsHtml.push(`<tr>${cell('-')}${cell('-')}${common}${cell('-')}${cell('-')}${cell('-')}</tr>`);
+            rowsHtml.push(`<tr>${cell('-')}${cell('-')}${common}${cell('-')}${cell('-')}${cell('-')}${cell('-')}</tr>`);
             return;
         }
         pkgEntries.forEach(([pkgNo, info]) => {
-            const done = pkgNo && isPkgIssued(pkgNo);
-            const status = !pkgNo ? '-' : done
-                ? `<span style="color:#2e7d32;">Issued ${(_plUpdatesCache[pkgNo] || {}).issue_date || ''}</span>`
-                : '<span style="color:#999;">Not Issued</span>';
-            rowsHtml.push(`<tr>${cell(info.pkg || '-')}${cell(pkgNo || '-')}${common}${cell(info.qty || '-')}${cell(totalQty || '-')}${cell(status)}</tr>`);
+            const upd = _plUpdatesCache[pkgNo] || {};
+            const status = upd.status
+                ? `<span style="color:${statusColors[upd.status] || '#bbb'};">${upd.status}</span>` : '-';
+            rowsHtml.push(`<tr>${cell(info.pkg || '-')}${cell(pkgNo || '-')}${common}${cell(info.qty || '-')}${cell(status)}${cell(upd.issue_date || '-')}${cell(totalQty || '-')}</tr>`);
         });
     });
     tbody.innerHTML = rowsHtml.join('');
@@ -5473,7 +5478,7 @@ function attachEventListeners() {
     if (btnFilterSrecBulk) btnFilterSrecBulk.addEventListener('click', paintSupportBulkTable);
     const srecBulkSearch = document.getElementById('srecBulkSearch');
     if (srecBulkSearch) srecBulkSearch.addEventListener('keydown', e => { if (e.key === 'Enter') paintSupportBulkTable(); });
-    ['srecBulkItemFilter', 'srecBulkMatlFilter', 'srecBulkPkgFilter', 'srecBulkPackageNoFilter'].forEach(id => {
+    ['srecBulkItemFilter', 'srecBulkMatlFilter', 'srecBulkPkgFilter', 'srecBulkPackageNoFilter', 'srecBulkStatusFilter', 'srecBulkIssuedFilter'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('change', paintSupportBulkTable);
     });
@@ -5481,7 +5486,7 @@ function attachEventListeners() {
     if (btnClearSrecBulk) {
         btnClearSrecBulk.addEventListener('click', () => {
             if (srecBulkSearch) srecBulkSearch.value = '';
-            ['srecBulkItemFilter', 'srecBulkMatlFilter', 'srecBulkPkgFilter', 'srecBulkPackageNoFilter'].forEach(id => {
+            ['srecBulkItemFilter', 'srecBulkMatlFilter', 'srecBulkPkgFilter', 'srecBulkPackageNoFilter', 'srecBulkStatusFilter', 'srecBulkIssuedFilter'].forEach(id => {
                 const el = document.getElementById(id); if (el) el.value = 'All';
             });
             paintSupportBulkTable();
