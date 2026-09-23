@@ -4907,12 +4907,14 @@ window._srecGoPage = function(p) { currentSrecPage = p; renderSupportReceivingTa
 
 // Support Tag가 없는 Bulk 구조재(Channel/H-Beam/Angle/Plate 등)를 Item+Matl+Size 단위로 집계해
 // BOM 수량(참고용)과 Received 수량을 함께 보여준다. Tag 매칭이 불가능한 항목이라 %는 계산하지 않는다.
+let _srecBulkExpanded = new Set(); // 펼친 자재 key
+let _srecBulkVisibleKeys = [];
 let _srecBulkData = null; // { bom, rec } — 탭 진입 시 1회 조회, 필터는 이 캐시에서 클라이언트 처리
 async function renderSupportBulkTable() {
     const tbody = document.getElementById('srecBulkTbody');
     if (!tbody) return;
     if (!supabaseClient) return;
-    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:16px;color:#888;">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:16px;color:#888;">Loading...</td></tr>';
 
     const [bomRes, recRes] = await Promise.all([
         supabaseClient.from('support_bom')
@@ -4926,7 +4928,7 @@ async function renderSupportBulkTable() {
     ]);
 
     if (bomRes.error || recRes.error) {
-        tbody.innerHTML = `<tr><td colspan="12" style="color:red;text-align:center;">Error: ${(bomRes.error || recRes.error).message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" style="color:red;text-align:center;">Error: ${(bomRes.error || recRes.error).message}</td></tr>`;
         return;
     }
 
@@ -4995,7 +4997,7 @@ function paintSupportBulkTable() {
     }
     const keyVisible = k => !search || matchedKeys.has(k);
 
-    // key -> { total, pkgs: { package_no: { pkg, qty } } } — 패키지별 행으로 펼치고 total은 키 단위 입고 합계
+    // key -> { total, pkgs: { package_no: { pkg, qty, ids } } } — 자재(Item+Matl+Size) 1행 요약 + 클릭 시 패키지별 상세
     const recAgg = {};
     recRows.forEach(r => {
         const k = keyOf(r);
@@ -5003,23 +5005,33 @@ function paintSupportBulkTable() {
         const q = parseFloat(r.qty) || 0;
         recAgg[k].total += q;
         const pk = r.package_no || '';
-        const entry = recAgg[k].pkgs[pk] || { pkg: r.pkg, qty: 0 };
+        const entry = recAgg[k].pkgs[pk] || { pkg: r.pkg, qty: 0, ids: new Set() };
         entry.qty += q;
+        if (r.id_no) entry.ids.add(r.id_no);
         recAgg[k].pkgs[pk] = entry;
     });
 
     // key가 "item::matl::size" 형태라 문자열 정렬만으로 Item 우선 정렬이 됨
-    // PKG/Package No 필터 중에는 BOM에만 있는 키(입고 없음)는 숨긴다
+    // PKG/Package No/Status/Issue 필터 중에는 BOM에만 있는 키(입고 없음)는 숨긴다
     const allKeys = [...new Set([...(pkgFilterOn ? [] : Object.keys(bomAgg)), ...Object.keys(recAgg)])]
         .filter(keyVisible).sort();
+    _srecBulkVisibleKeys = allKeys.filter(k => recAgg[k]);
+    if (pkgFilterOn) _srecBulkVisibleKeys.forEach(k => _srecBulkExpanded.add(k));
+
+    const toggleBtn = document.getElementById('btnToggleSrecBulk');
+    if (toggleBtn) {
+        toggleBtn.textContent = _srecBulkVisibleKeys.length && _srecBulkVisibleKeys.every(k => _srecBulkExpanded.has(k)) ? 'Collapse All' : 'Expand All';
+    }
 
     if (allKeys.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:#888;padding:16px;">No bulk materials found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#888;padding:16px;">No bulk materials found.</td></tr>';
         return;
     }
 
     const cell = (v, extra = '') => `<td style="text-align:center;white-space:nowrap;${extra}">${v}</td>`;
     const statusColors = { 'On-Site': '#2e7d32', 'Shipping': '#1565c0', 'Preparing': '#888' };
+    const detailHead = ['PKG', 'PACKAGE NO', 'ID NO', 'RECEIVED QTY', 'STATUS', 'ISSUE DATE']
+        .map(h => `<th style="text-align:center;font-weight:600;color:#666;padding:3px 10px;border-bottom:1px solid #dde3ee;">${h}</th>`).join('');
     const rowsHtml = [];
     allKeys.forEach(k => {
         const [kItem, kMatl, kSize] = k.split('::');
@@ -5027,7 +5039,7 @@ function paintSupportBulkTable() {
         const rec = recAgg[k];
         const totalQty = rec ? rec.total : 0;
         const pkgEntries = rec ? Object.entries(rec.pkgs).sort((a, b) => a[0].localeCompare(b[0])) : [];
-        const common = cell(kItem) + cell(kMatl) + cell(kSize) + cell(bomQty || '-');
+        const open = pkgEntries.length > 0 && _srecBulkExpanded.has(k);
         // Material Shortage/Surplus 화면과 동일 기준(diff = 입고 합계 - BOM)·색상, 다만 Bulk는 개수 단위라 정수로 표기
         const diff = Math.round(totalQty - bomQty);
         const shortSurplus = diff < 0
@@ -5035,16 +5047,19 @@ function paintSupportBulkTable() {
             : diff > 0
                 ? cell('-', 'color:#ccc;') + cell(diff, 'font-weight:700;color:#2e7d32;')
                 : cell('-', 'color:#ccc;') + cell('-', 'color:#ccc;');
-        if (pkgEntries.length === 0) {
-            rowsHtml.push(`<tr>${cell('-')}${cell('-')}${common}${cell('-')}${cell('-')}${shortSurplus}${cell('-')}${cell('-')}</tr>`);
-            return;
-        }
-        pkgEntries.forEach(([pkgNo, info]) => {
+        const arrow = `<span style="display:inline-block;width:14px;color:#0A2540;">${pkgEntries.length ? (open ? '▾' : '▸') : ''}</span>`;
+        rowsHtml.push(`<tr class="srec-bulk-row" data-key="${encodeURIComponent(k)}"${pkgEntries.length ? ' style="cursor:pointer;"' : ''}>`
+            + `<td style="text-align:left;white-space:nowrap;">${arrow}${kItem}</td>${cell(kMatl)}${cell(kSize)}${cell(bomQty || '-')}${cell(totalQty || '-')}${shortSurplus}`
+            + `${cell(pkgEntries.length ? `${pkgEntries.length} pkg` : '-')}</tr>`);
+        if (!open) return;
+        const detailRows = pkgEntries.map(([pkgNo, info]) => {
             const upd = _plUpdatesCache[pkgNo] || {};
-            const status = upd.status
-                ? `<span style="color:${statusColors[upd.status] || '#bbb'};">${upd.status}</span>` : '-';
-            rowsHtml.push(`<tr>${cell(info.pkg || '-')}${cell(pkgNo || '-')}${common}${cell(info.qty || '-')}${cell(totalQty || '-')}${shortSurplus}${cell(status)}${cell(upd.issue_date || '-')}</tr>`);
-        });
+            const status = upd.status ? `<span style="color:${statusColors[upd.status] || '#bbb'};">${upd.status}</span>` : '-';
+            const dc = v => `<td style="text-align:center;white-space:nowrap;padding:3px 10px;">${v}</td>`;
+            return `<tr>${dc(info.pkg || '-')}${dc(pkgNo || '-')}${dc([...info.ids].join(', ') || '-')}${dc(info.qty || '-')}${dc(status)}${dc(upd.issue_date || '-')}</tr>`;
+        }).join('');
+        rowsHtml.push(`<tr><td colspan="8" style="padding:4px 12px 10px 36px;background:#f7f9fc;">`
+            + `<table style="border-collapse:collapse;font-size:0.95em;"><thead><tr>${detailHead}</tr></thead><tbody>${detailRows}</tbody></table></td></tr>`);
     });
     tbody.innerHTML = rowsHtml.join('');
 }
@@ -5489,9 +5504,24 @@ function attachEventListeners() {
         const el = document.getElementById(id);
         if (el) el.addEventListener('change', paintSupportBulkTable);
     });
+    const srecBulkTbody = document.getElementById('srecBulkTbody');
+    if (srecBulkTbody) srecBulkTbody.addEventListener('click', e => {
+        const row = e.target.closest('tr.srec-bulk-row');
+        if (!row || row.style.cursor !== 'pointer') return;
+        const k = decodeURIComponent(row.dataset.key);
+        if (_srecBulkExpanded.has(k)) _srecBulkExpanded.delete(k); else _srecBulkExpanded.add(k);
+        paintSupportBulkTable();
+    });
+    const btnToggleSrecBulk = document.getElementById('btnToggleSrecBulk');
+    if (btnToggleSrecBulk) btnToggleSrecBulk.addEventListener('click', () => {
+        const allOpen = _srecBulkVisibleKeys.length > 0 && _srecBulkVisibleKeys.every(k => _srecBulkExpanded.has(k));
+        _srecBulkVisibleKeys.forEach(k => allOpen ? _srecBulkExpanded.delete(k) : _srecBulkExpanded.add(k));
+        paintSupportBulkTable();
+    });
     const btnClearSrecBulk = document.getElementById('btnClearSrecBulk');
     if (btnClearSrecBulk) {
         btnClearSrecBulk.addEventListener('click', () => {
+            _srecBulkExpanded.clear();
             if (srecBulkSearch) srecBulkSearch.value = '';
             ['srecBulkItemFilter', 'srecBulkMatlFilter', 'srecBulkPkgFilter', 'srecBulkPackageNoFilter', 'srecBulkStatusFilter', 'srecBulkIssuedFilter'].forEach(id => {
                 const el = document.getElementById(id); if (el) el.value = 'All';
