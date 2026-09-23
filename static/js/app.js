@@ -5028,9 +5028,13 @@ function paintSupportBulkTable() {
         const totalQty = rec ? rec.total : 0;
         const pkgEntries = rec ? Object.entries(rec.pkgs).sort((a, b) => a[0].localeCompare(b[0])) : [];
         const common = cell(kItem) + cell(kMatl) + cell(kSize) + cell(bomQty || '-');
-        // Material Shortage/Surplus 화면과 동일 기준(diff = 입고 합계 - BOM)과 공용 셀 헬퍼 사용
-        const diff = totalQty - bomQty;
-        const shortSurplus = _mssShortageCellHtml(diff) + _mssSurplusCellHtml(diff);
+        // Material Shortage/Surplus 화면과 동일 기준(diff = 입고 합계 - BOM)·색상, 다만 Bulk는 개수 단위라 정수로 표기
+        const diff = Math.round(totalQty - bomQty);
+        const shortSurplus = diff < 0
+            ? cell(Math.abs(diff), 'font-weight:700;color:#d32f2f;') + cell('-', 'color:#ccc;')
+            : diff > 0
+                ? cell('-', 'color:#ccc;') + cell(diff, 'font-weight:700;color:#2e7d32;')
+                : cell('-', 'color:#ccc;') + cell('-', 'color:#ccc;');
         if (pkgEntries.length === 0) {
             rowsHtml.push(`<tr>${cell('-')}${cell('-')}${common}${cell('-')}${cell('-')}${shortSurplus}${cell('-')}${cell('-')}</tr>`);
             return;
