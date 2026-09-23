@@ -1291,6 +1291,30 @@
                         </div>
                         </div><!-- end srecTagView -->
                         <div id="srecBulkView" style="display:none;">
+                        <div class="panel filter-panel" style="margin-bottom:20px;">
+                            <div style="display:flex;align-items:flex-end;gap:10px;width:100%;flex-wrap:nowrap;">
+                                <div class="form-group" style="flex:2;min-width:0;margin-bottom:0;">
+                                    <label>Search (Item / MATL / Size / Package No / ID No)</label>
+                                    <input type="text" id="srecBulkSearch" class="form-control" style="width:100%;" placeholder="Item, MATL, Size, Package No, ID No...">
+                                </div>
+                                <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                    <label>Item</label>
+                                    <select id="srecBulkItemFilter" class="form-control" style="width:100%;"><option value="All">All Items</option></select>
+                                </div>
+                                <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                    <label>MATL</label>
+                                    <select id="srecBulkMatlFilter" class="form-control" style="width:100%;"><option value="All">All MATL</option></select>
+                                </div>
+                                <div class="form-group" style="flex:1;min-width:0;margin-bottom:0;">
+                                    <label>PACKAGE NO</label>
+                                    <select id="srecBulkPackageNoFilter" class="form-control" style="width:100%;"><option value="All">All Package No</option></select>
+                                </div>
+                                <div style="padding-bottom:1px;display:flex;gap:8px;flex-shrink:0;">
+                                    <button class="btn btn-primary" id="btnFilterSrecBulk" style="white-space:nowrap;"><i class="fas fa-search"></i> Search</button>
+                                    <button class="btn btn-outline" id="btnClearSrecBulk" style="white-space:nowrap;">Clear</button>
+                                </div>
+                            </div>
+                        </div>
                         <div class="panel data-panel">
                             <div class="panel-header"><h3>Bulk Materials (No Support Tag)</h3></div>
                             <p style="font-size:11px;color:#888;margin:0 0 10px;padding:0 15px;">

@@ -4907,6 +4907,7 @@ window._srecGoPage = function(p) { currentSrecPage = p; renderSupportReceivingTa
 
 // Support Tag가 없는 Bulk 구조재(Channel/H-Beam/Angle/Plate 등)를 Item+Matl+Size 단위로 집계해
 // BOM 수량(참고용)과 Received 수량을 함께 보여준다. Tag 매칭이 불가능한 항목이라 %는 계산하지 않는다.
+let _srecBulkData = null; // { bom, rec } — 탭 진입 시 1회 조회, 필터는 이 캐시에서 클라이언트 처리
 async function renderSupportBulkTable() {
     const tbody = document.getElementById('srecBulkTbody');
     if (!tbody) return;
@@ -4919,7 +4920,7 @@ async function renderSupportBulkTable() {
             .or('support_tag.is.null,support_tag.eq.BULK')
             .limit(2000),
         supabaseClient.from('support_receiving')
-            .select('item,matl,size_or_type,qty,package_no,system')
+            .select('item,matl,size_or_type,qty,package_no,system,id_no')
             .or('support_tag.is.null,support_tag.eq.BULK,support_tag.eq.-')
             .limit(2000),
     ]);
@@ -4929,18 +4930,64 @@ async function renderSupportBulkTable() {
         return;
     }
 
+    _srecBulkData = { bom: bomRes.data || [], rec: recRes.data || [] };
+    rebuildSupportBulkFilterOptions();
+    paintSupportBulkTable();
+}
+
+function rebuildSupportBulkFilterOptions() {
+    const fill = (id, allLabel, values) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const prev = el.value;
+        el.innerHTML = `<option value="All">${allLabel}</option>`
+            + values.map(v => `<option value="${v.replace(/"/g, '&quot;')}">${v}</option>`).join('');
+        el.value = values.includes(prev) ? prev : 'All';
+    };
+    const { bom, rec } = _srecBulkData;
+    const uniq = (rows, f) => [...new Set(rows.map(f).filter(Boolean))].sort();
+    fill('srecBulkItemFilter', 'All Items', uniq([...bom, ...rec], r => r.item));
+    fill('srecBulkMatlFilter', 'All MATL', uniq([...bom, ...rec], r => r.matl));
+    fill('srecBulkPackageNoFilter', 'All Package No', uniq(rec, r => r.package_no));
+}
+
+function paintSupportBulkTable() {
+    const tbody = document.getElementById('srecBulkTbody');
+    if (!tbody || !_srecBulkData) return;
+
+    const search  = (document.getElementById('srecBulkSearch')?.value || '').trim().toLowerCase();
+    const fItem   = document.getElementById('srecBulkItemFilter')?.value || 'All';
+    const fMatl   = document.getElementById('srecBulkMatlFilter')?.value || 'All';
+    const fPkgNo  = document.getElementById('srecBulkPackageNoFilter')?.value || 'All';
+
     const keyOf = r => `${r.item || '-'}::${r.matl || '-'}::${r.size_or_type || '-'}`;
+    const itemMatlOk = r => (fItem === 'All' || r.item === fItem) && (fMatl === 'All' || r.matl === fMatl);
+    const specText = r => `${r.item || ''} ${r.matl || ''} ${r.size_or_type || ''}`.toLowerCase();
+
+    // BOM은 Package/ID No가 없으므로 Item/MATL 필터만 수량에 반영하고, Search는 표시 여부 판단에만 사용
+    const bomRows = _srecBulkData.bom.filter(itemMatlOk);
+    const recRows = _srecBulkData.rec.filter(r => itemMatlOk(r) && (fPkgNo === 'All' || r.package_no === fPkgNo));
 
     const bomAgg = {}; // key -> { qty }
-    (bomRes.data || []).forEach(r => {
+    bomRows.forEach(r => {
         const k = keyOf(r);
         if (!bomAgg[k]) bomAgg[k] = { qty: 0 };
         bomAgg[k].qty += parseFloat(r.qty) || 0;
     });
 
+    // Search는 키(Item/MATL/Size)가 맞거나, 그 키의 입고행 중 Package/ID No가 맞으면 해당 키 전체(수량 포함)를 노출
+    const matchedKeys = new Set();
+    if (search) {
+        bomRows.forEach(r => { if (specText(r).includes(search)) matchedKeys.add(keyOf(r)); });
+        recRows.forEach(r => {
+            if (`${specText(r)} ${(r.package_no || '').toLowerCase()} ${(r.id_no || '').toLowerCase()}`.includes(search)) matchedKeys.add(keyOf(r));
+        });
+    }
+    const keyVisible = k => !search || matchedKeys.has(k);
+
     // pkgMap: pkgNo -> { qty, system } — System은 renderBulkPkgCell에서 참고 정보로만 노출
     const recAgg = {}; // key -> { qty, pkgMap: { pkgNo: {qty, system} } }
-    (recRes.data || []).forEach(r => {
+    recRows.forEach(r => {
         const k = keyOf(r);
         if (!recAgg[k]) recAgg[k] = { qty: 0, pkgMap: {} };
         const q = parseFloat(r.qty) || 0;
@@ -4966,7 +5013,9 @@ async function renderSupportBulkTable() {
     }
 
     // key가 "item::matl::size" 형태라 문자열 정렬만으로 Item 우선 정렬이 됨
-    const allKeys = [...new Set([...Object.keys(bomAgg), ...Object.keys(recAgg)])].sort();
+    // Package No 필터 중에는 BOM에만 있는 키(입고 없음)는 숨긴다
+    const allKeys = [...new Set([...(fPkgNo === 'All' ? Object.keys(bomAgg) : []), ...Object.keys(recAgg)])]
+        .filter(keyVisible).sort();
 
     if (allKeys.length === 0) {
         tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#888;padding:16px;">No bulk materials found.</td></tr>';
@@ -5422,8 +5471,28 @@ function attachEventListeners() {
         });
     }
 
+    // Support Receiving BULK 탭 Search / Clear (캐시된 데이터에서 필터링)
+    const btnFilterSrecBulk = document.getElementById('btnFilterSrecBulk');
+    if (btnFilterSrecBulk) btnFilterSrecBulk.addEventListener('click', paintSupportBulkTable);
+    const srecBulkSearch = document.getElementById('srecBulkSearch');
+    if (srecBulkSearch) srecBulkSearch.addEventListener('keydown', e => { if (e.key === 'Enter') paintSupportBulkTable(); });
+    ['srecBulkItemFilter', 'srecBulkMatlFilter', 'srecBulkPackageNoFilter'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', paintSupportBulkTable);
+    });
+    const btnClearSrecBulk = document.getElementById('btnClearSrecBulk');
+    if (btnClearSrecBulk) {
+        btnClearSrecBulk.addEventListener('click', () => {
+            if (srecBulkSearch) srecBulkSearch.value = '';
+            ['srecBulkItemFilter', 'srecBulkMatlFilter', 'srecBulkPackageNoFilter'].forEach(id => {
+                const el = document.getElementById(id); if (el) el.value = 'All';
+            });
+            paintSupportBulkTable();
+        });
+    }
+
     // Support Receiving Export Button
-    const btnExportSrec = document.getElementById('btnExportSrec');
+    const btnExportSrec =document.getElementById('btnExportSrec');
     if (btnExportSrec) {
         btnExportSrec.addEventListener('click', async () => {
             btnExportSrec.disabled = true;
