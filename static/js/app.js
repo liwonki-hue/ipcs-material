@@ -4912,7 +4912,7 @@ async function renderSupportBulkTable() {
     const tbody = document.getElementById('srecBulkTbody');
     if (!tbody) return;
     if (!supabaseClient) return;
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:16px;color:#888;">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:16px;color:#888;">Loading...</td></tr>';
 
     const [bomRes, recRes] = await Promise.all([
         supabaseClient.from('support_bom')
@@ -4920,13 +4920,13 @@ async function renderSupportBulkTable() {
             .or('support_tag.is.null,support_tag.eq.BULK')
             .limit(2000),
         supabaseClient.from('support_receiving')
-            .select('item,matl,size_or_type,qty,package_no,system,id_no')
+            .select('item,matl,size_or_type,qty,pkg,package_no,system,id_no')
             .or('support_tag.is.null,support_tag.eq.BULK,support_tag.eq.-')
             .limit(2000),
     ]);
 
     if (bomRes.error || recRes.error) {
-        tbody.innerHTML = `<tr><td colspan="6" style="color:red;text-align:center;">Error: ${(bomRes.error || recRes.error).message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" style="color:red;text-align:center;">Error: ${(bomRes.error || recRes.error).message}</td></tr>`;
         return;
     }
 
@@ -4948,6 +4948,7 @@ function rebuildSupportBulkFilterOptions() {
     const uniq = (rows, f) => [...new Set(rows.map(f).filter(Boolean))].sort();
     fill('srecBulkItemFilter', 'All Items', uniq([...bom, ...rec], r => r.item));
     fill('srecBulkMatlFilter', 'All MATL', uniq([...bom, ...rec], r => r.matl));
+    fill('srecBulkPkgFilter', 'All PKGs', uniq(rec, r => r.pkg));
     fill('srecBulkPackageNoFilter', 'All Package No', uniq(rec, r => r.package_no));
 }
 
@@ -4958,6 +4959,7 @@ function paintSupportBulkTable() {
     const search  = (document.getElementById('srecBulkSearch')?.value || '').trim().toLowerCase();
     const fItem   = document.getElementById('srecBulkItemFilter')?.value || 'All';
     const fMatl   = document.getElementById('srecBulkMatlFilter')?.value || 'All';
+    const fPkg    = document.getElementById('srecBulkPkgFilter')?.value || 'All';
     const fPkgNo  = document.getElementById('srecBulkPackageNoFilter')?.value || 'All';
 
     const keyOf = r => `${r.item || '-'}::${r.matl || '-'}::${r.size_or_type || '-'}`;
@@ -4966,7 +4968,10 @@ function paintSupportBulkTable() {
 
     // BOM은 Package/ID No가 없으므로 Item/MATL 필터만 수량에 반영하고, Search는 표시 여부 판단에만 사용
     const bomRows = _srecBulkData.bom.filter(itemMatlOk);
-    const recRows = _srecBulkData.rec.filter(r => itemMatlOk(r) && (fPkgNo === 'All' || r.package_no === fPkgNo));
+    const pkgFilterOn = fPkg !== 'All' || fPkgNo !== 'All';
+    const recRows = _srecBulkData.rec.filter(r => itemMatlOk(r)
+        && (fPkg === 'All' || r.pkg === fPkg)
+        && (fPkgNo === 'All' || r.package_no === fPkgNo));
 
     const bomAgg = {}; // key -> { qty }
     bomRows.forEach(r => {
@@ -4980,64 +4985,56 @@ function paintSupportBulkTable() {
     if (search) {
         bomRows.forEach(r => { if (specText(r).includes(search)) matchedKeys.add(keyOf(r)); });
         recRows.forEach(r => {
-            if (`${specText(r)} ${(r.package_no || '').toLowerCase()} ${(r.id_no || '').toLowerCase()}`.includes(search)) matchedKeys.add(keyOf(r));
+            if (`${specText(r)} ${(r.pkg || '').toLowerCase()} ${(r.package_no || '').toLowerCase()} ${(r.id_no || '').toLowerCase()}`.includes(search)) matchedKeys.add(keyOf(r));
         });
     }
     const keyVisible = k => !search || matchedKeys.has(k);
 
-    // pkgMap: pkgNo -> { qty, system } — System은 renderBulkPkgCell에서 참고 정보로만 노출
-    const recAgg = {}; // key -> { qty, pkgMap: { pkgNo: {qty, system} } }
+    // key -> { total, pkgs: { package_no: { pkg, qty } } } — 패키지별 행으로 펼치고 total은 키 단위 입고 합계
+    const recAgg = {};
     recRows.forEach(r => {
         const k = keyOf(r);
-        if (!recAgg[k]) recAgg[k] = { qty: 0, pkgMap: {} };
+        if (!recAgg[k]) recAgg[k] = { total: 0, pkgs: {} };
         const q = parseFloat(r.qty) || 0;
-        recAgg[k].qty += q;
-        if (r.package_no) {
-            const entry = recAgg[k].pkgMap[r.package_no] || { qty: 0, system: r.system };
-            entry.qty += q;
-            recAgg[k].pkgMap[r.package_no] = entry;
-        }
+        recAgg[k].total += q;
+        const pk = r.package_no || '';
+        const entry = recAgg[k].pkgs[pk] || { pkg: r.pkg, qty: 0 };
+        entry.qty += q;
+        recAgg[k].pkgs[pk] = entry;
     });
 
-    // renderPkgListCell({pkgNo: qty})과 같은 톤이지만, System을 참고용으로 괄호에 덧붙인다
-    function renderBulkPkgCell(pkgMap) {
-        const entries = Object.entries(pkgMap);
-        if (entries.length === 0) return '-';
-        return entries.sort((a, b) => a[0].localeCompare(b[0])).map(([pkgNo, info]) => {
-            const done = isPkgIssued(pkgNo);
-            const qtyStr = info.qty % 1 === 0 ? info.qty : info.qty.toFixed(2);
-            const label = done ? `Issued ${(_plUpdatesCache[pkgNo] || {}).issue_date || ''}` : 'Not Issued';
-            const sys = info.system ? `, ${info.system}` : '';
-            return `<div>${pkgNo} (${qtyStr} EA${sys}) — <span style="color:${done ? '#2e7d32' : '#999'};">${label}</span></div>`;
-        }).join('');
-    }
-
     // key가 "item::matl::size" 형태라 문자열 정렬만으로 Item 우선 정렬이 됨
-    // Package No 필터 중에는 BOM에만 있는 키(입고 없음)는 숨긴다
-    const allKeys = [...new Set([...(fPkgNo === 'All' ? Object.keys(bomAgg) : []), ...Object.keys(recAgg)])]
+    // PKG/Package No 필터 중에는 BOM에만 있는 키(입고 없음)는 숨긴다
+    const allKeys = [...new Set([...(pkgFilterOn ? [] : Object.keys(bomAgg)), ...Object.keys(recAgg)])]
         .filter(keyVisible).sort();
 
     if (allKeys.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#888;padding:16px;">No bulk materials found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#888;padding:16px;">No bulk materials found.</td></tr>';
         return;
     }
 
-    tbody.innerHTML = allKeys.map(k => {
+    const cell = (v, extra = '') => `<td style="text-align:center;white-space:nowrap;${extra}">${v}</td>`;
+    const rowsHtml = [];
+    allKeys.forEach(k => {
         const [kItem, kMatl, kSize] = k.split('::');
-        const b = bomAgg[k];
+        const bomQty = bomAgg[k] ? bomAgg[k].qty : 0;
         const rec = recAgg[k];
-        const bomQty = b ? b.qty : 0;
-        const recQty = rec ? rec.qty : 0;
-        const pkgCell = rec ? renderBulkPkgCell(rec.pkgMap) : '-';
-        return `<tr>
-            <td style="text-align:center;">${kItem}</td>
-            <td style="text-align:center;">${kMatl}</td>
-            <td style="text-align:center;">${kSize}</td>
-            <td style="text-align:center;">${bomQty || '-'}</td>
-            <td style="text-align:center;">${recQty || '-'}</td>
-            <td style="text-align:left;font-size:11px;line-height:1.6;">${pkgCell}</td>
-        </tr>`;
-    }).join('');
+        const totalQty = rec ? rec.total : 0;
+        const pkgEntries = rec ? Object.entries(rec.pkgs).sort((a, b) => a[0].localeCompare(b[0])) : [];
+        const common = cell(kItem) + cell(kMatl) + cell(kSize) + cell(bomQty || '-');
+        if (pkgEntries.length === 0) {
+            rowsHtml.push(`<tr>${cell('-')}${cell('-')}${common}${cell('-')}${cell('-')}${cell('-')}</tr>`);
+            return;
+        }
+        pkgEntries.forEach(([pkgNo, info]) => {
+            const done = pkgNo && isPkgIssued(pkgNo);
+            const status = !pkgNo ? '-' : done
+                ? `<span style="color:#2e7d32;">Issued ${(_plUpdatesCache[pkgNo] || {}).issue_date || ''}</span>`
+                : '<span style="color:#999;">Not Issued</span>';
+            rowsHtml.push(`<tr>${cell(info.pkg || '-')}${cell(pkgNo || '-')}${common}${cell(info.qty || '-')}${cell(totalQty || '-')}${cell(status)}</tr>`);
+        });
+    });
+    tbody.innerHTML = rowsHtml.join('');
 }
 
 // --- 5. Material Issue (ISO/MR Table) ---
@@ -5476,7 +5473,7 @@ function attachEventListeners() {
     if (btnFilterSrecBulk) btnFilterSrecBulk.addEventListener('click', paintSupportBulkTable);
     const srecBulkSearch = document.getElementById('srecBulkSearch');
     if (srecBulkSearch) srecBulkSearch.addEventListener('keydown', e => { if (e.key === 'Enter') paintSupportBulkTable(); });
-    ['srecBulkItemFilter', 'srecBulkMatlFilter', 'srecBulkPackageNoFilter'].forEach(id => {
+    ['srecBulkItemFilter', 'srecBulkMatlFilter', 'srecBulkPkgFilter', 'srecBulkPackageNoFilter'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('change', paintSupportBulkTable);
     });
@@ -5484,7 +5481,7 @@ function attachEventListeners() {
     if (btnClearSrecBulk) {
         btnClearSrecBulk.addEventListener('click', () => {
             if (srecBulkSearch) srecBulkSearch.value = '';
-            ['srecBulkItemFilter', 'srecBulkMatlFilter', 'srecBulkPackageNoFilter'].forEach(id => {
+            ['srecBulkItemFilter', 'srecBulkMatlFilter', 'srecBulkPkgFilter', 'srecBulkPackageNoFilter'].forEach(id => {
                 const el = document.getElementById(id); if (el) el.value = 'All';
             });
             paintSupportBulkTable();
