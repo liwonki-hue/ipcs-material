@@ -1343,14 +1343,19 @@
                                 Each row is one material (Item + Matl + Size). Single-package items show PKG / Package No directly; rows with several packages (or an ID No) can be clicked to see per-package details.
                             </p>
                             <div class="table-responsive">
-                                <table class="data-table" id="srecBulkTable" style="font-size:0.82em;">
+                                <table class="data-table" id="srecBulkTable" style="font-size:0.82em;table-layout:fixed;width:100%;min-width:1100px;">
+                                    <colgroup>
+                                        <col style="width:10%;"><col style="width:16%;"><col style="width:13%;"><col style="width:8%;">
+                                        <col style="width:15%;"><col style="width:6%;"><col style="width:7%;"><col style="width:6%;">
+                                        <col style="width:6%;"><col style="width:6%;"><col style="width:7%;">
+                                    </colgroup>
                                     <thead>
                                         <tr>
-                                            <th style="text-align:left;min-width:120px;">PKG</th>
-                                            <th style="text-align:center;min-width:110px;">PACKAGE NO</th>
-                                            <th style="text-align:center;min-width:150px;">ITEM</th>
+                                            <th style="text-align:center;">PKG</th>
+                                            <th style="text-align:center;">PACKAGE NO</th>
+                                            <th style="text-align:center;">ITEM</th>
                                             <th style="text-align:center;">MATL</th>
-                                            <th style="text-align:center;min-width:120px;">SIZE OR TYPE</th>
+                                            <th style="text-align:center;">SIZE OR TYPE</th>
                                             <th style="text-align:center;">BOM QTY</th>
                                             <th style="text-align:center;">TOTAL RECEIVED</th>
                                             <th style="text-align:center;">SHORTAGE</th>

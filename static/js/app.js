@@ -5042,6 +5042,7 @@ function paintSupportBulkTable() {
     }
 
     const cell = (v, extra = '') => `<td style="text-align:center;white-space:nowrap;${extra}">${v}</td>`;
+    const wrapCell = v => cell(v, 'white-space:normal;overflow-wrap:anywhere;');
     const statusColors = { 'On-Site': '#2e7d32', 'Shipping': '#1565c0', 'Preparing': '#888' };
     const detailHead = ['PKG', 'PACKAGE NO', 'ID NO', 'RECEIVED QTY', 'STATUS', 'ISSUE DATE']
         .map(h => `<th style="text-align:center;font-weight:600;color:#666;padding:3px 10px;border-bottom:1px solid #dde3ee;">${h}</th>`).join('');
@@ -5073,8 +5074,8 @@ function paintSupportBulkTable() {
         const stHtml = statusColors[stVal] ? `<span style="color:${statusColors[stVal]};">${stVal}</span>` : stVal;
         const arrow = `<span style="display:inline-block;width:14px;color:#0A2540;">${expandable ? (open ? '▾' : '▸') : ''}</span>`;
         rowsHtml.push(`<tr class="srec-bulk-row" data-key="${encodeURIComponent(k)}"${expandable ? ' style="cursor:pointer;"' : ''}>`
-            + `<td style="text-align:left;white-space:nowrap;">${arrow}${pkgCell}</td>${cell(pkgNoCell)}`
-            + `${cell(kItem)}${cell(kMatl)}${cell(kSize)}${cell(bomQty || '-')}${cell(totalQty || '-')}${shortSurplus}${cell(stHtml)}${cell(issVal)}</tr>`);
+            + `<td style="text-align:center;white-space:nowrap;">${arrow}${pkgCell}</td>${cell(pkgNoCell)}`
+            + `${wrapCell(kItem)}${wrapCell(kMatl)}${wrapCell(kSize)}${cell(bomQty || '-')}${cell(totalQty || '-')}${shortSurplus}${cell(stHtml)}${cell(issVal)}</tr>`);
         if (!open) return;
         const detailRows = pkgEntries.map(([pkgNo, info]) => {
             const upd = _plUpdatesCache[pkgNo] || {};
@@ -5082,8 +5083,9 @@ function paintSupportBulkTable() {
             const dc = v => `<td style="text-align:center;white-space:nowrap;padding:3px 10px;">${v}</td>`;
             return `<tr>${dc(info.pkg || '-')}${dc(pkgNo || '-')}${dc([...info.ids].join(', ') || '-')}${dc(info.qty || '-')}${dc(status)}${dc(upd.issue_date || '-')}</tr>`;
         }).join('');
-        rowsHtml.push(`<tr><td colspan="11" style="padding:4px 12px 10px 36px;background:#f7f9fc;">`
-            + `<table style="border-collapse:collapse;font-size:0.95em;"><thead><tr>${detailHead}</tr></thead><tbody>${detailRows}</tbody></table></td></tr>`);
+        rowsHtml.push(`<tr><td colspan="11" style="padding:4px 12px 10px;background:#f7f9fc;">`
+            + `<table style="border-collapse:collapse;font-size:0.95em;table-layout:fixed;width:100%;">`
+            + `<colgroup><col style="width:16%;"><col style="width:26%;"><col style="width:18%;"><col style="width:14%;"><col style="width:13%;"><col style="width:13%;"></colgroup><thead><tr>${detailHead}</tr></thead><tbody>${detailRows}</tbody></table></td></tr>`);
     });
     tbody.innerHTML = rowsHtml.join('');
 }
