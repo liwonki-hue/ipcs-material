@@ -4915,7 +4915,7 @@ async function renderSupportBulkTable() {
     const tbody = document.getElementById('srecBulkTbody');
     if (!tbody) return;
     if (!supabaseClient) return;
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:16px;color:#888;">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:16px;color:#888;">Loading...</td></tr>';
 
     const [bomRes, recRes] = await Promise.all([
         supabaseClient.from('support_bom')
@@ -4929,7 +4929,7 @@ async function renderSupportBulkTable() {
     ]);
 
     if (bomRes.error || recRes.error) {
-        tbody.innerHTML = `<tr><td colspan="8" style="color:red;text-align:center;">Error: ${(bomRes.error || recRes.error).message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="11" style="color:red;text-align:center;">Error: ${(bomRes.error || recRes.error).message}</td></tr>`;
         return;
     }
 
@@ -5019,7 +5019,14 @@ function paintSupportBulkTable() {
     // PKG/Package No/Status/Issue 필터 중에는 BOM에만 있는 키(입고 없음)는 숨긴다
     const allKeys = [...new Set([...(pkgFilterOn ? [] : Object.keys(bomAgg)), ...Object.keys(recAgg)])]
         .filter(keyVisible).sort();
-    _srecBulkVisibleKeys = allKeys.filter(k => recAgg[k]);
+    // 패키지가 여러 개이거나 ID No(SB BULK-N 등)가 있으면 상세를 펼칠 수 있음. 단일 패키지는 요약 행에서 바로 확인
+    const isExpandable = k => {
+        const r = recAgg[k];
+        if (!r) return false;
+        const e = Object.values(r.pkgs);
+        return e.length > 1 || e.some(i => i.ids.size > 0);
+    };
+    _srecBulkVisibleKeys = allKeys.filter(isExpandable);
     const filterSig = [fPkg, fPkgNo, fStatus, fIssued].join('|');
     if (pkgFilterOn && filterSig !== _srecBulkFilterSig) _srecBulkVisibleKeys.forEach(k => _srecBulkExpanded.add(k));
     _srecBulkFilterSig = filterSig;
@@ -5030,7 +5037,7 @@ function paintSupportBulkTable() {
     }
 
     if (allKeys.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#888;padding:16px;">No bulk materials found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#888;padding:16px;">No bulk materials found.</td></tr>';
         return;
     }
 
@@ -5045,7 +5052,8 @@ function paintSupportBulkTable() {
         const rec = recAgg[k];
         const totalQty = rec ? rec.total : 0;
         const pkgEntries = rec ? Object.entries(rec.pkgs).sort((a, b) => a[0].localeCompare(b[0])) : [];
-        const open = pkgEntries.length > 0 && _srecBulkExpanded.has(k);
+        const expandable = isExpandable(k);
+        const open = expandable && _srecBulkExpanded.has(k);
         // Material Shortage/Surplus 화면과 동일 기준(diff = 입고 합계 - BOM)·색상, 다만 Bulk는 개수 단위라 정수로 표기
         const diff = Math.round(totalQty - bomQty);
         const shortSurplus = diff < 0
@@ -5053,10 +5061,20 @@ function paintSupportBulkTable() {
             : diff > 0
                 ? cell('-', 'color:#ccc;') + cell(diff, 'font-weight:700;color:#2e7d32;')
                 : cell('-', 'color:#ccc;') + cell('-', 'color:#ccc;');
-        const arrow = `<span style="display:inline-block;width:14px;color:#0A2540;">${pkgEntries.length ? (open ? '▾' : '▸') : ''}</span>`;
-        rowsHtml.push(`<tr class="srec-bulk-row" data-key="${encodeURIComponent(k)}"${pkgEntries.length ? ' style="cursor:pointer;"' : ''}>`
-            + `<td style="text-align:left;white-space:nowrap;">${arrow}${kItem}</td>${cell(kMatl)}${cell(kSize)}${cell(bomQty || '-')}${cell(totalQty || '-')}${shortSurplus}`
-            + `${cell(pkgEntries.length ? `${pkgEntries.length} pkg` : '-')}</tr>`);
+        // 단일 패키지(단일 항차)는 값을 그대로, 여러 개면 Multiple/N packages/Mixed로 요약하고 상세는 펼침에서 확인
+        const uniq = f => [...new Set(pkgEntries.map(f))];
+        const one = (arr, many) => arr.length === 1 ? arr[0] : many;
+        const plOfPkg = pn => _plUpdatesCache[pn] || {};
+        const hasPkg = pkgEntries.length > 0;
+        const pkgCell = hasPkg ? one(uniq(([, i]) => i.pkg || '-'), 'Multiple') : '-';
+        const pkgNoCell = !hasPkg ? '-' : pkgEntries.length > 1 ? `${pkgEntries.length} packages` : (pkgEntries[0][0] || '-');
+        const stVal = hasPkg ? one(uniq(([pn]) => plOfPkg(pn).status || '-'), 'Mixed') : '-';
+        const issVal = hasPkg ? one(uniq(([pn]) => plOfPkg(pn).issue_date || '-'), 'Mixed') : '-';
+        const stHtml = statusColors[stVal] ? `<span style="color:${statusColors[stVal]};">${stVal}</span>` : stVal;
+        const arrow = `<span style="display:inline-block;width:14px;color:#0A2540;">${expandable ? (open ? '▾' : '▸') : ''}</span>`;
+        rowsHtml.push(`<tr class="srec-bulk-row" data-key="${encodeURIComponent(k)}"${expandable ? ' style="cursor:pointer;"' : ''}>`
+            + `<td style="text-align:left;white-space:nowrap;">${arrow}${pkgCell}</td>${cell(pkgNoCell)}`
+            + `${cell(kItem)}${cell(kMatl)}${cell(kSize)}${cell(bomQty || '-')}${cell(totalQty || '-')}${shortSurplus}${cell(stHtml)}${cell(issVal)}</tr>`);
         if (!open) return;
         const detailRows = pkgEntries.map(([pkgNo, info]) => {
             const upd = _plUpdatesCache[pkgNo] || {};
@@ -5064,7 +5082,7 @@ function paintSupportBulkTable() {
             const dc = v => `<td style="text-align:center;white-space:nowrap;padding:3px 10px;">${v}</td>`;
             return `<tr>${dc(info.pkg || '-')}${dc(pkgNo || '-')}${dc([...info.ids].join(', ') || '-')}${dc(info.qty || '-')}${dc(status)}${dc(upd.issue_date || '-')}</tr>`;
         }).join('');
-        rowsHtml.push(`<tr><td colspan="8" style="padding:4px 12px 10px 36px;background:#f7f9fc;">`
+        rowsHtml.push(`<tr><td colspan="11" style="padding:4px 12px 10px 36px;background:#f7f9fc;">`
             + `<table style="border-collapse:collapse;font-size:0.95em;"><thead><tr>${detailHead}</tr></thead><tbody>${detailRows}</tbody></table></td></tr>`);
     });
     tbody.innerHTML = rowsHtml.join('');

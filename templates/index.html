@@ -1340,20 +1340,23 @@
                             <div class="panel-header" style="display:flex;align-items:center;justify-content:space-between;"><h3>Bulk Materials (No Support Tag)</h3><button class="btn btn-outline" id="btnToggleSrecBulk" style="white-space:nowrap;">Expand All</button></div>
                             <p style="font-size:11px;color:#888;margin:0 0 10px;padding:0 15px;">
                                 Structural bulk stock (Channel, H-Beam, Angle, Plate, Anchor Bolt, etc.) not tied to a specific Support Tag.
-                                Each row is one material (Item + Matl + Size) — click a row to see its per-package receiving details.
+                                Each row is one material (Item + Matl + Size). Single-package items show PKG / Package No directly; rows with several packages (or an ID No) can be clicked to see per-package details.
                             </p>
                             <div class="table-responsive">
                                 <table class="data-table" id="srecBulkTable" style="font-size:0.82em;">
                                     <thead>
                                         <tr>
-                                            <th style="text-align:left;min-width:170px;">ITEM</th>
+                                            <th style="text-align:left;min-width:120px;">PKG</th>
+                                            <th style="text-align:center;min-width:110px;">PACKAGE NO</th>
+                                            <th style="text-align:center;min-width:150px;">ITEM</th>
                                             <th style="text-align:center;">MATL</th>
                                             <th style="text-align:center;min-width:120px;">SIZE OR TYPE</th>
                                             <th style="text-align:center;">BOM QTY</th>
                                             <th style="text-align:center;">TOTAL RECEIVED</th>
                                             <th style="text-align:center;">SHORTAGE</th>
                                             <th style="text-align:center;">SURPLUS</th>
-                                            <th style="text-align:center;">PACKAGES</th>
+                                            <th style="text-align:center;">STATUS</th>
+                                            <th style="text-align:center;">ISSUE DATE</th>
                                         </tr>
                                     </thead>
                                     <tbody id="srecBulkTbody"></tbody>
