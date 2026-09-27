@@ -6588,28 +6588,49 @@ async function savePlUpdates() {
 
     try {
         const DATE_FIELDS = ['on_site', 'issue_date'];
-        // pl_updates 전체 컬럼을 항상 같은 key 세트로 채운다 — 한 번도 저장된 적 없는
-        // pkg_no(캐시에 없음)와 이미 저장된 pkg_no를 같은 배치로 upsert하면 객체마다
-        // key 개수가 달라져 PostgREST가 "All object keys must match"(PGRST102)로 거부함.
-        const PL_COLUMNS = ['status', 'on_site', 'custom_clear', 'issue_date', 'remark', 'item'];
-        const upserts = dirty.map(([pkg_no, fields]) => {
+        const now = new Date().toISOString();
+        // 날짜 순서 검증 — 날짜/상태가 실제로 바뀐 PKG에만 적용(기존에 이미 어긋나 있던 PKG의 Remark만
+        // 고치는 저장까지 막지 않기 위함). 걸린 PKG는 저장하지 않고 변경 상태로 남겨 둔다.
+        const rejected = [];
+        const upserts = [];
+        dirty.forEach(([pkg_no, fields]) => {
             const cached = _plUpdatesCache[pkg_no] || {};
-            const base = { pkg_no };
-            PL_COLUMNS.forEach(f => { base[f] = fields[f] !== undefined ? fields[f] : (cached[f] !== undefined ? cached[f] : null); });
-            DATE_FIELDS.forEach(f => { if (base[f] === '') base[f] = null; });
-            base.updated_at = new Date().toISOString();
-            return base;
+            const merged = { ...cached, ...fields };
+            const touched = ['status', 'on_site', 'issue_date'].some(f => fields[f] !== undefined && (fields[f] || '') !== (cached[f] || ''));
+            if (touched && merged.issue_date) {
+                if (merged.status !== 'On-Site') { rejected.push(`${pkg_no}: Issue Date requires On-Site status`); return; }
+                if (merged.on_site && merged.issue_date < merged.on_site) { rejected.push(`${pkg_no}: Issue Date (${merged.issue_date}) is before On-Site Date (${merged.on_site})`); return; }
+            }
+            // 바뀐 칸만 보냄 — 전체 컬럼을 화면 로딩 시점 값으로 보내면, 그 사이 다른 사용자가 같은 PKG의
+            // 다른 칸을 저장했을 때 그 변경을 되돌려 버림(upsert는 보낸 컬럼만 갱신)
+            const row = { pkg_no };
+            Object.entries(fields).forEach(([f, v]) => { row[f] = (DATE_FIELDS.includes(f) && v === '') ? null : v; });
+            row.updated_at = now;
+            upserts.push(row);
         });
 
-        const r = await fetch(`${SUPABASE_URL}/rest/v1/pl_updates`, {
-            method: 'POST',
-            headers: { ...PL_EDIT_HEADERS, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
-            body: JSON.stringify(upserts)
-        });
+        // PostgREST 일괄 upsert는 객체마다 key 세트가 같아야 함(PGRST102) — 바뀐 칸 조합별로 나눠 전송
+        const groups = {};
+        upserts.forEach(u => { const sig = Object.keys(u).sort().join(','); (groups[sig] = groups[sig] || []).push(u); });
+        let failMsg = '';
+        const saved = [];
+        for (const rows of Object.values(groups)) {
+            const r = await fetch(`${SUPABASE_URL}/rest/v1/pl_updates`, {
+                method: 'POST',
+                headers: { ...PL_EDIT_HEADERS, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+                body: JSON.stringify(rows)
+            });
+            if (r.ok) saved.push(...rows);
+            else failMsg = (await r.text()).slice(0, 80);
+        }
 
-        if (r.ok || r.status === 201 || r.status === 204) {
-            upserts.forEach(u => { _plUpdatesCache[u.pkg_no] = u; });
-            Object.keys(_plChanges).forEach(k => delete _plChanges[k]);
+        saved.forEach(u => {
+            _plUpdatesCache[u.pkg_no] = { ...(_plUpdatesCache[u.pkg_no] || {}), ...u };
+            delete _plChanges[u.pkg_no];
+        });
+        if (rejected.length) alert(`Not saved (${rejected.length}):\n` + rejected.slice(0, 10).join('\n') + (rejected.length > 10 ? `\n... and ${rejected.length - 10} more` : ''));
+
+        if (!failMsg) {
             renderShippingKpi();   // Save 완료 후에만 KPI 갱신
             renderShippingTable(getShippingFiltered());
             // issue_date 변경이 Stock Ledger에 즉시 반영되도록 재렌더링
@@ -6618,12 +6639,12 @@ async function savePlUpdates() {
             }
             // Status 변경이 Receiving 집계에 반영되도록 Dashboard 재계산
             updateDashboard();
-            statusEl.style.color = '#2e7d32';
-            statusEl.textContent = `${upserts.length} record(s) saved.`;
+            statusEl.style.color = rejected.length ? '#e65100' : '#2e7d32';
+            statusEl.textContent = `${saved.length} record(s) saved.` + (rejected.length ? ` ${rejected.length} not saved (date check).` : '');
         } else {
-            const msg = await r.text();
+            if (saved.length) renderShippingTable(getShippingFiltered());
             statusEl.style.color = '#e53935';
-            statusEl.textContent = `Save failed: ${msg.slice(0,80)}`;
+            statusEl.textContent = `Save failed: ${failMsg}`;
         }
     } catch(e) {
         statusEl.style.color = '#e53935';
