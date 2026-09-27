@@ -1397,14 +1397,13 @@ let _stockValveFiltersInited = false;
 function initStockValveFilters() {
     const itemEl = document.getElementById('stockValveItemFilter');
     if (itemEl && itemEl.options.length <= 1) {
-        const items = ['GATE VALVE', 'GLOBE VALVE', 'CHECK VALVE', 'BUTTERFLY VALVE', 'BALL VALVE'];
         itemEl.innerHTML = '<option value="All">All Items</option>'
-            + items.map(i => `<option value="${i}">${i}</option>`).join('');
+            + getValveItems().map(i => `<option value="${i}">${i}</option>`).join('');
     }
     const ratingEl = document.getElementById('stockValveRatingFilter');
     if (ratingEl && ratingEl.options.length <= 1) {
         ratingEl.innerHTML = '<option value="All">All Ratings</option>'
-            + ['CL150', 'CL300', 'CL600', 'CL1500'].map(r => `<option value="${r}">${r}</option>`).join('');
+            + getValveRatings().map(r => `<option value="${r}">${r}</option>`).join('');
     }
     if (!_stockValveFiltersInited) {
         _stockValveFiltersInited = true;
@@ -1432,8 +1431,9 @@ async function renderValveStockTable() {
 
     const filtered = bomRows.filter(b => {
         const descUpper = (b.full_description || '').toUpperCase();
-        if (itemF !== 'All' && !descUpper.includes(itemF)) return false;
-        if (ratingF !== 'All' && !descUpper.includes(ratingF)) return false;
+        // 부분일치(includes)는 CL150 선택 시 CL1500까지 섞임 — 화면에 표시하는 Item/Rating 값과 정확히 비교
+        if (itemF !== 'All' && window.extractItemFromDesc(b.full_description) !== itemF) return false;
+        if (ratingF !== 'All' && getRatingForMatCode(null, null, b.full_description) !== ratingF) return false;
         if (search && !(b.tag || '').toUpperCase().includes(search) && !descUpper.includes(search)) return false;
         return true;
     });
@@ -1839,14 +1839,13 @@ function _valveAggKey(b) {
 function initMssValveFilters() {
     const itemEl = document.getElementById('mssValveItemFilter');
     if (itemEl && itemEl.options.length <= 1) {
-        const items = ['GATE VALVE', 'GLOBE VALVE', 'CHECK VALVE', 'BUTTERFLY VALVE', 'BALL VALVE'];
         itemEl.innerHTML = '<option value="All">All Items</option>'
-            + items.map(i => `<option value="${i}">${i}</option>`).join('');
+            + getValveItems().map(i => `<option value="${i}">${i}</option>`).join('');
     }
     const ratingEl = document.getElementById('mssValveRatingFilter');
     if (ratingEl && ratingEl.options.length <= 1) {
         ratingEl.innerHTML = '<option value="All">All Ratings</option>'
-            + ['CL150', 'CL300', 'CL600', 'CL1500'].map(r => `<option value="${r}">${r}</option>`).join('');
+            + getValveRatings().map(r => `<option value="${r}">${r}</option>`).join('');
     }
     const mat1El = document.getElementById('mssValveMat1Filter');
     const mat2El = document.getElementById('mssValveMat2Filter');
@@ -3157,16 +3156,31 @@ let _bomActiveTab = 'piping'; // 'piping' | 'fitting' | 'others'
 let currentPlPage = 1;
 let currentSrecPage = 1;
 
+// Valve BOM(Tag 기준) Description 목록 — Item/Rating 필터 옵션을 고정 목록 대신 실제 데이터에서 뽑기 위한 소스
+function _valveBomDescs() {
+    return db.bom.filter(b => b.category === 'Valve' && !b.matCode)
+        .map(b => (db.bomTagMap[b.key] || {}).fullDescription || '')
+        .filter(Boolean);
+}
+function getValveItems() {
+    return [...new Set(_valveBomDescs().map(d => window.extractItemFromDesc(d)).filter(v => v && v !== '-'))].sort();
+}
+// CL 숫자 순 정렬(CL150 < CL300 < CL600 < CL900 < CL1500 < CL3000)
+function getValveRatings() {
+    return [...new Set(_valveBomDescs().map(d => getRatingForMatCode(null, null, d)).filter(v => /^CL\d+$/.test(v)))]
+        .sort((a, b) => parseInt(a.slice(2), 10) - parseInt(b.slice(2), 10));
+}
+
 // Category/Item/Size 필터 공통 헬퍼
 function getBomItemsForCat(cat) {
     if (cat === 'Speciality') return db.specialityItems.slice();
     const src = (cat === 'All' || cat === 'ALL') ? db.bom : db.bom.filter(b => b.category === cat);
     const set = new Set(src.map(b => window.extractItemFromMatCode(b.matCode)).filter(v => v && v !== '-'));
     if (cat === 'All' || cat === 'ALL' || cat === 'Valve') {
-        // Valve는 mat_code가 없어(Tag로만 매칭) MatCode 접두사 기반 자동 추출이 안 됨 — 고정 목록 사용
-        set.add('GATE VALVE'); set.add('GLOBE VALVE'); set.add('CHECK VALVE');
-        set.add('BUTTERFLY VALVE'); set.add('BALL VALVE');
-        set.add('BYPASS VALVE'); set.add('CONTROL VALVE'); set.add('SAFETY VALVE');
+        // Valve는 mat_code가 없어(Tag로만 매칭) MatCode 접두사로는 Item을 못 뽑음 — BOM Description에서 추출
+        getValveItems().forEach(i => set.add(i));
+        // BYPASS VALVE는 Description이 아니라 PKG NO(BYPS)로만 구분되는 Receiving 분류라 별도 유지
+        set.add('BYPASS VALVE');
     }
     return [...set].sort();
 }
@@ -3598,7 +3612,10 @@ function _applyBomTabFilters(q) {
     }
     if (rating !== 'All') {
         // Valve/Speciality는 mat_code가 없어 Rating이 mat_code 세그먼트가 아닌 Description(CL150, 300# 등)에만 존재
-        if (cat === 'Valve' || cat === 'Speciality') {
+        if (cat === 'Valve') {
+            // 부분일치(ilike)는 CL150 선택 시 CL1500, CL300 선택 시 CL3000까지 섞임 — 숫자 경계까지 정확히 일치
+            q = q.filter('full_description', 'imatch', `(^|[^0-9A-Z])${rating}([^0-9]|$)`);
+        } else if (cat === 'Speciality') {
             q = q.ilike('full_description', `%${rating}%`);
         } else {
             const codes = [...(getRatingMatCodesForCat(cat)[rating] || [])];
@@ -3720,7 +3737,7 @@ async function refreshBomItemFilter() {
     } else if (ratingEl) {
         // Valve는 mat_code가 없어 getRatingMatCodesForCat(mat_code 파싱 기반)이 무효 — 고정 목록 사용
         const ratings = cat === 'Valve'
-            ? ['CL150', 'CL300', 'CL600', 'CL1500']
+            ? getValveRatings()
             : Object.keys(getRatingMatCodesForCat(cat)).sort();
         ratingEl.innerHTML = '<option value="All">All Ratings</option>'
             + ratings.map(r => `<option value="${r.replace(/"/g, '&quot;')}">${r}</option>`).join('');
