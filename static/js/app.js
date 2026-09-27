@@ -6176,7 +6176,7 @@ async function initShipping() {
     }
 
     document.getElementById('shippingTbody').innerHTML =
-        '<tr><td colspan="12" style="text-align:center;color:#888;padding:30px;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        '<tr><td colspan="13" style="text-align:center;color:#888;padding:30px;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
     try {
         // pl_updates는 아직 로드 안 됐을 때만 조회
         if (Object.keys(_plUpdatesCache).length === 0) {
@@ -6306,7 +6306,7 @@ async function initShipping() {
         renderShippingTable(getShippingFiltered());
     } catch(e) {
         document.getElementById('shippingTbody').innerHTML =
-            '<tr><td colspan="12" style="text-align:center;color:#e53935;padding:30px;">Failed to load data.</td></tr>';
+            '<tr><td colspan="13" style="text-align:center;color:#e53935;padding:30px;">Failed to load data.</td></tr>';
     }
 }
 
@@ -6365,6 +6365,7 @@ function getShippingFiltered() {
     const statusF = document.getElementById('shippingStatusFilter')?.value || '';
     const customF = document.getElementById('shippingCustomFilter')?.value || '';
     const issuedF = document.getElementById('shippingIssuedFilter')?.value || '';
+    const osdF = document.getElementById('shippingOsdFilter')?.value || '';
     return (_shippingData || [])
         .filter(r => {
             if (group && r.packing !== group) return false;
@@ -6373,7 +6374,7 @@ function getShippingFiltered() {
             if (itemF && mergeRow(r).item !== itemF) return false;
             if (search && !r.pkg_no.toLowerCase().includes(search)
                        && !r.description.toLowerCase().includes(search)) return false;
-            const needMerge = statusF || customF || issuedF || (_shippingKpiFilter && _shippingKpiFilter !== 'all');
+            const needMerge = statusF || customF || issuedF || osdF || (_shippingKpiFilter && _shippingKpiFilter !== 'all');
             if (!needMerge) return true;
             const m = mergeRow(r);
             const st = m.status || '';
@@ -6383,6 +6384,9 @@ function getShippingFiltered() {
             // Issued 여부는 On-Site 상태인 항목에만 의미가 있음 -> Preparing/Shipping은 두 옵션 모두에서 제외
             if (issuedF === 'yes' && (st !== 'On-Site' || !m.issue_date)) return false;
             if (issuedF === 'no'  && (st !== 'On-Site' || m.issue_date))  return false;
+            if (osdF === '__issue__' && !['Over', 'Short', 'Damage'].includes(m.osd)) return false;
+            if (osdF === '__none__' && m.osd) return false;
+            if (osdF && !osdF.startsWith('__') && m.osd !== osdF) return false;
             if (_shippingKpiFilter && _shippingKpiFilter !== 'all') {
                 if (_shippingKpiFilter === 'shipping'  && st !== 'Preparing' && st !== 'Shipping') return false;
                 if (_shippingKpiFilter === 'onsite'    && st !== 'On-Site')   return false;
@@ -6408,6 +6412,7 @@ function mergeRow(r) {
         on_site:       chg.on_site       ?? upd.on_site       ?? r.on_site       ?? '',
         custom_clear:  chg.custom_clear  ?? upd.custom_clear  ?? r.custom_clear  ?? '',
         issue_date:    chg.issue_date    ?? upd.issue_date    ?? r.issue_date    ?? '',
+        osd:           chg.osd           ?? upd.osd           ?? '',
         remark:        chg.remark        !== undefined ? chg.remark
                      : upd.remark        !== undefined ? upd.remark
                     : (r.remark || ''),
@@ -6484,7 +6489,7 @@ function renderShippingTable(rows) {
         if (el._flatpickr) el._flatpickr.destroy();
     });
     if (!merged.length) {
-        tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:#888;padding:30px;">No data found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:#888;padding:30px;">No data found.</td></tr>';
         const spEl = document.getElementById('shippingPagination'); if (spEl) spEl.innerHTML = '';
         return;
     }
@@ -6540,6 +6545,9 @@ function renderShippingTable(rows) {
             <td style="text-align:center;padding:3px;">
                 <input type="text" class="pl-datepicker" style="${PL_INPUT_CSS}cursor:pointer;text-align:right;" data-pkg="${pkg}" data-field="issue_date" value="${r.issue_date}" placeholder="">
             </td>
+            <td style="text-align:center;padding:3px;"><select style="${PL_INPUT_CSS}${['Over', 'Short', 'Damage'].includes(r.osd) ? 'color:#c62828;font-weight:700;' : ''}" data-pkg="${pkg}" data-field="osd">${
+                ['', 'OK', 'Over', 'Short', 'Damage'].map(v => `<option value="${v}"${r.osd === v ? ' selected' : ''}>${v || '—'}</option>`).join('')
+            }</select></td>
             <td style="padding:3px;">
                 <textarea style="${PL_INPUT_CSS}resize:vertical;min-height:32px;max-height:80px;" data-pkg="${pkg}" data-field="remark" rows="1">${esc(r.remark || '')}</textarea>
             </td>
@@ -6593,6 +6601,7 @@ function exportShippingExcel() {
         'On-Site Date': r.on_site || '',
         'Custom Clear': r.custom_clear || '',
         'Issue Date':   r.issue_date || '',
+        'OS&D':         r.osd || '',
         'Remark':       r.remark || ''
     }));
     const ws = XLSX.utils.json_to_sheet(data);
@@ -6707,6 +6716,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const sf = document.getElementById('shippingStatusFilter');
         const cf = document.getElementById('shippingCustomFilter');
         const isf = document.getElementById('shippingIssuedFilter');
+        const osf = document.getElementById('shippingOsdFilter');
+        if (osf) osf.value = '';
         if (pf) pf.value = '';
         if (catf) catf.value = '';
         if (itf) itf.value = '';
