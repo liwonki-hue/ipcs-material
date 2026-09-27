@@ -19,6 +19,17 @@
 
 새 카테고리를 다룰 때마다 먼저 확인할 것: "이 자재가 설계-구매-Packing List 간 공유하는 고유 코드가 있는가?" 있으면 그 코드로 매칭(Valve처럼), 없으면 MatCode류 자체 코드 체계가 필요한지 판단.
 
+### 0-1. 공통 계산 기준 (2026-09-27 전체 점검 후 확정)
+
+- **입고 집계 기준은 하나(`isCountableReceiving`)**: 현장 도착 PKG(Shipping 상태가 Preparing/Shipping이 아님) + purpose ≠ Temporary. Overview·Material Summary·Stock·Shortage·Surplus·Material Finding이 모두 이 함수를 쓴다. 화면마다 기준을 따로 두지 말 것.
+- **Valve/Speciality 입고는 BOM Tag와 정확히 일치하는 것만** 집계(Overview도 동일, 예전 B0~B2 Tag 규칙은 폐기).
+- **Overall % = 카테고리별 진행률을 BOM 항목 수(행/Tag 수)로 가중 평균**, 카테고리별 %는 100에서 자름(한 카테고리의 초과입고가 다른 카테고리 부족을 메우지 않게). 사용자 결정.
+- **시공 우선순위 `SYSTEM_PRIORITY` = CCW → RW → SW → FG → HW → AS → FO, 나머지 동순위** — Material Finding FIFO 배분, Shortage의 Need System, Material-Ready ISO Export가 공유.
+- **불출(Issued)은 두 층**: Stock/Issued 수량은 기존대로 PKG Issue Date(패키지 통째) 기준. 별도로 ISO 1장 단위 불출 기록(MIV, `issuance` 테이블)을 Material Finding에서 입력·표시한다. 두 기준을 합치려면 사용자 결정이 필요.
+- **Shipping 저장 규칙**: Issue Date는 On-Site 상태 + On-Site Date 이후만 허용(날짜/상태가 바뀐 PKG에만 검사). 저장은 바뀐 칸만 보냄(동시 편집 덮어쓰기 방지).
+- **쓰기 권한**: bom/receiving/support 등 대부분 테이블이 anon 쓰기 허용 상태. 서버 경유·비밀번호로 막는 안은 사용자 결정으로 **보류**(2026-09-27). BOM Upload 화면 기능은 Valve/Speciality 행 유실 위험으로 **제거** — BOM 적재는 스크립트로만.
+- **자재 확보 ISO 판정**: `v_iso_stage_status` 뷰는 입고량을 ISO마다 중복 인정해 과대 표시됨. Overview의 "Material-Ready ISO" Export는 입고량을 시공 우선순위 순으로 배분해 판정한다.
+
 ---
 
 ## Valve 적용 사례 (진행 중)
@@ -398,3 +409,22 @@ Spool BOM 기능은 최초 `dc9b83a`(2026-06-01)에서 탭·KPI·대시보드까
 ## 관련 메모리 (Spool)
 - `project_spool_bom_reintroduction.md` — Spool BOM 삭제 이력, 재등록 경위, 현재 상태
 - `project_ipcs_control_joint_master.md` — ipcs-control 접속 정보, joint_master 스키마, Spool No 추출 로직
+
+---
+
+## 전체 코드 점검 개선 적용 (2026-09-27, 전 카테고리 공통)
+
+ipcs-control의 "공정 관리 관점 개선"과 같은 형식(1절 로직 높음 / 2절 로직 중간 / 3절 화면 / 4절 범위 확장)으로 점검 후 적용. 공통 규칙은 "0-1. 공통 계산 기준"에 정리했다.
+
+### 적용 완료
+- 1절: BOM Upload·Add New Material(동작 안 하던 폼) 제거, Valve Rating 정확 일치(CL150≠CL1500, CL300≠CL3000) + Item/Rating 목록을 데이터에서 추출, Shipping 날짜 검증·바뀐 칸만 저장.
+- 2절: 입고 집계 공용 함수, Overall 가중 평균(97.7% → 93.9%), Data Health "PKG without Status" 카드(현재 PGU-DE-0605-BOP-BFV-001 1건), Shortage 자동 갱신 5분, 검색어 쉼표·괄호 처리.
+- 3절: Spool 진행률 기준 통일, 사용자 입력값 HTML 이스케이프.
+- 4절: Material Finding MIV 기록(issuance에 tag/miv_no/category 컬럼 추가), Overview Material-Ready ISO Excel(2026-09-27 기준 4,162장 중 Ready 2,889), Shipping OS&D(pl_updates.osd 컬럼 추가), Shortage Need System + Expediting.
+
+### 보류 / 다음 할 일
+- **쓰기 권한 보호(서버 경유·비밀번호·RLS 정리)** — 사용자 결정으로 보류. 진행 시 anon의 INSERT/UPDATE/DELETE 정책 제거와 수정자(updated_by) 기록을 같이 할 것.
+- **expediting_log 시퀀스 권한**: anon에 `expediting_log_id_seq` USAGE 권한이 없어 코드에서 최대 id+1로 직접 채번 중. GRANT는 권한 변경이라 사용자 확인 필요.
+- **Issue Date < On-Site Date인 기존 PKG 81건**(예: PGU-DE-0524-BOP-PIP-004~) — 정답을 몰라 데이터는 그대로. 현장 확인 후 정정 필요.
+- **Heat No·MTR 추적** — 원본 데이터(Heat No 목록)가 없어 보류.
+- MIV와 PKG Issue Date 두 불출 기준을 하나로 합칠지 결정 필요(현재 Stock은 PKG 기준).
