@@ -25,7 +25,7 @@ let db = {
 
 // Material Shortage 탭 자동 갱신 타이머
 let shortageRefreshTimer = null;
-const SHORTAGE_REFRESH_INTERVAL_MS = 60 * 1000; // 60초
+const SHORTAGE_REFRESH_INTERVAL_MS = 5 * 60 * 1000; // 5분 — 매 갱신마다 receiving 전체(약 5천행)를 다시 받으므로 과도한 주기 방지
 let _stockFiltersInitialized = false;
 
 // bom_agg 원본 행 → db.bom 행 매핑 (syncShortageData/syncFromSupabase 공용)
@@ -1590,7 +1590,7 @@ function switchMaterialStatusTab(tab) {
     } else if (tab === 'shortage') {
         syncShortageData();
         if (!shortageRefreshTimer) {
-            shortageRefreshTimer = setInterval(syncShortageData, SHORTAGE_REFRESH_INTERVAL_MS);
+            shortageRefreshTimer = setInterval(() => { if (!document.hidden) syncShortageData(); }, SHORTAGE_REFRESH_INTERVAL_MS);
         }
     } else if (tab === 'surplus') {
         renderSurplusTable();
