@@ -1561,7 +1561,7 @@ function initMaterialStatusTabs() {
 // 페이지 제목도 진입 경로에 맞게 바꿔준다 — 물리적으로는 #material_status 섹션 하나를 공유.
 const MS_PAGE_INFO = {
     stock:      { title: 'Material Stock',    sub: 'BOM vs Received/Issued/Stock status.', showTabBar: true },
-    datahealth: { title: 'Material Stock',    sub: 'Data quality checks — Tag matching, bucket-tag regression, unregistered MatCode.', showTabBar: true },
+    datahealth: { title: 'Material Stock',    sub: 'Data quality checks — Tag matching, bucket-tag regression, unregistered MatCode, PKG without status.', showTabBar: true },
     shortage:   { title: 'Material Shortage', sub: 'Items where Received quantity falls short of BOM.', showTabBar: false },
     surplus:    { title: 'Material Surplus',  sub: 'Items where Received quantity exceeds BOM.', showTabBar: false },
 };
@@ -2512,6 +2512,20 @@ function computeBucketTagRegression() {
     return { rows };
 }
 
+// Data Health Card ⑤: Shipping 상태(pl_updates.status)가 아예 없는 PKG — isReceivingActive()는 이런 PKG를
+// 입고 완료로 간주하므로(2026-07-06 사용자 확인 규칙), 신규 PKG 등록 후 상태 입력을 빠뜨리면 도착 전인데도 입고로 잡힘
+function computeNoStatusPkgs() {
+    const m = {};
+    db.receiving.forEach(r => {
+        if (!r.plNo || r.plNo === '-' || (_plUpdatesCache[r.plNo] || {}).status) return;
+        if (!m[r.plNo]) m[r.plNo] = { docNo: r.docNo, plNo: r.plNo, cats: new Set(), rows: 0, qty: 0 };
+        m[r.plNo].cats.add(r.category); m[r.plNo].rows++; m[r.plNo].qty += r.qty;
+    });
+    const rows = Object.values(m).sort((a, b) => a.plNo.localeCompare(b.plNo))
+        .map(x => ({ docNo: x.docNo, plNo: x.plNo, category: [...x.cats].join(', '), rows: x.rows, qty: x.qty }));
+    return { rows };
+}
+
 // Data Health Card ②: support_bom에 System/ISO DWG NO.가 공란인 Tag = 도면 DB(ipcs-drawing)에
 // 매칭되지 않아 남아있는 항목 (project_support_bom_openpyxl_dataloss / Support 적용 사례 참고)
 async function computeSupportUnmatched() {
@@ -2555,7 +2569,7 @@ function exportHealthList(rows, columns, sheetName, filenamePrefix) {
     XLSX.writeFile(wb, `${filenamePrefix}_Export_${today}.xlsx`);
 }
 
-let _dhRows = { valve: [], support: [], bucket: [], newmat: [] };
+let _dhRows = { valve: [], support: [], bucket: [], newmat: [], nostatus: [] };
 let _dhInited = false;
 
 function _dhSetCard(key, count, subText) {
@@ -2681,7 +2695,7 @@ function _dhToggle(key, columns) {
     const panel = document.getElementById(`dhDetail-${key}`);
     const isOpen = panel.style.display !== 'none';
     // 다른 상세 패널은 닫고 클릭한 것만 토글 (아코디언)
-    ['valve', 'support', 'bucket', 'newmat'].forEach(k => {
+    ['valve', 'support', 'bucket', 'newmat', 'nostatus'].forEach(k => {
         document.getElementById(`dhDetail-${k}`).style.display = 'none';
     });
     if (!isOpen) {
@@ -2694,7 +2708,8 @@ const DH_COLUMNS = {
     valve:   [{header:'ISO Drawing',key:'iso'},{header:'Tag',key:'tag'},{header:'Category',key:'category'},{header:'Item',key:'item'},{header:'Action',key:'action'}],
     support: [{header:'Support Tag',key:'supportTag'},{header:'System',key:'system'},{header:'ISO Drawing',key:'iso'},{header:'Type',key:'type'},{header:'Item',key:'item'},{header:'Matl',key:'matl'},{header:'Size/Type',key:'sizeOrType'},{header:'Qty',key:'qty'}],
     bucket:  [{header:'Tag',key:'tag'},{header:'Category',key:'category'},{header:'PKG NO',key:'plNo'},{header:'Description',key:'desc'}],
-    newmat:  [{header:'MatCode',key:'matCode'},{header:'Category',key:'category'},{header:'Description',key:'desc'},{header:'Qty',key:'qty'}]
+    newmat:  [{header:'MatCode',key:'matCode'},{header:'Category',key:'category'},{header:'Description',key:'desc'},{header:'Qty',key:'qty'}],
+    nostatus:[{header:'PKG',key:'docNo'},{header:'PKG NO',key:'plNo'},{header:'Category',key:'category'},{header:'Rows',key:'rows'},{header:'Qty',key:'qty'}]
 };
 
 async function renderDataHealthCards() {
@@ -2707,6 +2722,7 @@ async function renderDataHealthCards() {
     _dhRows.bucket  = bucketResult.rows;
     _dhRows.newmat  = newmatResult.rows;
     _dhRows.support = supportResult.rows;
+    _dhRows.nostatus = computeNoStatusPkgs().rows;
 
     _dhSetCard('valve', _dhRows.valve.length,
         `${_dhRows.valve.length} of ${valveResult.totalBomTags} BOM Tags unmatched`);
@@ -2716,9 +2732,11 @@ async function renderDataHealthCards() {
         _dhRows.bucket.length > 0 ? `${_dhRows.bucket.length} bucket-tag rows found` : 'No regression detected');
     _dhSetCard('newmat', _dhRows.newmat.length,
         `${_dhRows.newmat.length} unregistered MatCode`);
+    _dhSetCard('nostatus', _dhRows.nostatus.length,
+        `${_dhRows.nostatus.length} PKG counted as received without status`);
 
     // 열려있는 상세 패널이 있으면 새 데이터로 다시 그림
-    ['valve', 'support', 'bucket', 'newmat'].forEach(key => {
+    ['valve', 'support', 'bucket', 'newmat', 'nostatus'].forEach(key => {
         const panel = document.getElementById(`dhDetail-${key}`);
         if (panel && panel.style.display !== 'none') _dhRenderTable(key, DH_COLUMNS[key]);
     });
@@ -2729,11 +2747,13 @@ async function renderDataHealthCards() {
         document.getElementById('dhCard-support').addEventListener('click', () => _dhToggle('support', DH_COLUMNS.support));
         document.getElementById('dhCard-bucket').addEventListener('click', () => _dhToggle('bucket', DH_COLUMNS.bucket));
         document.getElementById('dhCard-newmat').addEventListener('click', () => _dhToggle('newmat', DH_COLUMNS.newmat));
+        document.getElementById('dhCard-nostatus').addEventListener('click', () => _dhToggle('nostatus', DH_COLUMNS.nostatus));
 
         document.getElementById('dhExport-valve').addEventListener('click', () => exportHealthList(_dhRows.valve, DH_COLUMNS.valve.filter(c => c.key !== 'action'), 'Valve Tag Mismatch', 'DataHealth_ValveTag'));
         document.getElementById('dhExport-support').addEventListener('click', () => exportHealthList(_dhRows.support, DH_COLUMNS.support, 'Support Unmatched', 'DataHealth_Support'));
         document.getElementById('dhExport-bucket').addEventListener('click', () => exportHealthList(_dhRows.bucket, DH_COLUMNS.bucket, 'Bucket Tag Regression', 'DataHealth_BucketTag'));
         document.getElementById('dhExport-newmat').addEventListener('click', () => exportHealthList(_dhRows.newmat, DH_COLUMNS.newmat, 'Unregistered MatCode', 'DataHealth_NewMat'));
+        document.getElementById('dhExport-nostatus').addEventListener('click', () => exportHealthList(_dhRows.nostatus, DH_COLUMNS.nostatus, 'PKG without Status', 'DataHealth_NoStatus'));
     }
 }
 
