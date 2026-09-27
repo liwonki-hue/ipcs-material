@@ -25,10 +25,10 @@
 - **Valve/Speciality 입고는 BOM Tag와 정확히 일치하는 것만** 집계(Overview도 동일, 예전 B0~B2 Tag 규칙은 폐기).
 - **Overall % = 카테고리별 진행률을 BOM 항목 수(행/Tag 수)로 가중 평균**, 카테고리별 %는 100에서 자름(한 카테고리의 초과입고가 다른 카테고리 부족을 메우지 않게). 사용자 결정.
 - **시공 우선순위 `SYSTEM_PRIORITY` = CCW → RW → SW → FG → HW → AS → FO, 나머지 동순위** — Material Finding FIFO 배분, Shortage의 Need System, Material-Ready ISO Export가 공유.
-- **불출(Issued)은 두 층**: Stock/Issued 수량은 기존대로 PKG Issue Date(패키지 통째) 기준. 별도로 ISO 1장 단위 불출 기록(MIV, `issuance` 테이블)을 Material Finding에서 입력·표시한다. 두 기준을 합치려면 사용자 결정이 필요.
+- **불출(Issued) = 자재별 max(PKG Issue Date 기준, MIV 합계)**: PKG Issue Date(패키지 통째)와 ISO 1장 단위 MIV(`issuance`, Material Finding에서 입력) 중 큰 값. 같은 불출이 양쪽에 기록돼도 이중 차감되지 않도록 합산하지 않음(2026-09-27 사용자 결정 "MIV 반영"). Stock·Material Summary·Material Finding 공통.
 - **Shipping 저장 규칙**: Issue Date는 On-Site 상태 + On-Site Date 이후만 허용(날짜/상태가 바뀐 PKG에만 검사). 저장은 바뀐 칸만 보냄(동시 편집 덮어쓰기 방지).
 - **쓰기 권한**: bom/receiving/support 등 대부분 테이블이 anon 쓰기 허용 상태. 서버 경유·비밀번호로 막는 안은 사용자 결정으로 **보류**(2026-09-27). BOM Upload 화면 기능은 Valve/Speciality 행 유실 위험으로 **제거** — BOM 적재는 스크립트로만.
-- **자재 확보 ISO 판정**: `v_iso_stage_status` 뷰는 입고량을 ISO마다 중복 인정해 과대 표시됨. Overview의 "Material-Ready ISO" Export는 입고량을 시공 우선순위 순으로 배분해 판정한다.
+- **자재 확보 ISO 판정 = 입고량 배분 방식**: `v_iso_stage_status`(Overview 도넛)를 2026-09-27 재정의 — 같은 mat_code 입고량을 시공 우선순위(System) → ISO 순으로 앞에서부터 배분, 미도착 PKG·Temporary 제외, Valve/Speciality는 Tag 입고로 판정. "Material-Ready ISO" Excel도 같은 방식(뷰는 ISO+System 단위라 Excel과 1~2건 차이 가능). 원본 정의 백업 `scratch/BACKUP_v_iso_stage_status_20260927.sql`.
 
 ---
 
@@ -424,7 +424,10 @@ ipcs-control의 "공정 관리 관점 개선"과 같은 형식(1절 로직 높�
 
 ### 보류 / 다음 할 일
 - **쓰기 권한 보호(서버 경유·비밀번호·RLS 정리)** — 사용자 결정으로 보류. 진행 시 anon의 INSERT/UPDATE/DELETE 정책 제거와 수정자(updated_by) 기록을 같이 할 것.
-- **expediting_log 시퀀스 권한**: anon에 `expediting_log_id_seq` USAGE 권한이 없어 코드에서 최대 id+1로 직접 채번 중. GRANT는 권한 변경이라 사용자 확인 필요.
-- **Issue Date < On-Site Date인 기존 PKG 81건**(예: PGU-DE-0524-BOP-PIP-004~) — 정답을 몰라 데이터는 그대로. 현장 확인 후 정정 필요.
+- **expediting_log 시퀀스 권한** — 사용자 결정으로 보류(2026-09-27). anon에 `expediting_log_id_seq` USAGE 권한이 없어 코드에서 최대 id+1로 직접 채번 중.
 - **Heat No·MTR 추적** — 원본 데이터(Heat No 목록)가 없어 보류.
-- MIV와 PKG Issue Date 두 불출 기준을 하나로 합칠지 결정 필요(현재 Stock은 PKG 기준).
+
+### 후속 적용 (2026-09-27, 같은 날)
+- MIV를 Issued 수량에 반영(자재별 max 규칙, 0-1 참고).
+- Issue Date < On-Site Date 81건(전부 PGU-DE-0524, 03-27 → 03-31)을 On-Site Date로 정정. 백업 `scratch/BACKUP_issue_before_onsite_20260927.json`.
+- Overview 도넛 뷰 재정의: Erection Ready 2,735 → 2,891, Spool Ready 1,039 → 214, Spool In Prog 29 → 487, Critical 370 → 576. Erection Ready가 늘어난 건 기존 뷰가 Valve Tag를 한 번도 입고로 못 잡았기 때문.

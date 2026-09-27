@@ -12,3 +12,9 @@
 - expediting_log INSERT가 401 — anon에 id 시퀀스 USAGE 권한 없음. GRANT(권한 변경) 대신 max(id)+1 직접 채번(receiving.id와 같은 방식).
 - v_iso_stage_status는 rec_agg(프로젝트 전체 입고)를 ISO마다 LEAST(total_rec, qty)로 중복 인정 → 과대 표시. Material-Ready ISO Export는 SYSTEM_PRIORITY → ISO 이름 순 배분으로 별도 계산(약 11초, bom 4.7만행 순차 조회).
 - 브라우저 검증 중 넣은 테스트 데이터(issuance MIV 'TEST-CLAUDE-DELETE' 1행, expediting_log id=1, PGU-DE-0524-BOP-PIP-004 osd/updated_at)는 모두 원복 확인.
+
+## 후속 (2026-09-27, 사용자 지시 "1. Expediting 신규 입력 보류 2. MIV 반영 3. Issue Date를 On-Site Date로 수정 4. 도넛 차트 ISO 수정")
+- 1번 해석: GRANT(권한 변경) 보류, 현재 max(id)+1 직접 채번 유지 — 코드 변경 없음.
+- 2번: Issued = 자재별 max(PKG Issue Date 기준, MIV 합계). 합산하면 같은 불출이 두 번 빠지므로 max. `_mivTotals`를 초기 동기화·MIV 저장 후 로드. Finding 라인도 issued = max(PKG 배분분, 라인 MIV).
+- 3번: 81건 전부 PGU-DE-0524, issue 03-27 → on_site 03-31로 정정(백업 JSON).
+- 4번: v_iso_stage_status 재정의(윈도 함수 누적합으로 배분). REST 조회 약 2초. 첫 로드 때 bom_agg/bom_iso_list/bom_desc가 57014 타임아웃 후 재시도 성공한 적 1회 — 직전 페이지 쿼리와 겹친 것으로 보이며, 이후 두 번 재로드 시 경고 0.
