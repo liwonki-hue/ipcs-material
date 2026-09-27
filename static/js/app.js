@@ -406,7 +406,7 @@ function showLoading(show) {
     if (loader) loader.style.display = show ? 'flex' : 'none';
 }
 
-const TABLES_WITH_ID = new Set(['receiving', 'issued', 'bom']);
+const TABLES_WITH_ID = new Set(['receiving']); // fetchAllRows 페이지 분할 시 id로 정렬할 테이블(bom은 id 컬럼 없음)
 const CAT_BADGE = { Pipe:'info', Fitting:'ok', Valve:'warn', Speciality:'warn', Spool:'info', Support:'ok', Others:'ok' };
 const getCatBadge = cat => CAT_BADGE[cat] || 'ok';
 
