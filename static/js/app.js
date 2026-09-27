@@ -778,6 +778,89 @@ function updateDashboard() {
     }).catch(err => console.error("Dashboard Sync Fail:", err));
 }
 
+// ISO별 자재 확보 현황 Excel — v_iso_stage_status 뷰는 프로젝트 전체 입고량을 ISO마다 각자 다 쓸 수 있는
+// 것처럼 계산해 여러 ISO가 같은 자재를 나눠 써야 할 때 준비도가 과대 표시됨. 여기서는 Material Finding FIFO와
+// 같은 순서(시공 우선순위 System → ISO 이름)로 실제 입고량을 앞 ISO부터 배분해, 배분 후에도 전 라인이
+// 충족되는 ISO만 Ready로 판정한다. Valve/Speciality(mat_code 없음)는 Tag 입고 여부로 판정.
+async function exportMaterialReadyIso() {
+    const btn = document.getElementById('btnExportReadyIso');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Building...'; }
+    try {
+        // bom 4.7만 행 — 병렬 요청은 Supabase 500/누락이 확인돼(fetchIsoBoreMap 주석) 순차 청크 조회
+        let lines = [], from = 0;
+        const CHUNK = 5000;
+        while (true) {
+            const { data, error } = await fetchWithRetry(() => supabaseClient.from('bom')
+                .select('iso_dwg_no, system, mat_code, tag, category, qty').range(from, from + CHUNK - 1), `bom(ready iso) offset ${from}`);
+            if (error) throw error;
+            lines = lines.concat(data || []);
+            if (!data || data.length < CHUNK) break;
+            from += CHUNK;
+        }
+        lines = lines.filter(l => l.iso_dwg_no && (parseFloat(l.qty) || 0) > 0);
+
+        const supply = {};      // matCode → 남은 입고량
+        const recTags = new Set();
+        db.receiving.filter(isCountableReceiving).forEach(r => {
+            if (r.matCode) supply[r.matCode] = (supply[r.matCode] || 0) + r.qty;
+            else if (r.tag && r.tag !== '-') recTags.add(r.tag.trim().toUpperCase());
+        });
+
+        lines.sort((a, b) => systemRank(a.system) - systemRank(b.system)
+            || (a.iso_dwg_no < b.iso_dwg_no ? -1 : a.iso_dwg_no > b.iso_dwg_no ? 1 : 0));
+
+        const isoMap = {};
+        lines.forEach(l => {
+            const iso = l.iso_dwg_no;
+            if (!isoMap[iso]) isoMap[iso] = { system: l.system || '-', iso, total: 0, covered: 0, short: [] };
+            const e = isoMap[iso];
+            const qty = parseFloat(l.qty) || 0;
+            const mat = (l.mat_code || '').trim().toUpperCase();
+            let ok;
+            if (mat) {
+                const alloc = Math.min(supply[mat] || 0, qty);
+                supply[mat] = (supply[mat] || 0) - alloc;
+                ok = alloc >= qty - 0.001;
+            } else {
+                ok = recTags.has((l.tag || '').trim().toUpperCase());
+            }
+            e.total++;
+            if (ok) e.covered++;
+            else if (e.short.length < 10) e.short.push(mat || l.tag || '-');
+        });
+
+        const rows = Object.values(isoMap)
+            .sort((a, b) => systemRank(a.system) - systemRank(b.system) || a.system.localeCompare(b.system) || a.iso.localeCompare(b.iso))
+            .map(e => ({
+                'System': e.system,
+                'ISO Drawing': e.iso,
+                'Status': e.covered === e.total ? 'Ready' : e.covered === 0 ? 'Not Started' : 'Partial',
+                'BOM Lines': e.total,
+                'Covered Lines': e.covered,
+                'Coverage %': Math.round(e.covered / e.total * 1000) / 10,
+                'Short Items (first 10)': e.short.join(', '),
+            }));
+
+        const sysSum = {};
+        rows.forEach(r => {
+            const s = sysSum[r.System] || (sysSum[r.System] = { 'System': r.System, 'ISO': 0, 'Ready': 0, 'Partial': 0, 'Not Started': 0 });
+            s.ISO++; s[r.Status]++;
+        });
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(rows);
+        ws['!cols'] = [10, 34, 12, 10, 12, 11, 70].map(w => ({ wch: w }));
+        XLSX.utils.book_append_sheet(wb, ws, 'ISO Material Readiness');
+        const ws2 = XLSX.utils.json_to_sheet(Object.values(sysSum).sort((a, b) => systemRank(a.System) - systemRank(b.System) || a.System.localeCompare(b.System)));
+        XLSX.utils.book_append_sheet(wb, ws2, 'By System');
+        XLSX.writeFile(wb, `Material_Ready_ISO_${new Date().toISOString().split('T')[0]}.xlsx`);
+    } catch (e) {
+        alert('Export failed: ' + (e.message || e));
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-file-excel" style="color:#1d6f42;"></i> Material-Ready ISO'; }
+    }
+}
+document.addEventListener('click', e => { if (e.target.closest('#btnExportReadyIso')) exportMaterialReadyIso(); });
+
 // Pipe/Fitting을 대표 Item+Size 단위로 집계(Mat1/Mat2는 무시). Item 이름은 카테고리별로
 // 겹치지 않으므로(예: PIPE=Pipe 전용, ELBOW 90D=Fitting 전용) category 없이 item+size로만 묶어도 안전.
 function computeItemSizeSummary() {
