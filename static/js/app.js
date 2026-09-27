@@ -5582,12 +5582,13 @@ function attachEventListeners() {
         });
     }
 
-    document.getElementById('btnExportShortage')?.addEventListener('click', () => {
-        renderShortageTable();
+    // renderXxxTable은 async — await 없이 바로 내보내면 이전 렌더 시점의 목록(필터 변경 전)이 Export됨
+    document.getElementById('btnExportShortage')?.addEventListener('click', async () => {
+        await renderShortageTable();
         _exportDiffList(_shortageList, 'Shortage', 'Shortage');
     });
-    document.getElementById('btnExportSurplus')?.addEventListener('click', () => {
-        renderSurplusTable();
+    document.getElementById('btnExportSurplus')?.addEventListener('click', async () => {
+        await renderSurplusTable();
         _exportDiffList(_surplusList, 'Surplus', 'Surplus');
     });
 
