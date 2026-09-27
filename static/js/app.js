@@ -5285,6 +5285,96 @@ function paintSupportBulkTable() {
     tbody.innerHTML = rowsHtml.join('');
 }
 
+// --- MIV (Material Issue Voucher): ISO 1장 단위 불출 기록(issuance 테이블) ---
+// PKG Issue Date(패키지 통째 불출 판정)와 별개로, 어떤 ISO에 무엇을 몇 개 내줬는지 남기는 기록.
+// Stock/Issued 집계 기준은 기존 PKG Issue Date 그대로 두고, MIV는 Material Finding의 MIV Qty 컬럼에만 반영.
+let _mfIso = null; // { iso, lines: [{ key, mat, tag, category, desc, uom, bomQty }] } — 마지막으로 조회한 ISO 1장
+
+async function loadMivIssuedMap(iso) {
+    const { data, error } = await supabaseClient.from('issuance').select('mat_code, tag, qty').eq('iso_dwg_no', iso).limit(10000);
+    if (error) { console.error('issuance 조회 실패:', error); return {}; }
+    const m = {};
+    (data || []).forEach(r => {
+        const key = ((r.mat_code || r.tag || '') + '').trim().toUpperCase();
+        if (key) m[key] = (m[key] || 0) + (parseFloat(r.qty) || 0);
+    });
+    return m;
+}
+
+// ISO BOM 라인을 MatCode(없으면 Tag) 단위로 합쳐 MIV 입력 행으로 사용
+function _groupMivLines(bomRows) {
+    const m = {};
+    bomRows.forEach(b => {
+        const mat = (b.mat_code || '').trim().toUpperCase();
+        const tag = (b.tag || '').trim().toUpperCase();
+        const key = (mat && mat !== 'NONE') ? mat : tag;
+        if (!key) return;
+        if (!m[key]) m[key] = { key, mat: (mat && mat !== 'NONE') ? mat : null, tag: (mat && mat !== 'NONE') ? null : (b.tag || '').trim(),
+            category: b.category || window.getCategory(b.full_description, mat), desc: b.full_description || '-', uom: b.uom || 'EA', bomQty: 0 };
+        m[key].bomQty += parseFloat(b.qty) || 0;
+    });
+    return Object.values(m);
+}
+
+async function openMivModal() {
+    if (!_mfIso) { alert('Search a single ISO Drawing first.'); return; }
+    const issued = await loadMivIssuedMap(_mfIso.iso);
+    document.getElementById('mivIsoLabel').textContent = _mfIso.iso;
+    document.getElementById('mivStatus').textContent = '';
+    const tbody = document.querySelector('#mivTable tbody');
+    tbody.innerHTML = _mfIso.lines.map((l, i) => {
+        const done = issued[l.key] || 0;
+        const remain = Math.max(0, Math.round((l.bomQty - done) * 1000) / 1000);
+        return `<tr>
+            <td style="text-align:center;">${esc(l.category)}</td>
+            <td style="text-align:center;font-weight:600;">${esc(l.mat || l.tag)}</td>
+            <td style="text-align:left;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(l.desc)}">${esc(l.desc)}</td>
+            <td style="text-align:center;">${esc(l.uom)}</td>
+            <td style="text-align:center;">${l.bomQty.toFixed(2)}</td>
+            <td style="text-align:center;">${done.toFixed(2)}</td>
+            <td style="text-align:center;" class="miv-remain">${remain.toFixed(2)}</td>
+            <td style="text-align:center;"><input type="number" min="0" step="any" class="form-control miv-qty" data-idx="${i}" data-remain="${remain}" value="" style="width:90px;height:26px;font-size:12px;"></td>
+        </tr>`;
+    }).join('') || '<tr><td colspan="8" style="text-align:center;color:#888;">No lines.</td></tr>';
+    document.getElementById('mivModal').style.display = 'flex';
+}
+
+async function saveMiv() {
+    const statusEl = document.getElementById('mivStatus');
+    const mivNo = document.getElementById('mivNo').value.trim();
+    const issuedBy = document.getElementById('mivIssuedBy').value.trim();
+    if (!mivNo || !issuedBy) { statusEl.style.color = '#e53935'; statusEl.textContent = 'MIV No and Issued By are required.'; return; }
+    const location = document.getElementById('mivLocation').value.trim() || null;
+    const remarks = document.getElementById('mivRemarks').value.trim() || null;
+    const rows = [], over = [];
+    document.querySelectorAll('#mivTable .miv-qty').forEach(el => {
+        const q = parseFloat(el.value);
+        if (!(q > 0)) return;
+        const l = _mfIso.lines[+el.dataset.idx];
+        if (q > parseFloat(el.dataset.remain) + 0.001) over.push(l.mat || l.tag);
+        rows.push({ iso_dwg_no: _mfIso.iso, mat_code: l.mat, tag: l.tag, category: l.category, qty: q,
+            miv_no: mivNo, issued_by: issuedBy, location, remarks });
+    });
+    if (!rows.length) { statusEl.style.color = '#e53935'; statusEl.textContent = 'Enter at least one issue quantity.'; return; }
+    // BOM 잔량을 넘는 불출은 막음(과불출은 BOM 변경·오기재 가능성이 커서 먼저 확인이 필요)
+    if (over.length) { statusEl.style.color = '#e53935'; statusEl.textContent = `Exceeds remaining: ${over.slice(0, 5).join(', ')}${over.length > 5 ? ' ...' : ''}`; return; }
+    const btn = document.getElementById('btnSaveMiv');
+    btn.disabled = true;
+    const { error } = await supabaseClient.from('issuance').insert(rows);
+    btn.disabled = false;
+    if (error) { statusEl.style.color = '#e53935'; statusEl.textContent = 'Save failed: ' + error.message; return; }
+    document.getElementById('mivModal').style.display = 'none';
+    ['mivNo', 'mivRemarks'].forEach(id => { document.getElementById(id).value = ''; });
+    document.getElementById('btnFilterIssue')?.click(); // MIV Qty 컬럼 갱신
+}
+
+document.addEventListener('click', e => {
+    if (e.target.closest('#btnRecordMiv')) openMivModal();
+    else if (e.target.closest('#btnSaveMiv')) saveMiv();
+    else if (e.target.closest('#btnCloseMiv') || e.target.closest('#btnCancelMiv') || e.target.id === 'mivModal') document.getElementById('mivModal').style.display = 'none';
+    else if (e.target.closest('#btnFillMivRemaining')) document.querySelectorAll('#mivTable .miv-qty').forEach(el => { if (parseFloat(el.dataset.remain) > 0) el.value = el.dataset.remain; });
+});
+
 // --- 5. Material Issue (ISO/MR Table) ---
 let _isoBoreMapPromise = null; // Material Finding 탭 최초 진입 시에만 1회 지연 로딩(무거운 bom 전체 스캔)
 function loadIsoBoreMapOnce() {
@@ -5831,7 +5921,7 @@ function attachEventListeners() {
             if (printHeaderPiping) printHeaderPiping.innerHTML = `<h2>Piping Material List</h2>${printMeta}`;
 
             let tbody = document.querySelector('#issueTable tbody');
-            tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:16px;color:#888;">Loading...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:16px;color:#888;">Loading...</td></tr>';
 
             // When ISO is specified: load all materials (no limit)
             // Without ISO: limit to 200 items
@@ -5848,17 +5938,27 @@ function attachEventListeners() {
 
             const { data: bomRows, error } = await query;
             if (error) {
-                tbody.innerHTML = `<tr><td colspan="11" style="color:red;text-align:center;">Error: ${error.message}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="12" style="color:red;text-align:center;">Error: ${error.message}</td></tr>`;
                 return;
             }
 
             if (!bomRows || bomRows.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;">No BOM materials found for the selected ISO Drawing.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;">No BOM materials found for the selected ISO Drawing.</td></tr>';
                 return;
             }
 
             // PKG 단위 원자료(matCode → {pkgNo: qty}) — Received/Issued/Stock/Packing List 컬럼 공통 소스
             const pkgBreakdown = buildPkgBreakdown(isCountableReceiving);
+
+            // MIV(ISO 단위 불출 기록) — ISO 1장을 지정했을 때만 조회. 같은 key가 여러 라인이면 앞 라인부터 채워 표시
+            const singleIso = !!(iso && iso !== 'All');
+            const mivRemain = singleIso ? await loadMivIssuedMap(iso) : {};
+            const mivFor = (key, qty) => {
+                const take = Math.min(mivRemain[key] || 0, qty);
+                if (take > 0) mivRemain[key] -= take;
+                return take;
+            };
+            _mfIso = singleIso ? { iso, lines: _groupMivLines(bomRows) } : null;
 
             // Valve/Speciality는 MatCode가 없어(mat_code=NULL) 위 pkgBreakdown에 잡히지 않으므로
             // 이 ISO 안의 Tag 목록으로 Receiving을 직접 매칭해 별도로 PKG 맵을 구성 (Tag당 QTY=1 구조)
@@ -5963,6 +6063,7 @@ function attachEventListeners() {
                 if (boreFilter !== 'All' && window.getBoreFromLineNo(b.line_no) !== boreFilter) return;
 
                 const qty = parseFloat(b.qty) || 0;
+                const mivQty = mivFor(b.tag.toUpperCase(), qty);
                 const pkgMap = tagPkgMap[b.tag.toUpperCase()] || {};
                 let receivedQty = 0, issuedQty = 0;
                 Object.entries(pkgMap).forEach(([pkgNo, q]) => {
@@ -5985,6 +6086,7 @@ function attachEventListeners() {
                     <td style="text-align:center;">${qty.toFixed(2)}</td>
                     <td style="text-align:center;">${receivedQty.toFixed(2)}</td>
                     <td style="text-align:center;color:${issuedQty > 0 ? '#e65100' : '#999'};">${issuedQty.toFixed(2)}</td>
+                    <td style="text-align:center;color:${mivQty > 0 ? '#1565c0' : '#999'};">${singleIso ? mivQty.toFixed(2) : '-'}</td>
                     <td style="text-align:center;"><strong style="color:${isFullyCovered ? '#2e7d32' : (stockQty > 0 ? '#e65100' : '#c62828')};">${stockQty.toFixed(2)}</strong></td>
                     <td style="text-align:left;font-size:11px;line-height:1.6;">${renderPkgListCell(pkgMap)}</td>
                 </tr>`;
@@ -6002,6 +6104,7 @@ function attachEventListeners() {
 
                 let category = window.getCategory(b.full_description, mat);
                 let qty = parseFloat(b.qty) || 0;
+                const mivQty = mivFor(mat, qty);
 
                 // FIFO 슬라이스 계산 — 필터 적용 여부와 무관하게 항상 선점 순서를 진행시켜야 함
                 // (All 모드에서는 한 번의 조회에 여러 ISO가 섞이므로, 같은 ISO 내 누적만 반영하도록 mat+iso로 키 분리)
@@ -6061,15 +6164,16 @@ function attachEventListeners() {
                     <td style="text-align:center;">${qty.toFixed(2)}</td>
                     <td style="text-align:center;" title="Total received across project: ${totalRecAllProject.toFixed(2)}">${receivedQty.toFixed(2)}</td>
                     <td style="text-align:center;color:${issuedQty > 0 ? '#e65100' : '#999'};">${issuedQty.toFixed(2)}</td>
+                    <td style="text-align:center;color:${mivQty > 0 ? '#1565c0' : '#999'};">${singleIso ? mivQty.toFixed(2) : '-'}</td>
                     <td style="text-align:center;"><strong style="color:${isFullyCovered ? '#2e7d32' : (stockQty > 0 ? '#e65100' : '#c62828')};">${stockQty.toFixed(2)}</strong></td>
                     <td style="text-align:left;font-size:11px;line-height:1.6;">${renderPkgListCell(fifoPkgMap)}</td>
                 </tr>`;
             });
 
-            tbody.innerHTML = htmlString || `<tr><td colspan="11" style="text-align:center;color:#888;">No BOM materials found for the selected ISO Drawing.</td></tr>`;
+            tbody.innerHTML = htmlString || `<tr><td colspan="12" style="text-align:center;color:#888;">No BOM materials found for the selected ISO Drawing.</td></tr>`;
 
             if (!iso || iso === 'All') {
-                tbody.innerHTML += `<tr><td colspan="11" style="text-align:center;color:var(--color-warning);font-size:11px;padding:8px;">
+                tbody.innerHTML += `<tr><td colspan="12" style="text-align:center;color:var(--color-warning);font-size:11px;padding:8px;">
                     <i class="fas fa-info-circle"></i> Specify an ISO Drawing to view all materials for that drawing.</td></tr>`;
             }
         });
