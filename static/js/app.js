@@ -111,8 +111,8 @@ const ITEM_PREFIX_MAP = {
     'UNION':['UNI'], 'PLUG':['PLG'], 'BUSHING':['BUS'],
 };
 
-// Valve/Speciality 부속품/스페어파트 판별 정규식 — updateCategoryCharts()의 Speciality 집계와
-// Spare 탭 분류에서 공유 (2026-07-06 모듈 top-level로 승격)
+// Valve/Speciality 부속품/스페어파트 판별 정규식 — Spare 탭 분류에서 사용
+// (Overview 집계는 2026-09-27부터 BOM Tag 매칭 기준으로 통일되어 더 이상 쓰지 않음)
 const ACCESSORY_RE = /STUD BOLT|SUTD BOLT|NUT |GASKET|FLANGE|BODY |PACKING SET|PACKING GUIDE|STEM PACKING|SPARE PARTS|SPECIAL TOOLS|BLIND FLANGE|BONNET GASKET|TRIM PARTS|SCREW|WASHER|SLEEVE|SPACER|O-RING|PLUG M|SPRING |SEAT COVER|COVER HOLDER|SLOTTED NUT|LOCK WASHER|STUD :|PIPE |B16\.5|GASKET KIT|PRESSURE SEAL|STEM GUIDE|BALANCE SEAL|PISTON RING|WAVE SPRING|DUMMY BONNET|DUMMY CAGE|DUMMY SEAT|FLUSHING|HYDRO TEST|EYE BOLT|BLOW OUT|BLOW THROUGH|TEST PRESSURE|HINGE PIN|SEAL RING| RING FOR|PIN RING/;
 
 // Valve/Speciality Receiving 중 "SPARE" 합성 태그가 붙은 예비 밸브/기기 본체 판별
@@ -780,7 +780,7 @@ function computeItemSizeSummary() {
 
     const recByMatCode = {};
     db.receiving.forEach(r => {
-        if (!isReceivingActive(r.plNo)) return;
+        if (!isCountableReceiving(r)) return;
         if (!['Pipe', 'Fitting'].includes(r.category)) return;
         recByMatCode[r.matCode] = (recByMatCode[r.matCode] || 0) + (r.qty || 0);
     });
@@ -876,16 +876,18 @@ async function renderPendingItemsList() {
 function updateCategoryCharts() {
     if (!supabaseClient) return;
 
-    // Fetch category summary + Valve/Speciality tag-based receiving + Spool BOM/Received tag 목록 + Support
+    // Fetch category summary + Spool BOM/Received tag 목록 + Support + Overall 가중치용 BOM 항목 수
     // (일시적 DB statement timeout에 대비해 각 쿼리를 fetchWithRetry로 감쌈)
+    const bomCount = cat => fetchWithRetry(() => supabaseClient.from('bom').select('category', { count: 'exact', head: true }).eq('category', cat), `bom(${cat} count)`);
     Promise.all([
         fetchWithRetry(() => supabaseClient.from('v_category_readiness').select('*'), 'v_category_readiness'),
-        fetchWithRetry(() => supabaseClient.from('receiving').select('category, qty, tag, full_description, pkg_no').not('tag', 'is', null).in('category', ['Valve', 'Speciality']).limit(10000), 'receiving(Valve/Speciality tag)'),
         fetchWithRetry(() => supabaseClient.from('spool_bom').select('tag_no').limit(2000), 'spool_bom(tag_no)'),
         fetchWithRetry(() => supabaseClient.from('spool_receiving').select('tag_no').limit(2000), 'spool_receiving(tag_no)'),
         fetchWithRetry(() => supabaseClient.from('v_support_kpi').select('total_bom, total_received').single(), 'v_support_kpi'),
-        fetchWithRetry(() => supabaseClient.from('bom').select('tag', { count: 'exact', head: true }).eq('category', 'Speciality'), 'bom(Speciality tag count)'),
-    ]).then(([catRes, tagRecRes, spoolBomRes, spoolRecRes, suppKpiRes, splTagCountRes]) => {
+        bomCount('Pipe'), bomCount('Fitting'), bomCount('Valve'), bomCount('Speciality'), bomCount('Others'),
+        fetchWithRetry(() => supabaseClient.from('support_bom').select('support_tag', { count: 'exact', head: true })
+            .not('support_tag', 'is', null).neq('support_tag', 'BULK').neq('support_tag', '-'), 'support_bom(tag count)'),
+    ]).then(([catRes, spoolBomRes, spoolRecRes, suppKpiRes, cntPipe, cntFit, cntValve, cntSpc, cntOth, cntSup]) => {
         const data = catRes.data;
         if (catRes.error || !data) {
             console.error("❌ Chart Sync Error:", catRes.error);
@@ -905,47 +907,27 @@ function updateCategoryCharts() {
             return match ? parseFloat(match.total_bom) : 0;
         });
 
-        // Pipe/Fitting/Support/Others: db.receiving 기반 (matCode 집계)
+        // 입고 집계는 다른 화면과 같은 공용 기준(isCountableReceiving) 사용
         const activeRecByCategory = {};
-        db.receiving.filter(r => isReceivingActive(r.plNo)).forEach(r => {
-            if (r.category === 'Valve' || r.category === 'Speciality') return; // 별도 처리
-            const cat = r.category !== '-' ? r.category : null;
-            if (cat) activeRecByCategory[cat] = (activeRecByCategory[cat] || 0) + r.qty;
-        });
-
-        // Valve/Speciality: DB 직접 쿼리 (Tag Item만)
-        // Speciality: B0/B1/B2- 형식 tag만 + 부속 아이템(플랜지/볼트/가스켓 등) 제외
-
         // Speciality는 QTY 합계 대신 "받은 Tag 개수" 기준 — Orifice 등 일부 품목은 조립품 1개가
         // Packing List에는 여러 Item으로 쪼개져 기재되어 QTY 합계만으로는 입고율이 왜곡됨(사용자 확인, 2026-07-06)
         const specialityRecTagSet = new Set();
-
-        if (tagRecRes.data) {
-            tagRecRes.data.forEach(r => {
-                const cat = r.category;
-                const qty = parseFloat(r.qty || 0);
-                const tag = (r.tag || '').trim();
-                const desc = (r.full_description || '').toUpperCase();
-
-                if (cat === 'Speciality') {
-                    // Speciality는 BOM Tag와 정확히 일치하는 항목만 집계 — PKG 통짜 Tag(부속품/스페어파트)는
-                    // BOM에 없는 Tag라 자동 제외됨(Valve처럼 Accessory 키워드 추정 대신 실제 Tag 매칭 사용)
-                    if (!db.bomTagMap[tag.toUpperCase()]) return;
-                    if (!isReceivingActive(r.pkg_no)) return;
-                    specialityRecTagSet.add(tag);
-                } else {
-                    if (!/^B[0-2]-/i.test(tag)) return;
-                    if (ACCESSORY_RE.test(desc)) return;
-                    if (!isReceivingActive(r.pkg_no)) return;
-                }
-
-                activeRecByCategory[cat] = (activeRecByCategory[cat] || 0) + qty;
-            });
-        }
+        db.receiving.filter(isCountableReceiving).forEach(r => {
+            const cat = r.category !== '-' ? r.category : null;
+            if (!cat) return;
+            if (cat === 'Valve' || cat === 'Speciality') {
+                // Valve/Speciality는 BOM Tag와 정확히 일치하는 항목만 집계(Material Summary·Shortage와 동일) —
+                // PKG 통짜 Tag(부속품/스페어파트)는 BOM에 없는 Tag라 자동 제외됨
+                const tag = (r.tag || '').trim().toUpperCase();
+                if (!db.bomTagMap[tag]) return;
+                if (cat === 'Speciality') { specialityRecTagSet.add(tag); return; }
+            }
+            activeRecByCategory[cat] = (activeRecByCategory[cat] || 0) + r.qty;
+        });
 
         const recDataArr = catLabels.map(l => activeRecByCategory[l] || 0);
         // Speciality는 Qty 합계 대신 Tag 개수 기준으로 교체 (BOM=전체 Tag 수, Received=매칭된 Tag 수)
-        bomDataArr[3] = splTagCountRes.count || 0;
+        bomDataArr[3] = cntSpc.count || 0;
         recDataArr[3] = specialityRecTagSet.size;
 
         // Category KPI cards — % progress per category (반환값은 Overall 평균 계산에 재사용)
@@ -973,9 +955,15 @@ function updateCategoryCharts() {
         // Spool: Tag 매칭 개수를 "받은 수량"으로 취급 (Valve/Speciality와 동일한 방식)
         const pctSpool = setCatKpi('kpi-spool-pct', 'kpi-spool-sub', spoolBomTagSet.size, spoolMatched, 'EA');
 
-        // Overall — 7개 카테고리(Pipe/Fitting/Valve/Speciality/Others/Support/Spool) 진행률 단순 평균
-        // (단위가 서로 달라 수량 합산 대신 %를 평균 — 카드별 표시값과 일관성 유지)
-        const overallPct = (pctPipe + pctFit + pctValve + pctSpc + pctOth + pctSup + pctSpool) / 7;
+        // Overall — 7개 카테고리 진행률을 BOM 항목 수(행/Tag 수)로 가중 평균(2026-09-27 사용자 결정).
+        // 단위(M/EA)가 달라 수량은 못 더하므로 항목 수를 가중치로 쓰고, 한 카테고리의 초과입고가
+        // 다른 카테고리 부족분을 메우지 않도록 카테고리별 %는 100에서 자름
+        const weights = [
+            [pctPipe, cntPipe.count], [pctFit, cntFit.count], [pctValve, cntValve.count], [pctSpc, cntSpc.count],
+            [pctOth, cntOth.count], [pctSup, cntSup.count], [pctSpool, spoolBomTagSet.size],
+        ].map(([p, w]) => [Math.min(p, 100), w || 0]);
+        const wSum = weights.reduce((a, [, w]) => a + w, 0);
+        const overallPct = wSum > 0 ? weights.reduce((a, [p, w]) => a + p * w, 0) / wSum : 0;
         const overallColor = overallPct >= 90 ? '#66bb6a' : '#42a5f5';
         const elOverall = document.getElementById('kpi-overall-pct');
         if (elOverall) { elOverall.textContent = overallPct.toFixed(1) + '%'; elOverall.style.color = overallColor; }
@@ -1195,7 +1183,7 @@ function _buildStockRows(forcedCats) {
 
     // Aggregate Receiving per MatCode (TAG 우선 원칙)
     const { recMap, docMap, pkgMap } = buildRecvMaps(r =>
-        isReceivingActive(r.plNo) && isKpiReceiving(r) &&
+        isCountableReceiving(r) && isKpiReceiving(r) &&
         (fDoc === 'All' || r.docNo === fDoc) &&
         (fPkg === 'All' || r.plNo  === fPkg) &&
         (!Array.isArray(forcedCats) || forcedCats.includes(r.category))
@@ -1391,7 +1379,7 @@ function buildTagRecvMaps(category, bomRows) {
     const recMap = {}, issMap = {};
     db.receiving.forEach(r => {
         if (r.category !== category || !r.tag || r.tag === '-') return;
-        if (!isReceivingActive(r.plNo)) return;
+        if (!isCountableReceiving(r)) return;
         if (!bomTagSet.has(r.tag)) return;
         recMap[r.tag] = (recMap[r.tag] || 0) + (r.qty || 0);
         if (isPkgIssued(r.plNo)) issMap[r.tag] = (issMap[r.tag] || 0) + (r.qty || 0);
@@ -1712,7 +1700,7 @@ async function getMssFilteredRows() {
     const statusF = document.getElementById('mssStatusFilter')?.value || 'All';
 
     const { recMap } = buildRecvMaps(r =>
-        isReceivingActive(r.plNo) && isKpiReceiving(r) &&
+        isCountableReceiving(r) && isKpiReceiving(r) &&
         ['Pipe', 'Fitting', 'Others'].includes(r.category)
     );
     const issMap = getIssuedQtyMap(r => ['Pipe', 'Fitting', 'Others'].includes(r.category));
@@ -2403,7 +2391,7 @@ function _buildBomMap() {
 function _buildRecMap() {
     const m = {};
     db.receiving
-        .filter(r => (r.purpose === 'Permanent' || r.purpose === '') && isReceivingActive(r.plNo))
+        .filter(isCountableReceiving)
         .forEach(r => {
             if (!r.key) return;
             if (!m[r.key]) m[r.key] = { qty: 0, desc: r.desc, unit: r.unit, category: r.category, mat1: r.mat1, mat2: r.mat2, size: r.size, rating: r.rating };
@@ -5686,7 +5674,7 @@ function attachEventListeners() {
             }
 
             // PKG 단위 원자료(matCode → {pkgNo: qty}) — Received/Issued/Stock/Packing List 컬럼 공통 소스
-            const pkgBreakdown = buildPkgBreakdown(r => isReceivingActive(r.plNo));
+            const pkgBreakdown = buildPkgBreakdown(isCountableReceiving);
 
             // Valve/Speciality는 MatCode가 없어(mat_code=NULL) 위 pkgBreakdown에 잡히지 않으므로
             // 이 ISO 안의 Tag 목록으로 Receiving을 직접 매칭해 별도로 PKG 맵을 구성 (Tag당 QTY=1 구조)
@@ -5698,7 +5686,7 @@ function attachEventListeners() {
             if (isoTagSet.size > 0) {
                 db.receiving.forEach(r => {
                     if ((r.category !== 'Valve' && r.category !== 'Speciality') || !r.tag || r.tag === '-') return;
-                    if (!isReceivingActive(r.plNo)) return;
+                    if (!isCountableReceiving(r)) return;
                     const key = r.tag.toUpperCase();
                     if (!isoTagSet.has(key)) return;
                     if (!tagPkgMap[key]) tagPkgMap[key] = {};
@@ -6058,6 +6046,12 @@ window.setShippingKpiFilter = function(type) {
 function isReceivingActive(plNo) {
     const status = (_plUpdatesCache[plNo] || {}).status || '';
     return status !== 'Preparing' && status !== 'Shipping';
+}
+
+// 입고 수량 집계 공용 기준(Overview/Material Summary/Stock/Shortage/Surplus/Material Finding) —
+// 현장 도착 PKG + 임시자재(Temporary) 제외. 화면마다 기준이 달라 같은 자재의 입고량이 다르게 보이던 것을 통일.
+function isCountableReceiving(r) {
+    return isReceivingActive(r.plNo) && r.purpose !== 'Temporary';
 }
 
 // PKG의 Issue Date가 설정되어 있으면 "불출 완료"로 판정
