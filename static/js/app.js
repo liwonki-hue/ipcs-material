@@ -2379,6 +2379,14 @@ function initMssFilters() {
     }
 }
 
+// 시공 우선순위: CCW → RW → SW → FG → HW → AS → FO 순, 그 외 System은 전부 그 다음(동순위)
+// Material Finding FIFO 배분 · Shortage의 Need System · Material-Ready ISO 목록이 공유
+const SYSTEM_PRIORITY = ['CCW', 'RW', 'SW', 'FG', 'HW', 'AS', 'FO'];
+function systemRank(sys) {
+    const idx = SYSTEM_PRIORITY.indexOf((sys || '').trim().toUpperCase());
+    return idx === -1 ? SYSTEM_PRIORITY.length : idx;
+}
+
 // --- Material Shortage / Surplus 공용 ---
 const CAT_ORDER = { 'Pipe': 0, 'Fitting': 1, 'Valve': 2, 'Spool': 3, 'Support': 4, 'Others': 5, 'Speciality': 6 };
 
@@ -2830,7 +2838,7 @@ function _enrichRow(key, bomMap, recMap, masterMap, mat12Map, segToMat1) {
     return { matCode, cat: finalCat, desc, item, itemDisplay, mat1, mat2, size, rating, unit, bomQty, recQty };
 }
 
-const _TABLE_ROW_TPL = ({ matCode, cat, itemDisplay, mat1, mat2, size, rating, unit, bomQty, recQty, diffQty, diffColor }) => `<tr>
+const _TABLE_ROW_TPL = ({ matCode, cat, itemDisplay, mat1, mat2, size, rating, unit, bomQty, recQty, diffQty, diffColor, extraCells = '' }) => `<tr>
     <td style="text-align:center;"><strong>${cat}</strong></td>
     <td style="text-align:center;font-weight:600;color:var(--color-primary);white-space:nowrap;">${matCode}</td>
     <td style="text-align:center;">${itemDisplay}</td>
@@ -2842,7 +2850,67 @@ const _TABLE_ROW_TPL = ({ matCode, cat, itemDisplay, mat1, mat2, size, rating, u
     <td style="text-align:center;">${Math.round(bomQty).toLocaleString()}</td>
     <td style="text-align:center;">${Math.round(recQty).toLocaleString()}</td>
     <td style="text-align:center;font-weight:700;color:${diffColor};">${Math.round(diffQty).toLocaleString()}</td>
+    ${extraCells}
 </tr>`;
+
+// --- Expediting (expediting_log: Shortage 항목별 독촉 우선순위·목표일·상태) ---
+// key = MatCode(Pipe/Fitting/Others) 또는 Tag(Valve/Speciality) — mat_code 컬럼에 그대로 저장
+const EXPEDITE_STATUSES = ['PENDING', 'ORDERED', 'IN TRANSIT', 'RESOLVED'];
+let _expediteMap = null; // key → 최신 expediting_log 행
+async function loadExpediting() {
+    if (_expediteMap) return _expediteMap;
+    const { data, error } = await supabaseClient.from('expediting_log').select('*').order('last_update', { ascending: true }).limit(10000);
+    if (error) { console.error('expediting_log 조회 실패:', error); return {}; }
+    const m = {};
+    (data || []).forEach(r => { if (r.mat_code) m[r.mat_code] = r; }); // 같은 key가 여러 행이면 최신 행이 남음
+    _expediteMap = m;
+    return m;
+}
+async function saveExpediting(key, field, value) {
+    const m = await loadExpediting();
+    const patch = { [field]: value === '' ? null : value, last_update: new Date().toISOString() };
+    const cur = m[key];
+    const res = cur
+        ? await supabaseClient.from('expediting_log').update(patch).eq('id', cur.id).select().single()
+        : await supabaseClient.from('expediting_log').insert({ mat_code: key, ...patch }).select().single();
+    if (res.error) { alert('Expediting save failed: ' + res.error.message); return false; }
+    m[key] = res.data;
+    return true;
+}
+
+// key(MatCode/Tag)를 필요로 하는 BOM System 중 시공 우선순위가 가장 높은 것
+function _buildNeedSystemMap() {
+    const m = {};
+    db.bom.forEach(b => {
+        if (!b.key || !b.system) return;
+        const cur = m[b.key];
+        if (!cur || systemRank(b.system) < systemRank(cur) || (systemRank(b.system) === systemRank(cur) && b.system < cur)) m[b.key] = b.system;
+    });
+    return m;
+}
+
+function _expediteCellsHtml(r) {
+    const e = r.expedite || {};
+    const key = esc(r.matCode);
+    const sel = (field, opts, val) => `<select class="form-control exp-field" data-key="${key}" data-field="${field}" style="font-size:11px;padding:2px 4px;height:26px;">${
+        opts.map(o => `<option value="${o}"${String(val ?? '') === String(o) ? ' selected' : ''}>${o === '' ? '—' : o}</option>`).join('')}</select>`;
+    return `<td style="text-align:center;white-space:nowrap;">${esc(r.needSys || '-')}</td>
+    <td style="text-align:center;padding:2px;">${sel('priority', ['', 1, 2, 3, 4, 5], r.expedite ? e.priority : '')}</td>
+    <td style="text-align:center;padding:2px;"><input type="date" class="form-control exp-field" data-key="${key}" data-field="target_date" value="${e.target_date || ''}" style="font-size:11px;padding:2px 4px;height:26px;"></td>
+    <td style="text-align:center;padding:2px;">${sel('status', ['', ...EXPEDITE_STATUSES], r.expedite ? e.status : '')}</td>`;
+}
+
+// Shortage 표의 Expediting 입력칸 변경 → 즉시 저장
+document.addEventListener('change', async (e) => {
+    const el = e.target.closest('#shortageTable .exp-field');
+    if (!el) return;
+    el.disabled = true;
+    const ok = await saveExpediting(el.dataset.key, el.dataset.field, el.value);
+    el.disabled = false;
+    el.style.background = ok ? '#e8f5e9' : '#ffebee';
+    const row = _shortageList.find(r => r.matCode === el.dataset.key);
+    if (row && ok) row.expedite = _expediteMap[el.dataset.key];
+});
 
 // --- Material Shortage ---
 let _shortagePage = 1;
@@ -2859,6 +2927,8 @@ async function renderShortageTable() {
     const mat12Map = {};
     (await loadMssItemAgg()).forEach(r => { mat12Map[r.matCode] = { mat1: r.mat1, mat2: r.mat2 }; });
     const segToMat1 = _buildSegToMat1(mat12Map);
+    const needSysMap = _buildNeedSystemMap();
+    const expMap = await loadExpediting();
 
     const catFilter    = (document.getElementById('shortCatFilter')    || {}).value || 'ALL';
     const itemFilter   = (document.getElementById('shortItemFilter')   || {}).value || 'ALL';
@@ -2881,7 +2951,7 @@ async function renderShortageTable() {
         if (sizeFilter   !== 'ALL' && row.size   !== sizeFilter)   return;
         if (ratingFilter !== 'ALL' && row.rating !== ratingFilter) return;
         if (searchQ && ![row.matCode, row.item, row.mat1, row.mat2, row.size].some(v => (v||'').toUpperCase().includes(searchQ))) return;
-        list.push({ ...row, diffQty });
+        list.push({ ...row, diffQty, needSys: needSysMap[matCode] || '', expedite: expMap[matCode] || null });
     });
     _sortByCatItemSize(list);
 
@@ -2891,13 +2961,13 @@ async function renderShortageTable() {
     if (countEl) countEl.textContent = list.length > 0 ? `${list.length} items` : '';
 
     if (list.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#666;padding:20px;">No shortage items found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="15" style="text-align:center;color:#666;padding:20px;">No shortage items found.</td></tr>';
         const sp = document.getElementById('shortagePagination'); if (sp) sp.innerHTML = '';
         return;
     }
     const start = (_shortagePage - 1) * PAGE_SIZE;
     tbody.innerHTML = list.slice(start, start + PAGE_SIZE)
-        .map(r => _TABLE_ROW_TPL({ ...r, diffColor: '#d32f2f' })).join('');
+        .map(r => _TABLE_ROW_TPL({ ...r, diffColor: '#d32f2f', extraCells: _expediteCellsHtml(r) })).join('');
     renderPagination('shortagePagination', _shortagePage, Math.max(1, Math.ceil(list.length / PAGE_SIZE)), 'goShortagePage');
 }
 
@@ -2986,6 +3056,12 @@ function _exportDiffList(list, sheetName, filenamePrefix) {
         'BOM QTY':       Math.round(r.bomQty),
         'Receiving QTY': Math.round(r.recQty),
         [`${filenamePrefix} QTY`]: Math.round(r.diffQty),
+        ...(r.needSys !== undefined ? {
+            'Need System':     r.needSys || '-',
+            'Priority':        r.expedite?.priority ?? '',
+            'Target Date':     r.expedite?.target_date || '',
+            'Expedite Status': r.expedite?.status || '',
+        } : {}),
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     ws['!cols'] = [12, 22, 18, 10, 14, 10, 10, 8, 12, 14, 14].map(w => ({ wch: w }));
@@ -5754,12 +5830,7 @@ function attachEventListeners() {
                     demandByMat[m][key].qty += (parseFloat(d.qty) || 0);
                 });
             }
-            // 시공 우선순위: CCW → RW → SW → FG → HW → AS → FO 순으로 먼저 배분, 그 외 System은 전부 그 다음(동순위)
-            const SYSTEM_PRIORITY = ['CCW', 'RW', 'SW', 'FG', 'HW', 'AS', 'FO'];
-            const systemRank = (sys) => {
-                const idx = SYSTEM_PRIORITY.indexOf((sys || '').trim().toUpperCase());
-                return idx === -1 ? SYSTEM_PRIORITY.length : idx;
-            };
+            // 시공 우선순위(SYSTEM_PRIORITY/systemRank, 모듈 공용) 순으로 먼저 배분
             // 같은 System 순위 내에서는 ISO Drawing 이름 오름차순으로 비교
             const isBeforeTarget = (system, isoName, targetSystem, targetIso) => {
                 const r1 = systemRank(system), r2 = systemRank(targetSystem);
