@@ -4455,32 +4455,42 @@ async function _fetchBomSupportRows({ page = 1, forExport = false } = {}) {
     const type   = document.getElementById('bomSupportTypeFilter')?.value || 'All';
     const isoStatus = document.getElementById('bomSupportIsoStatusFilter')?.value || 'All';
 
-    let query = supabaseClient.from('support_bom')
-        .select('support_tag, system, iso_dwg_no, type, item, matl, size_or_type, qty, package_no', forExport ? undefined : { count: 'exact' })
-        .not('support_tag', 'is', null)
-        .neq('support_tag', 'BULK')
-        .neq('support_tag', '-')
-        .order('system', { ascending: true, nullsFirst: false })
-        .order('support_tag', { ascending: true, nullsFirst: false });
+    const buildQuery = () => {
+        let query = supabaseClient.from('support_bom')
+            .select('support_tag, system, iso_dwg_no, type, item, matl, size_or_type, qty, package_no', forExport ? undefined : { count: 'exact' })
+            .not('support_tag', 'is', null)
+            .neq('support_tag', 'BULK')
+            .neq('support_tag', '-')
+            .order('system', { ascending: true, nullsFirst: false })
+            .order('support_tag', { ascending: true, nullsFirst: false })
+            .order('id', { ascending: true }); // 청크 분할 시 같은 Tag 행이 페이지 경계에서 중복/누락되지 않도록 고유 정렬
 
-    if (sys !== 'All') query = query.eq('system', sys);
-    if (iso !== 'All') query = query.eq('iso_dwg_no', iso);
-    if (tag !== 'All') query = query.eq('support_tag', tag);
-    if (pkgNo !== 'All') query = query.eq('package_no', pkgNo);
-    if (type === 'SPECIAL') query = query.eq('type', 'SPECIAL');
-    else if (type !== 'All') query = query.ilike('type', `(${type}-%`);
-    if (search) query = query.or(`support_tag.ilike.%${search}%,iso_dwg_no.ilike.%${search}%,item.ilike.%${search}%`);
-    if (isoStatus === 'Has') query = query.not('iso_dwg_no', 'is', null).neq('iso_dwg_no', '');
-    else if (isoStatus === 'Missing') query = query.or('iso_dwg_no.is.null,iso_dwg_no.eq.');
+        if (sys !== 'All') query = query.eq('system', sys);
+        if (iso !== 'All') query = query.eq('iso_dwg_no', iso);
+        if (tag !== 'All') query = query.eq('support_tag', tag);
+        if (pkgNo !== 'All') query = query.eq('package_no', pkgNo);
+        if (type === 'SPECIAL') query = query.eq('type', 'SPECIAL');
+        else if (type !== 'All') query = query.ilike('type', `(${type}-%`);
+        if (search) query = query.or(`support_tag.ilike.%${search}%,iso_dwg_no.ilike.%${search}%,item.ilike.%${search}%`);
+        if (isoStatus === 'Has') query = query.not('iso_dwg_no', 'is', null).neq('iso_dwg_no', '');
+        else if (isoStatus === 'Missing') query = query.or('iso_dwg_no.is.null,iso_dwg_no.eq.');
+        return query;
+    };
 
     if (forExport) {
-        query = query.limit(100000);
-        const { data, error } = await query;
-        if (error) throw error;
-        return { rows: data || [], count: (data || []).length };
+        // Tag 행이 14,000+라 .limit(100000)으로는 PostgREST 서버 row cap(10,000)에서 잘림 → range 청크 분할
+        let rows = [], from = 0;
+        const CHUNK = 5000;
+        while (true) {
+            const { data, error } = await buildQuery().range(from, from + CHUNK - 1);
+            if (error) throw error;
+            rows = rows.concat(data || []);
+            if (!data || data.length < CHUNK) break;
+            from += CHUNK;
+        }
+        return { rows, count: rows.length };
     }
-    query = query.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
-    const { data, error, count } = await query;
+    const { data, error, count } = await buildQuery().range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
     if (error) throw error;
     return { rows: data || [], count: count || 0 };
 }
@@ -6360,10 +6370,19 @@ function isPkgIssued(plNo) {
 // MIV(issuance) 전체 합계 — byMat: MatCode → qty, byTag: Tag(upper) → qty, catByMat: MatCode → category
 let _mivTotals = { byMat: {}, byTag: {}, catByMat: {} };
 async function loadMivTotals() {
-    const { data, error } = await supabaseClient.from('issuance').select('mat_code, tag, category, qty').limit(100000);
-    if (error) { console.error('issuance(MIV 합계) 조회 실패:', error); return; }
+    // .limit()으로는 PostgREST 서버 row cap(10,000)을 못 넘으므로 range 청크 분할(기록이 쌓이면 1만 행을 넘을 수 있음)
+    let data = [], from = 0;
+    const CHUNK = 5000;
+    while (true) {
+        const { data: chunk, error } = await supabaseClient.from('issuance').select('mat_code, tag, category, qty')
+            .order('id', { ascending: true }).range(from, from + CHUNK - 1);
+        if (error) { console.error('issuance(MIV 합계) 조회 실패:', error); return; }
+        data = data.concat(chunk || []);
+        if (!chunk || chunk.length < CHUNK) break;
+        from += CHUNK;
+    }
     const t = { byMat: {}, byTag: {}, catByMat: {} };
-    (data || []).forEach(r => {
+    data.forEach(r => {
         const q = parseFloat(r.qty) || 0;
         const mat = (r.mat_code || '').trim().toUpperCase();
         if (mat) { t.byMat[mat] = (t.byMat[mat] || 0) + q; if (r.category) t.catByMat[mat] = r.category; }
