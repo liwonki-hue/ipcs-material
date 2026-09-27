@@ -4360,7 +4360,6 @@ async function initBomSupportFilters() {
     if (error) { console.error('initBomSupportFilters support_bom 조회 실패:', error); return; }
     if (data) {
         _bomSupportFiltersInited = true;
-        window._bomSupportAllRows = data;
 
         const systems = [...new Set(data.map(r => r.system).filter(Boolean))].sort();
         const sysEl = document.getElementById('bomSupportSystemFilter');
