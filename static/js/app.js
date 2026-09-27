@@ -6784,12 +6784,17 @@ function updateSpoolKpis() {
     document.querySelectorAll('.spool-kpi-rec-sub').forEach(el => el.textContent = `${pkgCount} PKG`);
 
     const bomTags = _spoolBomTags || new Set();
-    const pct = bomTags.size > 0 ? (recCount / bomTags.size * 100) : 0;
+    // 진행률은 Overview Spool 카드와 같은 기준(BOM Tag 중 입고 Tag와 일치하는 개수) — 입고 행 수로 나누면
+    // BOM에 없는 Tag 입고분까지 진행률에 포함돼 두 화면 값이 달라짐
+    const recTags = new Set((_srData || []).map(r => (r.tag_no || '').trim()).filter(Boolean));
+    let matched = 0;
+    bomTags.forEach(t => { if (recTags.has(t)) matched++; });
+    const pct = bomTags.size > 0 ? (matched / bomTags.size * 100) : 0;
 
     document.querySelectorAll('.spool-kpi-bom').forEach(el => el.innerHTML = `${bomTags.size} <span class="unit">Tags</span>`);
     document.querySelectorAll('.spool-kpi-bom-sub').forEach(el => el.textContent = `${bomTags.size} Tags`);
     document.querySelectorAll('.spool-kpi-progress').forEach(el => el.innerHTML = `${pct.toFixed(1)} <span class="unit">%</span>`);
-    document.querySelectorAll('.spool-kpi-prog-sub').forEach(el => el.textContent = `${recCount} / ${bomTags.size} received`);
+    document.querySelectorAll('.spool-kpi-prog-sub').forEach(el => el.textContent = `${matched} / ${bomTags.size} BOM Tags received`);
 
     const diff = recCount - bomTags.size;
     const diffLabel = diff > 0 ? 'Surplus' : diff < 0 ? 'Shortage' : 'Complete';
