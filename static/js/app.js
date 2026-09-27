@@ -553,7 +553,7 @@ async function syncFromSupabase() {
             db.receiving = recvRaw.map(_mapReceivingRow).filter(r => r.qty > 0);
         }
 
-        await loadPlUpdates();
+        await Promise.all([loadPlUpdates(), loadMivTotals()]);
         // Shipping 캐시 무효화 — 전역 동기화 후 다음 탭 진입 시 재빌드
         _shippingData         = null;
         _spoolShippingCache   = null;
@@ -1471,6 +1471,11 @@ function buildTagRecvMaps(category, bomRows) {
         if (!bomTagSet.has(r.tag)) return;
         recMap[r.tag] = (recMap[r.tag] || 0) + (r.qty || 0);
         if (isPkgIssued(r.plNo)) issMap[r.tag] = (issMap[r.tag] || 0) + (r.qty || 0);
+    });
+    // MIV(ISO 단위 불출) 기록과 PKG 기준 중 큰 값 — getIssuedQtyMap과 같은 규칙
+    bomTagSet.forEach(tag => {
+        const q = _mivTotals.byTag[(tag || '').trim().toUpperCase()];
+        if (q) issMap[tag] = Math.max(issMap[tag] || 0, q);
     });
     return { recMap, issMap };
 }
@@ -5372,6 +5377,7 @@ async function saveMiv() {
     if (error) { statusEl.style.color = '#e53935'; statusEl.textContent = 'Save failed: ' + error.message; return; }
     document.getElementById('mivModal').style.display = 'none';
     ['mivNo', 'mivRemarks'].forEach(id => { document.getElementById(id).value = ''; });
+    await loadMivTotals(); // Stock/Summary Issued 수량에 즉시 반영
     document.getElementById('btnFilterIssue')?.click(); // MIV Qty 컬럼 갱신
 }
 
@@ -6077,6 +6083,7 @@ function attachEventListeners() {
                     receivedQty += q;
                     if (isPkgIssued(pkgNo)) issuedQty += q;
                 });
+                issuedQty = Math.max(issuedQty, mivQty); // MIV 반영 — getIssuedQtyMap과 같은 규칙
                 const stockQty = Math.max(0, receivedQty - issuedQty);
                 const safeDesc = (b.full_description || '-').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
                 const catColor = catColors[category] || '#546e7a';
@@ -6153,6 +6160,7 @@ function attachEventListeners() {
                     receivedQty += q;
                     if (isPkgIssued(pkgNo)) issuedQty += q;
                 });
+                issuedQty = Math.max(issuedQty, mivQty); // MIV 반영 — getIssuedQtyMap과 같은 규칙
                 const stockQty = Math.max(0, receivedQty - issuedQty);
                 let safeDesc = (b.full_description || '-').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
                 let catColor = catColors[category] || '#546e7a';
@@ -6350,6 +6358,23 @@ function isPkgIssued(plNo) {
 }
 
 // matCode 단위 Issued 수량 맵 — PKG Issue Date 기준 (구 db.issued 테이블 대체)
+// MIV(issuance) 전체 합계 — byMat: MatCode → qty, byTag: Tag(upper) → qty, catByMat: MatCode → category
+let _mivTotals = { byMat: {}, byTag: {}, catByMat: {} };
+async function loadMivTotals() {
+    const { data, error } = await supabaseClient.from('issuance').select('mat_code, tag, category, qty').limit(100000);
+    if (error) { console.error('issuance(MIV 합계) 조회 실패:', error); return; }
+    const t = { byMat: {}, byTag: {}, catByMat: {} };
+    (data || []).forEach(r => {
+        const q = parseFloat(r.qty) || 0;
+        const mat = (r.mat_code || '').trim().toUpperCase();
+        if (mat) { t.byMat[mat] = (t.byMat[mat] || 0) + q; if (r.category) t.catByMat[mat] = r.category; }
+        else if (r.tag) { const tag = r.tag.trim().toUpperCase(); t.byTag[tag] = (t.byTag[tag] || 0) + q; }
+    });
+    _mivTotals = t;
+}
+
+// matCode 단위 Issued 수량 맵 — PKG Issue Date 기준(패키지 통째 불출)과 MIV 기록(ISO 단위 불출) 중 큰 값.
+// 같은 불출이 두 방식에 모두 기록될 수 있어 합산하면 이중 차감되므로 max 사용(2026-09-27 사용자 결정 "MIV 반영")
 function getIssuedQtyMap(filterFn) {
     const map = {};
     db.receiving.forEach(r => {
@@ -6357,6 +6382,10 @@ function getIssuedQtyMap(filterFn) {
         if (!filterFn(r)) return;
         if (!isPkgIssued(r.plNo)) return;
         map[r.matCode] = (map[r.matCode] || 0) + (r.qty || 0);
+    });
+    Object.entries(_mivTotals.byMat).forEach(([mat, q]) => {
+        if (!filterFn({ matCode: mat, category: _mivTotals.catByMat[mat] || '-', plNo: '-', qty: q })) return;
+        map[mat] = Math.max(map[mat] || 0, q);
     });
     return map;
 }
