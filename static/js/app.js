@@ -2953,9 +2953,16 @@ async function saveExpediting(key, field, value) {
     const m = await loadExpediting();
     const patch = { [field]: value === '' ? null : value, last_update: new Date().toISOString() };
     const cur = m[key];
-    const res = cur
-        ? await supabaseClient.from('expediting_log').update(patch).eq('id', cur.id).select().single()
-        : await supabaseClient.from('expediting_log').insert({ mat_code: key, ...patch }).select().single();
+    let res;
+    if (cur) {
+        res = await supabaseClient.from('expediting_log').update(patch).eq('id', cur.id).select().single();
+    } else {
+        // anon 역할에 id 시퀀스(expediting_log_id_seq) 사용 권한이 없어 자동 채번 INSERT가 401로 거부됨 —
+        // 권한 변경 대신 receiving.id와 같은 방식으로 직전 최대 id + 1을 직접 넣음(동시 입력 충돌 시 오류 표시)
+        const { data: last } = await supabaseClient.from('expediting_log').select('id').order('id', { ascending: false }).limit(1);
+        const nextId = ((last && last[0] && last[0].id) || 0) + 1;
+        res = await supabaseClient.from('expediting_log').insert({ id: nextId, mat_code: key, ...patch }).select().single();
+    }
     if (res.error) { alert('Expediting save failed: ' + res.error.message); return false; }
     m[key] = res.data;
     return true;
