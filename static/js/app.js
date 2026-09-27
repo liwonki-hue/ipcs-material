@@ -396,6 +396,11 @@ window.parseStockKey = function(key) {
     return { matCode: key.substring(0, sep), sizeOverride: key.substring(sep + 2) };
 };
 
+// 사용자가 입력한 값(Remark/Item 등)을 innerHTML에 넣을 때 태그·따옴표가 해석되지 않도록 이스케이프
+function esc(v) {
+    return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function showLoading(show) {
     const loader = document.getElementById('globalLoader');
     if (loader) loader.style.display = show ? 'flex' : 'none';
@@ -2604,10 +2609,10 @@ function _dhRenderTable(key, columns) {
         }
         const val = r[c.key] ?? '';
         if (editable.has(c.key)) {
-            const safeVal = String(val).replace(/"/g, '&quot;');
-            return `<td style="text-align:center;cursor:pointer;" class="dh-editable-cell" data-field="${c.key}" data-raw="${safeVal}" title="클릭해서 수정">${val} <i class="fas fa-pencil-alt" style="font-size:9px;color:#aaa;"></i></td>`;
+            const safeVal = esc(val);
+            return `<td style="text-align:center;cursor:pointer;" class="dh-editable-cell" data-field="${c.key}" data-raw="${safeVal}" title="클릭해서 수정">${safeVal} <i class="fas fa-pencil-alt" style="font-size:9px;color:#aaa;"></i></td>`;
         }
-        return `<td style="text-align:center;">${val}</td>`;
+        return `<td style="text-align:center;">${esc(val)}</td>`;
     }).join('')}</tr>`).join('');
 }
 
@@ -2633,7 +2638,7 @@ document.addEventListener('click', (e) => {
     const field = cell.dataset.field;
     const raw = cell.dataset.raw;
     cell.innerHTML = `
-        <input type="text" class="form-control dh-edit-input" value="${raw}" style="width:160px;display:inline-block;font-size:11px;">
+        <input type="text" class="form-control dh-edit-input" value="${esc(raw)}" style="width:160px;display:inline-block;font-size:11px;">
         <button class="btn btn-primary dh-edit-save" data-field="${field}" style="font-size:11px;padding:2px 8px;">Save</button>
         <button class="btn btn-outline dh-edit-cancel" style="font-size:11px;padding:2px 8px;">✕</button>
     `;
@@ -6525,8 +6530,8 @@ function renderShippingTable(rows) {
             ${packingCell}
             ${pkgNoCell}
             <td style="text-align:center;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.category || '-'}">${r.category || '-'}</td>
-            <td style="text-align:center;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.item || '-'}">${r.item || '-'}</td>
-            <td style="text-align:center;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.description}">${r.description}</td>
+            <td style="text-align:center;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(r.item || '-')}">${esc(r.item || '-')}</td>
+            <td style="text-align:center;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(r.description)}">${esc(r.description)}</td>
             <td style="text-align:center;font-weight:600;">${qtyDisplay}</td>
             <td style="text-align:center;color:#555;">${r.unit || '—'}</td>
             ${statusCell}
@@ -6536,7 +6541,7 @@ function renderShippingTable(rows) {
                 <input type="text" class="pl-datepicker" style="${PL_INPUT_CSS}cursor:pointer;text-align:right;" data-pkg="${pkg}" data-field="issue_date" value="${r.issue_date}" placeholder="">
             </td>
             <td style="padding:3px;">
-                <textarea style="${PL_INPUT_CSS}resize:vertical;min-height:32px;max-height:80px;" data-pkg="${pkg}" data-field="remark" rows="1">${r.remark || ''}</textarea>
+                <textarea style="${PL_INPUT_CSS}resize:vertical;min-height:32px;max-height:80px;" data-pkg="${pkg}" data-field="remark" rows="1">${esc(r.remark || '')}</textarea>
             </td>
         </tr>`;
     }).join('');
