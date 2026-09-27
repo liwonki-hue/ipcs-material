@@ -420,6 +420,12 @@ async function fetchWithRetry(queryFactory, label, maxAttempts = 3) {
     return { data, error, count };
 }
 
+// PostgREST .or() 필터 문자열 안에서 쉼표·괄호·따옴표는 구문 문자라 검색어에 섞이면 조회 자체가 오류남 —
+// ilike의 한 글자 와일드카드(_)로 바꿔 해당 위치는 아무 글자나 일치하게 처리
+function _pgOrSafe(s) {
+    return (s || '').replace(/[,()"\\]/g, '_');
+}
+
 async function fetchAllRows(tableName) {
     let allData = [];
     let from = 0;
@@ -3559,7 +3565,7 @@ function _bomTabCategory() {
 // BOM 탭(Piping/Fitting/Valve/Speciality/Others) 공용 필터 — 화면 렌더러와 Export 버튼이
 // 동일하게 사용해 "화면엔 필터 걸었는데 Export는 전체가 나오는" 불일치를 원천 차단
 function _applyBomTabFilters(q) {
-    const search  = (document.getElementById('bomIsoSearch')?.value || '').trim();
+    const search  = _pgOrSafe((document.getElementById('bomIsoSearch')?.value || '').trim());
     const sys     = document.getElementById('bomSystemFilter')?.value || 'All';
     const cat     = _bomTabCategory();
     const item    = document.getElementById('bomItemFilter')?.value || 'All';
@@ -3940,7 +3946,7 @@ async function initVendorFilters() {
 
 // Vendor 탭 공용 필터 — 화면 렌더러와 Export 버튼이 동일하게 사용
 function _applyVendorFilters(q) {
-    const search = (document.getElementById('vendorIsoSearch')?.value || '').trim();
+    const search = _pgOrSafe((document.getElementById('vendorIsoSearch')?.value || '').trim());
     const sys    = document.getElementById('vendorSystemFilter')?.value || 'All';
     const item   = document.getElementById('vendorItemFilter')?.value || 'All';
     const mat1   = document.getElementById('vendorMat1Filter')?.value || 'All';
@@ -4088,7 +4094,7 @@ async function initBomSpoolFilters() {
 
 // Search/System 필터를 공용으로 적용해 spool_bom 쿼리 빌드 (테이블 렌더링/Export 공용)
 async function _fetchBomSpoolRows({ page = 1, forExport = false } = {}) {
-    const search = (document.getElementById('bomSpoolSearch')?.value || '').trim();
+    const search = _pgOrSafe((document.getElementById('bomSpoolSearch')?.value || '').trim());
     const sys    = document.getElementById('bomSpoolSystemFilter')?.value || 'All';
     const isoStatus = document.getElementById('bomSpoolIsoStatusFilter')?.value || 'All';
     const lineStatus = document.getElementById('bomSpoolLineNoStatusFilter')?.value || 'All';
@@ -4258,7 +4264,7 @@ async function initBomSupportFilters() {
 
 // Search/System 필터를 공용으로 적용해 support_bom 쿼리 빌드 (테이블 렌더링/Export 공용)
 async function _fetchBomSupportRows({ page = 1, forExport = false } = {}) {
-    const search = (document.getElementById('bomSupportSearch')?.value || '').trim();
+    const search = _pgOrSafe((document.getElementById('bomSupportSearch')?.value || '').trim());
     const sys    = document.getElementById('bomSupportSystemFilter')?.value || 'All';
     const iso    = document.getElementById('bomSupportIsoFilter')?.value || 'All';
     const tag    = document.getElementById('bomSupportTagFilter')?.value || 'All';
@@ -4846,7 +4852,7 @@ async function renderSupportReceivingTable() {
     if (!supabaseClient) return;
     tbody.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:20px;color:#888;">Loading...</td></tr>';
 
-    const search    = (document.getElementById('srecSearch')?.value || '').trim();
+    const search    = _pgOrSafe((document.getElementById('srecSearch')?.value || '').trim());
     const pkg       = document.getElementById('srecPkgFilter')?.value || 'All';
     const packageNo = document.getElementById('srecPackageNoFilter')?.value || 'All';
     const sys       = document.getElementById('srecSystemFilter')?.value || 'All';
@@ -5429,7 +5435,7 @@ function attachEventListeners() {
             btnExportSrec.disabled = true;
             btnExportSrec.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exporting...';
             try {
-                const search    = (document.getElementById('srecSearch')?.value || '').trim();
+                const search    = _pgOrSafe((document.getElementById('srecSearch')?.value || '').trim());
                 const pkg       = document.getElementById('srecPkgFilter')?.value || 'All';
                 const packageNo = document.getElementById('srecPackageNoFilter')?.value || 'All';
                 const sys       = document.getElementById('srecSystemFilter')?.value || 'All';
