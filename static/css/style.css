@@ -109,6 +109,14 @@ ul { list-style: none; }
 #srecTable td { font-size: 12px; padding: 7px 10px; }
 #bomTable td  { font-size: 12px; padding: 7px 6px; }
 #vendorTable td { font-size: 12px; padding: 7px 6px; }
+#bomSpoolTable td, #bomSupportTable td { font-size: 12px; padding: 7px 6px; }
+
+/* BOM 계열 표: 노트북처럼 폭이 줄어도 칸이 글자 폭보다 좁아지지 않게(겹침 방지). 모자라면 .table-responsive 가 가로 스크롤 */
+#bomTable, #bomSpoolTable, #bomSupportTable, #vendorTable { table-layout: auto; }
+#bomTable th, #bomTable td, #bomSpoolTable th, #bomSpoolTable td,
+#bomSupportTable th, #bomSupportTable td, #vendorTable th, #vendorTable td { white-space: nowrap; }
+#bomTable th, #bomSpoolTable th, #bomSupportTable th, #vendorTable th { padding: 10px 6px; }
+#bomTable td:nth-child(10), #vendorTable td:nth-child(10) { white-space: normal; min-width: 185px; } /* Description 만 줄바꿈 허용 */
 #piping_bom .form-group label { font-size: 12px; }
 #piping_bom .form-control     { font-size: 13px; height: 34px; padding: 4px 10px; }
 #piping_bom .btn              { font-size: 13px; height: 34px; padding: 4px 12px; }
