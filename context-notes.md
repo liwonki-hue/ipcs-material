@@ -18,3 +18,14 @@
 - 2번: Issued = 자재별 max(PKG Issue Date 기준, MIV 합계). 합산하면 같은 불출이 두 번 빠지므로 max. `_mivTotals`를 초기 동기화·MIV 저장 후 로드. Finding 라인도 issued = max(PKG 배분분, 라인 MIV).
 - 3번: 81건 전부 PGU-DE-0524, issue 03-27 → on_site 03-31로 정정(백업 JSON).
 - 4번: v_iso_stage_status 재정의(윈도 함수 누적합으로 배분). REST 조회 약 2초. 첫 로드 때 bom_agg/bom_iso_list/bom_desc가 57014 타임아웃 후 재시도 성공한 적 1회 — 직전 페이지 쿼리와 겹친 것으로 보이며, 이후 두 번 재로드 시 경고 0.
+
+## ISO PDF → BOM Excel 추출 (2026-10-03)
+- 대상: 각 도면의 최신 Revision(문자열 비교), VOID 제외 3,973장. PDF는 Cloudinary 공개 URL(`dwg_iso.file_link`), 사용자가 .env 키 사용 승인.
+- PDF의 BOM 표 행은 텍스트 레이어에 없음(벡터/이미지) → OCR 필요. 헤더만 텍스트로 잡힘. 일부 PDF는 텍스트 0자.
+- **기존 `bom` 테이블은 PDF 표의 합계가 아님**: Pipe는 절단 조각별 행(LB는 Cut Pipe Length 표, SB는 치수 기반), Fitting/Valve는 1EA씩 개별 행. 따라서 Excel은 PDF 표 행(합계) 그대로 추출하고, `bom`을 ISO+MatCode로 합산해 대조한다.
+- OCR 오인식 보정 필요(예: ELB0W→ELBOW, 사이즈 `1"` 누락). 미매칭/저신뢰 행은 Excel에 표시.
+- MatCode/Mat1/Mat2는 PDF에 없으므로 기존 `bom`의 (설명 토큰집합, DN)→값 사전으로 매핑.
+- (2026-10-03 진행) RapidOCR 일반 OCR은 한 자리 숫자·헤어라인에서 정확도 한계 → **벡터 글자 경로를 굵은 선으로 재렌더링해 행/셀 단위 인식**(scratch/vecread.py)으로 전환. 핵심 보정: 회전 페이지 좌표 변환(rotation_matrix), 리비전 스탬프(글자높이 1.12~1.35배)·구름(곡선) 제외, 단독 '1' 표준글리프 재그림, 숫자셀 합성(간격 1.5ch) 후 문법 분할(size/qty/weight), 쪼개진 숫자 절반 경로는 세로 최근접 행에 부착.
+- 검증 방식: ISO별 PDF Pipe(M)·EA 합계 vs bom 합계 (scratch/validate_test.py). 무작위 40장에서 둘 다 일치 27장(67%). 불일치 일부는 실제 데이터 차이(예: CWR-412-1은 bom에 Pipe/Fitting 행 없음).
+- 전체 추출 결과: scratch/bomx_all/*.json (extract_all.py, 8프로세스).
+- 결과(2026-10-03): `ISO_PDF_BOM_Extract_261003.xlsx` — 14,609행/3,973 ISO. 매핑 EXACT 10,816·FUZZY 1,095·DERIVED 140·NONE 2,558. ISO 단위 bom 합계(Pipe M·EA) 일치 2,630(66%)/차이 1,188/bom에 Pipe·Fitting 없음 155, 표 미검출 10. 불일치는 OCR 오독과 bom 자체 차이가 섞여 있어 전량 자동 확정 불가 → CHECK 열로 구분, 검토 필요.

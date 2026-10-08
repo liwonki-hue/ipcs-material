@@ -32,3 +32,16 @@ Plan: 2026-09-27 전체 점검 보고서의 개선안을 적용. 사용자 결�
 - [x] node --check + 로컬 브라우저 확인
 - [x] 설계 문서(docs/superpowers/specs/2026-07-03-material-control-program-design.md) 갱신
 - [x] semantic commit (push는 finish 때 — 아직 안 함)
+
+## ISO PDF → BOM Excel 추출 (2026-10-03)
+- [x] ipcs-drawing DB에서 VOID 제외 최신 Revision ISO 3,973장 목록 확보 (`scratch/iso_latest.json`)
+- [x] Cloudinary PDF 접근 방식 확인 (file_link 공개 URL, 사용자 승인)
+- [x] BOM 행이 텍스트 레이어가 아님을 확인 → OCR(rapidocr, `scratch/ocrenv`) 채택
+- [ ] 전체 PDF 다운로드 (`scratch/iso_pdf/`)
+- [ ] OCR 파서 작성 + 샘플 30장 검증
+- [ ] 설명→MatCode/Mat1/Mat2/Rating 매핑 (기존 bom 테이블 기준 사전)
+- [ ] 전체 실행 → Excel 산출 (+ 기존 bom 합계 대조, OCR 저신뢰 행 표시)
+- [x] 전체 PDF 다운로드 (3,973장, `scratch/iso_pdf/`)
+- [x] 벡터 재렌더링 인식 파서 작성(`scratch/vecread.py`) + 샘플 40장 검증(ISO 단위 Pipe·EA 합계 일치 29/40)
+- [x] 설명→MatCode/Mat1/Mat2/Rating 매핑 + Excel 빌더(`scratch/build_excel.py`)
+- [x] 전체 추출 실행(3,973장, 6,645초, 오류 0) → `ISO_PDF_BOM_Extract_261003.xlsx` 생성
