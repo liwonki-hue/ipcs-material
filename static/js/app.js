@@ -4611,7 +4611,9 @@ function _buildRecvRowFields(r, { masterMap, mat12Map, splitMat }) {
     const item      = (r.plNo || '').toUpperCase().includes('BYPS') ? 'BYPASS VALVE'
         : window.getValveOpAccessoryItem(r.plNo, bomFullDesc || r.desc) || _rawItemR;
     const etPart    = (effMat || '').split('-').pop().toUpperCase();
-    const flangeType = (item === 'FLANGE' && (etPart === 'FF' || etPart === 'RF')) ? 'WN' + etPart : '-';
+    const flangeFace = (etPart === 'FF' || etPart === 'RF');
+    // 일반 Flange는 WN+면(WNRF/WNFF), Blind Flange는 Weld Neck이 아니므로 면 형식(RF/FF)만 표시
+    const flangeType = !flangeFace ? '-' : item === 'FLANGE' ? 'WN' + etPart : item === 'BLIND FLANGE' ? etPart : '-';
 
     const mData  = masterMap[effMat] || {};
     const mcParts = (effMat || '').split('-');
