@@ -96,7 +96,7 @@ const PAGE_SIZE = 25;
 const ITEM_PREFIX_MAP = {
     'PIPE':['PIS','PIW'], 'NIPPLE':['PIN'],
     'ELBOW 90D':['EL9L','EL9S'], 'ELBOW 45D':['EL4L','ELS','ELB'],
-    'FLANGE':['FLN','FLB','FLS','FLO','FLR'],
+    'FLANGE':['FLN','FLS','FLO','FLR'], 'BLIND FLANGE':['FLB'],
     'TEE':['TEE'], 'TEE-RED':['TER'],
     'RED-CON':['RDC'], 'RED-ECC':['RDE'],
     'CAP':['CAP'],
@@ -217,7 +217,7 @@ window.extractItemFromDesc = function(desc) {
     if (/STEAM TRAP\s*\(HIGH ALLOY\)/i.test(desc2)) return 'STEAM TRAP (HIGH ALLOY)';
     if (/STEAM TRAP\s*\(LOW ALLOY\)/i.test(desc2))  return 'STEAM TRAP (LOW ALLOY)';
     for (const c of COMPOUND) {
-        if (upper.startsWith(c)) return c;
+        if (upper.startsWith(c)) return c === 'FLANGE-BLIND' ? 'BLIND FLANGE' : c;
     }
     // Safety / Control Valve 직접 감지 (description 전체 기준)
     if (/SAFETY VALVE|\bPSV\b|\bPRV\b/.test(upper)) return 'SAFETY VALVE';
@@ -238,7 +238,7 @@ window.extractItemFromDesc = function(desc) {
     // 2단계 제거 후 COMPOUND 재검사
     const sUpper = s.toUpperCase();
     for (const c of COMPOUND) {
-        if (sUpper.startsWith(c)) return c;
+        if (sUpper.startsWith(c)) return c === 'FLANGE-BLIND' ? 'BLIND FLANGE' : c;
     }
     if (!s) return '-';
     // ( 도 구분자로 처리 (FLEXIBLE HOSE (AIR HOSE REEL) 등 괄호 형식 대응)
@@ -272,7 +272,7 @@ window.extractItemFromMatCode = function(matCode) {
         'PIS':'PIPE', 'PIW':'PIPE', 'PIN':'NIPPLE',
         'EL9L':'ELBOW 90D', 'EL9S':'ELBOW 90D',
         'EL4L':'ELBOW 45D', 'ELS':'ELBOW 45D', 'ELB':'ELBOW 45D',
-        'FLN':'FLANGE', 'FLB':'FLANGE', 'FLS':'FLANGE', 'FLO':'FLANGE', 'FLR':'FLANGE',
+        'FLN':'FLANGE', 'FLB':'BLIND FLANGE', 'FLS':'FLANGE', 'FLO':'FLANGE', 'FLR':'FLANGE',
         'TEE':'TEE', 'TER':'TEE-RED',
         'RDC':'RED-CON', 'RDE':'RED-ECC',
         'CAP':'CAP',
