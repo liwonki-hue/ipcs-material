@@ -2522,6 +2522,22 @@ function getStbMat1Mat2Fallback(matCode, masterMap) {
     if (!mData) return null;
     return { mat1: mData.classDesc || '-', mat2: mData.matlDesc || '-' };
 }
+// Receiving 탭 Mat1/Mat2: BOM(mat12Map)에 없는 MatCode(입고만 된 사이즈 변형)도 MatCode에서 유도.
+// Mat1 = 같은 MATL 세그먼트(SS04/CS05/AS91 등)를 쓰는 BOM 항목에서 학습(세그먼트→Mat1은 BOM에서 일관됨),
+// Mat2 = MatCode Master의 matl_desc(해당 MatCode 고유 규격). GSKT는 BOM과 같이 Mat2 없음, STB는 전용 폴백.
+const _segMat1Cache = new WeakMap();
+function getMat12WithFallback(matCode, masterMap, mat12Map) {
+    const hit = mat12Map[matCode];
+    if (hit && (hit.mat1 || hit.mat2)) return hit;
+    const stb = getStbMat1Mat2Fallback(matCode, masterMap);
+    if (stb) return stb;
+    let segMap = _segMat1Cache.get(mat12Map);
+    if (!segMap) { segMap = _buildSegToMat1(mat12Map); _segMat1Cache.set(mat12Map, segMap); }
+    const mat1 = segMap[(matCode || '').split('-')[1]];
+    const mData = masterMap && masterMap[matCode];
+    const mat2 = (!/^GSKT-/i.test(matCode || '') && mData && mData.matlDesc && mData.matlDesc !== '-') ? mData.matlDesc : null;
+    return (mat1 || mat2) ? { mat1: mat1 || '-', mat2: mat2 || '-' } : {};
+}
 function getRatingForMatCode(matCode, masterMap, fullDescription) {
     const mData = (masterMap && masterMap[matCode]) || {};
     const isStb = /^STB-/i.test(matCode || '');
@@ -4568,7 +4584,7 @@ async function _computeRecvCoreData(cfg) {
         const pkgSt        = (_plUpdatesCache[r.plNo] || {}).status || '';
         const pkgIssueDateF = (_plUpdatesCache[r.plNo] || {}).issue_date || '';
         const matchStatusF = statusF === 'All' || (statusF === 'Issued' ? !!pkgIssueDateF : pkgSt === statusF);
-        const m12          = splitMat ? (mat12Map[effMat] || getStbMat1Mat2Fallback(effMat, masterMap) || {}) : {};
+        const m12          = splitMat ? getMat12WithFallback(effMat, masterMap, mat12Map) : {};
         const matchMat1    = mat1F   === 'All' || (m12.mat1 || '-') === mat1F;
         const matchMat2    = mat2F   === 'All' || (m12.mat2 || '-') === mat2F;
         const matchRating  = ratingF === 'All' || getRatingForMatCode(effMat, masterMap) === ratingF;
@@ -4619,7 +4635,7 @@ function _buildRecvRowFields(r, { masterMap, mat12Map, splitMat }) {
     const mcParts = (effMat || '').split('-');
     const matl   = mData.matlDesc || mcParts[1] || '-';
     const rating = getRatingForMatCode(effMat, masterMap);
-    const m12    = splitMat ? (mat12Map[effMat] || getStbMat1Mat2Fallback(effMat, masterMap) || {}) : {};
+    const m12    = splitMat ? getMat12WithFallback(effMat, masterMap, mat12Map) : {};
     const mat1Val = m12.mat1 || '-';
     const mat2Val = m12.mat2 || '-';
 
